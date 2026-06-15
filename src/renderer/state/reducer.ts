@@ -6,14 +6,21 @@ export interface AppState {
   activeSessionId: string
   // 每个 session 独立的 Tab 组
   tabsBySession: Record<string, Tab[]>
-  activeTabId: string | null
+  // 每个会话当前激活的 Tab（key = sessionId）
+  activeTabIdBySession: Record<string, string | null>
   theme: ThemeId
 }
 
+// TODO: idCounter is module-level mutable state — non-deterministic IDs. Acceptable for prototype; thread through state if persistence/time-travel needed later.
 let idCounter = 0
 function nextId(prefix: string): string {
   idCounter += 1
   return `${prefix}${idCounter}`
+}
+
+// 读取当前会话激活的 Tab id
+function activeTabIdOf(state: AppState): string | null {
+  return state.activeTabIdBySession[state.activeSessionId] ?? null
 }
 
 // 判断会话是否为空（消息数为 0）
@@ -43,7 +50,11 @@ export function reducer(state: AppState, action: Action): AppState {
       if (existingEmpty) {
         const tabsBySession = { ...state.tabsBySession }
         if (!tabsBySession[existingEmpty.id]) tabsBySession[existingEmpty.id] = []
-        return { ...state, activeSessionId: existingEmpty.id, tabsBySession }
+        const activeTabIdBySession = {
+          ...state.activeTabIdBySession,
+          [existingEmpty.id]: state.activeTabIdBySession[existingEmpty.id] ?? null
+        }
+        return { ...state, activeSessionId: existingEmpty.id, tabsBySession, activeTabIdBySession }
       }
       const newSession: Session = { id: nextId('s'), title: '新会话', messages: [] }
       const projects = state.projects.map(p =>
@@ -52,17 +63,27 @@ export function reducer(state: AppState, action: Action): AppState {
           : p
       )
       const tabsBySession = { ...state.tabsBySession, [newSession.id]: [] }
-      return { ...state, projects, activeSessionId: newSession.id, tabsBySession }
+      const activeTabIdBySession = { ...state.activeTabIdBySession, [newSession.id]: null }
+      return { ...state, projects, activeSessionId: newSession.id, tabsBySession, activeTabIdBySession }
     }
     case 'SELECT_SESSION': {
-      return { ...state, activeSessionId: action.sessionId }
+      // 不重算每会话活跃 Tab——它们各自独立保留。仅保证目标会话有条目（缺失则置 null），保持 map 良构。
+      const target = action.sessionId
+      const activeTabIdBySession = state.activeTabIdBySession[target] === undefined
+        ? { ...state.activeTabIdBySession, [target]: null }
+        : state.activeTabIdBySession
+      return { ...state, activeSessionId: target, activeTabIdBySession }
     }
     case 'OPEN_FILE_TAB': {
-      const tabs = state.tabsBySession[state.activeSessionId] ?? []
+      const activeSessionId = state.activeSessionId
+      const tabs = state.tabsBySession[activeSessionId] ?? []
       // 去重：同文件已开则切过去
       const existing = tabs.find(t => t.type === 'file' && t.filePath === action.filePath)
       if (existing) {
-        return { ...state, activeTabId: existing.id }
+        return {
+          ...state,
+          activeTabIdBySession: { ...state.activeTabIdBySession, [activeSessionId]: existing.id }
+        }
       }
       const newTab: Tab = {
         id: nextId('t'),
@@ -72,12 +93,13 @@ export function reducer(state: AppState, action: Action): AppState {
       }
       return {
         ...state,
-        tabsBySession: { ...state.tabsBySession, [state.activeSessionId]: [...tabs, newTab] },
-        activeTabId: newTab.id
+        tabsBySession: { ...state.tabsBySession, [activeSessionId]: [...tabs, newTab] },
+        activeTabIdBySession: { ...state.activeTabIdBySession, [activeSessionId]: newTab.id }
       }
     }
     case 'OPEN_TAB': {
-      const tabs = state.tabsBySession[state.activeSessionId] ?? []
+      const activeSessionId = state.activeSessionId
+      const tabs = state.tabsBySession[activeSessionId] ?? []
       const newTab: Tab = {
         id: nextId('t'),
         type: action.tabType,
@@ -85,20 +107,30 @@ export function reducer(state: AppState, action: Action): AppState {
       }
       return {
         ...state,
-        tabsBySession: { ...state.tabsBySession, [state.activeSessionId]: [...tabs, newTab] },
-        activeTabId: newTab.id
+        tabsBySession: { ...state.tabsBySession, [activeSessionId]: [...tabs, newTab] },
+        activeTabIdBySession: { ...state.activeTabIdBySession, [activeSessionId]: newTab.id }
       }
     }
     case 'CLOSE_TAB': {
-      const tabs = (state.tabsBySession[state.activeSessionId] ?? []).filter(t => t.id !== action.tabId)
-      let activeTabId = state.activeTabId
-      if (state.activeTabId === action.tabId) {
-        activeTabId = tabs.length > 0 ? tabs[tabs.length - 1].id : null
+      const activeSessionId = state.activeSessionId
+      const tabs = (state.tabsBySession[activeSessionId] ?? []).filter(t => t.id !== action.tabId)
+      const activeTabIdBySession = { ...state.activeTabIdBySession }
+      const currentActive = activeTabIdOf(state)
+      if (currentActive === action.tabId) {
+        activeTabIdBySession[activeSessionId] = tabs.length > 0 ? tabs[tabs.length - 1].id : null
       }
-      return { ...state, tabsBySession: { ...state.tabsBySession, [state.activeSessionId]: tabs }, activeTabId }
+      return {
+        ...state,
+        tabsBySession: { ...state.tabsBySession, [activeSessionId]: tabs },
+        activeTabIdBySession
+      }
     }
     case 'SELECT_TAB': {
-      return { ...state, activeTabId: action.tabId }
+      const activeSessionId = state.activeSessionId
+      return {
+        ...state,
+        activeTabIdBySession: { ...state.activeTabIdBySession, [activeSessionId]: action.tabId }
+      }
     }
     case 'SET_THEME': {
       return { ...state, theme: action.theme }
