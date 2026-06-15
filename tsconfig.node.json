@@ -5,7 +5,9 @@
     "moduleResolution": "Bundler",
     "allowSyntheticDefaultImports": true,
     "strict": true,
-    "noEmit": true
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "outDir": "./.tsbuild/node"
   },
   "include": ["electron.vite.config.ts", "vitest.config.ts"]
 }
