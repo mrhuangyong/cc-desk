@@ -1,3 +1,6 @@
 .superpowers/
 node_modules/
 dist/
+out/
+*.log
+.tsbuild/
