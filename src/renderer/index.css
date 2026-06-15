@@ -1,0 +1,85 @@
+/* ===== 主题变量 ===== */
+:root,
+[data-theme='dark-warm'] {
+  --bg: #1a1714;
+  --bg-elevated: #221d18;
+  --bg-sidebar: #161310;
+  --bg-hover: #2a2520;
+  --border: #2f2820;
+  --text: #d8c9b8;
+  --text-muted: #8a7a68;
+  --accent: #d97757;
+  --accent-text: #1a1714;
+  --danger: #e06c6c;
+  --font: -apple-system, 'Segoe UI', 'PingFang SC', sans-serif;
+  --font-mono: 'SF Mono', 'Menlo', monospace;
+  --radius: 6px;
+}
+
+[data-theme='dark-cool'] {
+  --bg: #0d1117;
+  --bg-elevated: #161b22;
+  --bg-sidebar: #010409;
+  --bg-hover: #21262d;
+  --border: #21262d;
+  --text: #c9d1d9;
+  --text-muted: #8b949e;
+  --accent: #2f81f7;
+  --accent-text: #ffffff;
+  --danger: #f85149;
+  --radius: 6px;
+}
+
+[data-theme='light-editorial'] {
+  --bg: #faf8f3;
+  --bg-elevated: #ffffff;
+  --bg-sidebar: #f2eee5;
+  --bg-hover: #e9e2d3;
+  --border: #e5dfd2;
+  --text: #3a3530;
+  --text-muted: #8a7f70;
+  --accent: #8b6f47;
+  --accent-text: #ffffff;
+  --danger: #c05050;
+  --font: Georgia, 'Times New Roman', 'Songti SC', serif;
+  --font-mono: 'SF Mono', 'Menlo', monospace;
+  --radius: 6px;
+}
+
+[data-theme='dark-acid'] {
+  --bg: #0a0a0a;
+  --bg-elevated: #141414;
+  --bg-sidebar: #050505;
+  --bg-hover: #1a1a1a;
+  --border: #222222;
+  --text: #c0c0c0;
+  --text-muted: #707070;
+  --accent: #ccff00;
+  --accent-text: #0a0a0a;
+  --danger: #ff4444;
+  --font: 'SF Mono', 'Menlo', 'Courier New', monospace;
+  --font-mono: 'SF Mono', 'Menlo', monospace;
+  --radius: 0px;
+}
+
+/* ===== 全局重置 ===== */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+button {
+  font-family: inherit;
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: inherit;
+}
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius); }
+::-webkit-scrollbar-track { background: transparent; }
