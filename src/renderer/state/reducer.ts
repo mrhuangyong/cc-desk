@@ -28,11 +28,27 @@ function isEmptySession(s: Session): boolean {
   return s.messages.length === 0
 }
 
+// 删除后，找一个存活的会话 id 作为新的 activeSessionId
+function pickSurvivingSessionId(projects: Project[], excludedId: string): string | null {
+  for (const p of projects) {
+    const found = p.sessions.find(s => s.id !== excludedId)
+    if (found) return found.id
+  }
+  return null
+}
+
 export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'DELETE_PROJECT': {
       const projects = state.projects.filter(p => p.id !== action.projectId)
-      return { ...state, projects }
+      // 若激活会话在被删项目里，切到存活会话
+      const removedProject = state.projects.find(p => p.id === action.projectId)
+      const activeWasInRemoved = removedProject?.sessions.some(s => s.id === state.activeSessionId)
+      let activeSessionId = state.activeSessionId
+      if (activeWasInRemoved) {
+        activeSessionId = pickSurvivingSessionId(projects, state.activeSessionId) ?? state.activeSessionId
+      }
+      return { ...state, projects, activeSessionId }
     }
     case 'DELETE_SESSION': {
       const projects = state.projects.map(p =>
@@ -40,7 +56,12 @@ export function reducer(state: AppState, action: Action): AppState {
           ? { ...p, sessions: p.sessions.filter(s => s.id !== action.sessionId) }
           : p
       )
-      return { ...state, projects }
+      // 若删的是当前激活会话，自动切到另一个存活会话
+      let activeSessionId = state.activeSessionId
+      if (state.activeSessionId === action.sessionId) {
+        activeSessionId = pickSurvivingSessionId(projects, action.sessionId) ?? state.activeSessionId
+      }
+      return { ...state, projects, activeSessionId }
     }
     case 'ADD_SESSION': {
       const project = state.projects.find(p => p.id === action.projectId)

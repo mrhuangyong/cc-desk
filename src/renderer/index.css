@@ -27,6 +27,8 @@
   --accent: #2f81f7;
   --accent-text: #ffffff;
   --danger: #f85149;
+  --font: -apple-system, 'Segoe UI', 'PingFang SC', sans-serif;
+  --font-mono: 'SF Mono', 'Menlo', monospace;
   --radius: 6px;
 }
 

@@ -29,6 +29,28 @@ describe('reducer', () => {
     expect(next.projects.find(p => p.id === 'p1')).toBeUndefined()
   })
 
+  it('DELETE_SESSION 删掉当前激活会话后，activeSessionId 自动切到存活会话', () => {
+    const state = initialState() // activeSessionId = 's1', p1 has s1+s2, p2 has s3
+    const next = reducer(state, { type: 'DELETE_SESSION', projectId: 'p1', sessionId: 's1' })
+    // s1 被删，应自动切到另一个存活会话（s2 或 s3 之一，且必须真实存在）
+    const allSurvivingSessions = next.projects.flatMap(p => p.sessions.map(s => s.id))
+    expect(allSurvivingSessions).toContain(next.activeSessionId)
+    expect(next.activeSessionId).not.toBe('s1')
+  })
+
+  it('DELETE_PROJECT 删掉含激活会话的项目后，activeSessionId 切到存活会话', () => {
+    const state = initialState() // active = s1 (in p1)
+    const next = reducer(state, { type: 'DELETE_PROJECT', projectId: 'p1' })
+    // p1 整个没了，s1 不存在了，应切到 p2 的 s3
+    expect(next.activeSessionId).toBe('s3')
+  })
+
+  it('删除非激活会话不影响 activeSessionId', () => {
+    const state = initialState() // active = s1
+    const next = reducer(state, { type: 'DELETE_SESSION', projectId: 'p1', sessionId: 's2' })
+    expect(next.activeSessionId).toBe('s1') // 不变
+  })
+
   it('ADD_SESSION 当无空会话时新增一条 (p2 has only non-empty s3)', () => {
     const state = initialState()
     const before = state.projects.find(p => p.id === 'p2')!.sessions.length
