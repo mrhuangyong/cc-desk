@@ -10,7 +10,7 @@ function initialState(): AppState {
     activeSessionId: 's1',
     // 每个 session 的 Tab 组，key = sessionId
     tabsBySession: { s1: [] },
-    activeTabId: null,
+    activeTabIdBySession: { s1: null },
     theme: 'dark-warm'
   }
 }
@@ -49,11 +49,11 @@ describe('reducer', () => {
   it('OPEN_FILE_TAB 同文件重复打开不新开，切到已存在 Tab', () => {
     const state = initialState()
     const s1 = reducer(state, { type: 'OPEN_FILE_TAB', filePath: 'src/App.tsx', fileName: 'App.tsx' })
-    const firstTabId = s1.activeTabId
+    const firstTabId = s1.activeTabIdBySession['s1']
     const s2 = reducer(s1, { type: 'OPEN_FILE_TAB', filePath: 'src/App.tsx', fileName: 'App.tsx' })
     const tabs = s2.tabsBySession['s1']
     expect(tabs.length).toBe(1) // 仍然只有一个
-    expect(s2.activeTabId).toBe(firstTabId) // 切到已存在的
+    expect(s2.activeTabIdBySession['s1']).toBe(firstTabId) // 切到已存在的
   })
 
   it('OPEN_FILE_TAB 不同文件各自开 Tab', () => {
@@ -68,7 +68,7 @@ describe('reducer', () => {
     const next = reducer(state, { type: 'OPEN_TAB', tabType: 'browser' })
     expect(next.tabsBySession['s1'].length).toBe(1)
     expect(next.tabsBySession['s1'][0].type).toBe('browser')
-    expect(next.activeTabId).toBe(next.tabsBySession['s1'][0].id)
+    expect(next.activeTabIdBySession['s1']).toBe(next.tabsBySession['s1'][0].id)
   })
 
   it('OPEN_TAB 同类型可开多个 (browser x2 不去重)', () => {
@@ -81,19 +81,19 @@ describe('reducer', () => {
   it('CLOSE_TAB 关掉最后一个后 activeTabId 为 null', () => {
     const state = initialState()
     const s1 = reducer(state, { type: 'OPEN_FILE_TAB', filePath: 'a.ts', fileName: 'a.ts' })
-    const tabId = s1.activeTabId!
+    const tabId = s1.activeTabIdBySession['s1']!
     const s2 = reducer(s1, { type: 'CLOSE_TAB', tabId })
     expect(s2.tabsBySession['s1'].length).toBe(0)
-    expect(s2.activeTabId).toBeNull()
+    expect(s2.activeTabIdBySession['s1']).toBeNull()
   })
 
   it('CLOSE_TAB 关掉非最后一个后激活剩余的最后一个', () => {
     const state = initialState()
     const s1 = reducer(state, { type: 'OPEN_FILE_TAB', filePath: 'a.ts', fileName: 'a.ts' })
-    const firstId = s1.activeTabId!
+    const firstId = s1.activeTabIdBySession['s1']!
     const s2 = reducer(s1, { type: 'OPEN_FILE_TAB', filePath: 'b.ts', fileName: 'b.ts' })
-    const s3 = reducer(s2, { type: 'CLOSE_TAB', tabId: s2.activeTabId! }) // close the active (2nd) tab
-    expect(s3.activeTabId).toBe(firstId)
+    const s3 = reducer(s2, { type: 'CLOSE_TAB', tabId: s2.activeTabIdBySession['s1']! }) // close the active (2nd) tab
+    expect(s3.activeTabIdBySession['s1']).toBe(firstId)
   })
 
   it('SELECT_SESSION 不影响其他会话的 Tab 组', () => {
@@ -107,6 +107,22 @@ describe('reducer', () => {
     expect(s2.tabsBySession['s1'].length).toBe(1) // 保留
     // s2 还没有 tab 组条目
     expect(s2.tabsBySession['s2']).toBeUndefined()
+  })
+
+  it('SELECT_SESSION 后 activeTabId 切到目标会话的活跃 Tab (修复前的 bug)', () => {
+    const state = initialState()
+    // 在 s1 开两个 file tab，激活第二个
+    const a = reducer(state, { type: 'OPEN_FILE_TAB', filePath: 'a.ts', fileName: 'a.ts' })
+    const b = reducer(a, { type: 'OPEN_FILE_TAB', filePath: 'b.ts', fileName: 'b.ts' })
+    const bTabId = b.activeTabIdBySession['s1']!  // s1 激活 b
+    expect(bTabId).toBeDefined()
+    // 切到 s2 再切回 s1，s1 的活跃 Tab 应仍是 b（隔离正确）
+    const toS2 = reducer(b, { type: 'SELECT_SESSION', sessionId: 's2' })
+    expect(toS2.activeTabIdBySession['s1']).toBe(bTabId) // s1 的值保留
+    expect(toS2.activeTabIdBySession['s2']).toBeNull()   // s2 自己是 null
+    const backToS1 = reducer(toS2, { type: 'SELECT_SESSION', sessionId: 's1' })
+    expect(backToS1.activeSessionId).toBe('s1')
+    expect(backToS1.activeTabIdBySession['s1']).toBe(bTabId) // 回到 s1 仍是 b
   })
 
   it('SET_THEME 更新主题', () => {
