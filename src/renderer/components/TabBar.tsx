@@ -64,7 +64,7 @@ export function TabBar() {
             <div style={{
               position: 'absolute', top: '100%', left: 0, marginTop: 2, zIndex: 100,
               background: 'var(--bg-elevated)', border: '1px solid var(--border)',
-              borderRadius: 'var(--radius)', boxShadow: '0 4px 16px rgba(0,0,0,0.3)', padding: 4, minWidth: 120
+              borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-float)', padding: 4, minWidth: 120
             }}>
               {ADD_OPTIONS.map(o => (
                 <button

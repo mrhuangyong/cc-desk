@@ -6,13 +6,17 @@ import type { FileNode } from '../types'
 function Node({ node, depth }: { node: FileNode; depth: number }) {
   const { dispatch } = useStore()
   const [open, setOpen] = useState(depth === 0)
+  const [hovered, setHovered] = useState(false)
 
+  const hoverBg = hovered ? 'var(--bg-hover)' : 'transparent'
   if (node.isDir) {
     return (
       <div>
         <div
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
           onClick={() => setOpen(o => !o)}
-          style={{ padding: '5px 12px', paddingLeft: 12 + depth * 16, cursor: 'pointer', color: 'var(--text)' }}
+          style={{ padding: '5px 12px', paddingLeft: 12 + depth * 16, cursor: 'pointer', color: 'var(--text)', background: hoverBg }}
         >
           {open ? '📂' : '📁'} {node.name}
         </div>
@@ -22,8 +26,10 @@ function Node({ node, depth }: { node: FileNode; depth: number }) {
   }
   return (
     <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       onClick={() => dispatch({ type: 'OPEN_FILE_TAB', filePath: node.path, fileName: node.name })}
-      style={{ padding: '4px 12px', paddingLeft: 12 + depth * 16, cursor: 'pointer', color: 'var(--text-muted)' }}
+      style={{ padding: '4px 12px', paddingLeft: 12 + depth * 16, cursor: 'pointer', color: 'var(--text-muted)', background: hoverBg }}
     >
       📄 {node.name}
     </div>
@@ -32,11 +38,12 @@ function Node({ node, depth }: { node: FileNode; depth: number }) {
 
 export function FileTree({ projectId, onBack }: { projectId: string; onBack: () => void }) {
   const { state } = useStore()
+  const [hovered, setHovered] = useState(false)
   const project = state.projects.find(p => p.id === projectId)
   const nodes = mockFileTrees[projectId] ?? []
   return (
     <div style={{ flex: 1, overflowY: 'auto' }}>
-      <button onClick={onBack} style={{ padding: '10px 12px', color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 6, borderBottom: '1px solid var(--border)', width: '100%' }}>
+      <button onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onClick={onBack} style={{ padding: '10px 12px', color: 'var(--text-muted)', background: hovered ? 'var(--bg-hover)' : 'transparent', display: 'flex', alignItems: 'center', gap: 6, borderBottom: '1px solid var(--border)', width: '100%', cursor: 'pointer' }}>
         ← {project?.name}
       </button>
       {nodes.map(n => <Node key={n.path} node={n} depth={0} />)}

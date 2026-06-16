@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { ProjectTree } from './ProjectTree'
 import { FileTree } from './FileTree'
 import { SearchDialog } from './SearchDialog'
@@ -13,6 +14,7 @@ export function LeftPanel({ collapsed, onExpand }: Props) {
   const { state, dispatch } = useStore()
   const [fileViewProjectId, setFileViewProjectId] = useState<string | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [hovered, setHovered] = useState<string | null>(null)
   // 默认全部项目展开
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(
     () => new Set(state.projects.map(p => p.id))
@@ -58,16 +60,20 @@ export function LeftPanel({ collapsed, onExpand }: Props) {
     )
   }
 
-  const topBtn: React.CSSProperties = {
+  const topBtn = (key: string): CSSProperties => ({
     width: '100%', padding: '8px 12px', fontSize: 13, color: 'var(--text)',
-    background: 'transparent', border: 'none', cursor: 'pointer',
-    textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8
-  }
-  const toolBtn: React.CSSProperties = {
+    background: hovered === key ? 'var(--bg-hover)' : 'transparent',
+    border: 'none', cursor: 'pointer',
+    textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8,
+    transition: 'background .1s'
+  })
+  const toolBtn = (key: string): CSSProperties => ({
     padding: '2px 6px', fontSize: 13, color: 'var(--text-muted)',
-    background: 'transparent', border: '1px solid transparent', cursor: 'pointer',
-    borderRadius: 'var(--radius)', lineHeight: 1
-  }
+    background: hovered === key ? 'var(--bg-hover)' : 'transparent',
+    border: 'none', cursor: 'pointer',
+    borderRadius: 'var(--radius)', lineHeight: 1,
+    transition: 'background .1s'
+  })
 
   return (
     <>
@@ -77,9 +83,9 @@ export function LeftPanel({ collapsed, onExpand }: Props) {
       }}>
         {/* 顶部功能区：纵向单列堆叠 */}
         <div style={{ display: 'flex', flexDirection: 'column', borderBottom: '1px solid var(--border)' }}>
-          <button onClick={handleNewSession} title="新建会话" style={topBtn}>➕ 新建会话</button>
-          <button onClick={() => setSearchOpen(true)} title="搜索" style={topBtn}>🔍 搜索</button>
-          <button onClick={() => dispatch({ type: 'SET_SETTINGS_SECTION', section: 'skills' })} title="技能" style={topBtn}>⚡ 技能</button>
+          <button onMouseEnter={() => setHovered('new')} onMouseLeave={() => setHovered(null)} onClick={handleNewSession} title="新建会话" style={topBtn('new')}>➕ 新建会话</button>
+          <button onMouseEnter={() => setHovered('search')} onMouseLeave={() => setHovered(null)} onClick={() => setSearchOpen(true)} title="搜索" style={topBtn('search')}>🔍 搜索</button>
+          <button onMouseEnter={() => setHovered('skills')} onMouseLeave={() => setHovered(null)} onClick={() => dispatch({ type: 'SET_SETTINGS_SECTION', section: 'skills' })} title="技能" style={topBtn('skills')}>⚡ 技能</button>
         </div>
 
         {/* 工作区行：标题 + 三按钮同一行 */}
@@ -88,9 +94,9 @@ export function LeftPanel({ collapsed, onExpand }: Props) {
           borderBottom: '1px solid var(--border)'
         }}>
           <span style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginRight: 'auto' }}>工作区</span>
-          <button onClick={toggleAll} title="展开/折叠" aria-label="展开/折叠" style={toolBtn}>⇕</button>
-          <button title="排序/筛选" aria-label="排序/筛选" style={toolBtn}>↕</button>
-          <button onClick={() => setSearchOpen(true)} title="搜索" aria-label="搜索" style={toolBtn}>🔍</button>
+          <button onMouseEnter={() => setHovered('toggleAll')} onMouseLeave={() => setHovered(null)} onClick={toggleAll} title="展开/折叠" aria-label="展开/折叠" style={toolBtn('toggleAll')}>⇕</button>
+          <button onMouseEnter={() => setHovered('sort')} onMouseLeave={() => setHovered(null)} title="排序/筛选" aria-label="排序/筛选" style={toolBtn('sort')}>↕</button>
+          <button onMouseEnter={() => setHovered('search2')} onMouseLeave={() => setHovered(null)} onClick={() => setSearchOpen(true)} title="搜索" aria-label="搜索" style={toolBtn('search2')}>🔍</button>
         </div>
 
         {/* 项目会话树 / 文件树 */}

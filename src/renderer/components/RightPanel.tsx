@@ -18,7 +18,7 @@ export function RightPanel({ collapsed }: Props) {
 
   return (
     <div style={{
-      width, flexShrink: 0, position: 'relative', background: 'var(--bg-elevated)',
+      width, flexShrink: 0, position: 'relative', background: 'var(--bg)',
       borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column'
     }}>
       {/* 拖拽手柄：左边缘竖条 */}

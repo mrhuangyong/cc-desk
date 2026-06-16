@@ -22,7 +22,7 @@ export function TitleBar({ projectName, leftCollapsed, rightCollapsed, onToggleL
   return (
     <div style={{
       display: 'flex', alignItems: 'center', height: 36, padding: '0 8px',
-      background: 'var(--bg-sidebar)', borderBottom: '1px solid var(--border)',
+      background: 'var(--bg)', borderBottom: '1px solid var(--border)',
       ...drag
     }}>
       {/* 左侧：macOS 原生红绿灯由系统渲染在左上角，给它预留宽度避免与折叠钮重叠；
@@ -53,7 +53,7 @@ export function TitleBar({ projectName, leftCollapsed, rightCollapsed, onToggleL
       </button>
       <div style={{ display: 'flex', gap: 8, marginLeft: 8, ...noDrag }}>
         <ThemeSwitcher />
-        <button title="设置" onClick={() => dispatch({ type: 'SET_SETTINGS_SECTION', section: 'general' })} style={{ fontSize: 17, padding: '4px 8px', lineHeight: 1 }}>⚙</button>
+        <button title="设置" onClick={() => dispatch({ type: 'SET_SETTINGS_SECTION', section: 'general' })} style={{ fontSize: 17, padding: '4px 8px', lineHeight: 1, color: 'var(--text-muted)' }}>⚙</button>
       </div>
     </div>
   )
