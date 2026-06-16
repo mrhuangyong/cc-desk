@@ -21,6 +21,8 @@ export interface AppState {
   }>
   // 应用设置：apiKey / model / cwd
   settings: { apiKey: string; model: string; cwd: string }
+  // 本地会话 ID → Claude SDK 返回的真实 session ID 映射，用于 resume 续接
+  claudeSessionMap: Record<string, string>
 }
 
 // TODO: idCounter is module-level mutable state — non-deterministic IDs. Acceptable for prototype; thread through state if persistence/time-travel needed later.
@@ -282,6 +284,15 @@ export function reducer(state: AppState, action: Action): AppState {
     }
     case 'INIT_SESSIONS': {
       return { ...state, projects: action.projects }
+    }
+    case 'SET_CLAUDE_SESSION_ID': {
+      return {
+        ...state,
+        claudeSessionMap: {
+          ...state.claudeSessionMap,
+          [action.localSessionId]: action.claudeSessionId,
+        }
+      }
     }
     default:
       return state

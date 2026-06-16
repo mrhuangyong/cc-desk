@@ -42,11 +42,13 @@ export function InputBar() {
   const handleSend = () => {
     if (!text.trim() || isStreaming) return
     const prompt = text
+    // 取当前本地会话映射到的 Claude 真实 sessionId；存在则 resume 续接，否则新建会话
+    const claudeSessionId = state.claudeSessionMap?.[state.activeSessionId]
     dispatch({ type: 'SEND_MESSAGE' })
     dispatch({ type: 'STREAM_START', sessionId: state.activeSessionId })
     window.api?.claude?.send({
       prompt,
-      sessionId: state.activeSessionId || undefined,
+      sessionId: claudeSessionId || undefined,
       cwd: state.settings?.cwd || undefined,
     })
   }
