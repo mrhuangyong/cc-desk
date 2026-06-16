@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Folder, FolderOpen, MessageCircle, FolderTree, ChevronDown, ChevronRight } from 'lucide-react'
+import { Folder, FolderOpen, MessageCircle, FolderTree, ChevronDown, ChevronRight, Plus } from 'lucide-react'
 import { useStore } from '../state/store'
 import { DeleteConfirmIcon } from './DeleteConfirmIcon'
 
@@ -47,11 +47,13 @@ export function ProjectTree({ onOpenFiles, expandedProjects, onToggleExpand, tre
                 {expanded ? <FolderOpen size={14} /> : <Folder size={14} />} {project.name}
               </span>
               <span style={{ display: 'flex', gap: 8 }}>
+                <button aria-label="新建会话" title="新建会话"
+                  onClick={(e) => { e.stopPropagation(); dispatch({ type: 'ADD_SESSION', projectId: project.id }) }}
+                  style={{ opacity: hoveredProject === project.id ? 0.85 : 0, transition: 'opacity .1s', pointerEvents: hoveredProject === project.id ? 'auto' : 'none', display: 'inline-flex', alignItems: 'center' }}><Plus size={13} /></button>
                 <button aria-label="项目文件树" title="项目文件树"
                   onClick={(e) => { e.stopPropagation(); onOpenFiles(project.id) }}
                   style={{ opacity: hoveredProject === project.id ? 0.85 : 0, transition: 'opacity .1s', pointerEvents: hoveredProject === project.id ? 'auto' : 'none', display: 'inline-flex', alignItems: 'center' }}><FolderTree size={13} /></button>
-                {/* 注：项目行不再有"新增会话"按钮——新建统一走左栏顶部"新建会话" */}
-                <span onClick={e => e.stopPropagation()}>
+                <span style={{ opacity: hoveredProject === project.id ? 1 : 0, pointerEvents: hoveredProject === project.id ? 'auto' : 'none', transition: 'opacity .1s' }} onClick={e => e.stopPropagation()}>
                   <DeleteConfirmIcon onConfirm={() => dispatch({ type: 'DELETE_PROJECT', projectId: project.id })} />
                 </span>
               </span>
