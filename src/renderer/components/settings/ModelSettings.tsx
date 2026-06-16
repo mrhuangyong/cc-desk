@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { mockProviders, mockModels } from '../../state/mockData'
 import type { ModelProvider, ModelItem } from '../../types'
+import { RefreshCw, Plus, Pencil, Trash2, Link2, Eye, EyeOff } from 'lucide-react'
 
 const inputStyle: React.CSSProperties = { width: '100%', padding: '7px 10px', background: 'var(--bg-sidebar)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)', fontFamily: 'var(--font-mono)', fontSize: 12 }
 const fieldLabelStyle: React.CSSProperties = { color: 'var(--text-muted)', fontSize: 11, marginBottom: 4, marginTop: 12 }
@@ -60,7 +61,7 @@ export function ModelSettings() {
       <div style={{ padding: '0 0 14px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <h2 style={{ color: 'var(--text)', fontSize: 18, margin: 0 }}>模型设置</h2>
-          <button title="刷新" style={iconBtn}>↻</button>
+          <button title="刷新" style={iconBtn}><RefreshCw size={14} /></button>
         </div>
         <div style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 6 }}>
           管理自定义模型供应商，配置后可在聊天时选择使用。
@@ -87,7 +88,7 @@ export function ModelSettings() {
               <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
             </button>
           ))}
-          <button onClick={addProvider} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', marginTop: 4, cursor: 'pointer', border: 'none', background: 'transparent', color: 'var(--text-muted)', fontSize: 13 }}>＋ 添加供应商</button>
+          <button onClick={addProvider} style={{ display: 'flex', alignItems: 'center', gap: 4, width: '100%', textAlign: 'left', padding: '8px 10px', marginTop: 4, cursor: 'pointer', border: 'none', background: 'transparent', color: 'var(--text-muted)', fontSize: 13 }}><Plus size={13} /> 添加供应商</button>
         </div>
 
         {/* 右：表单 + 模型列表 */}
@@ -107,7 +108,7 @@ export function ModelSettings() {
                 ) : (
                   <span style={{ color: 'var(--text)', fontSize: 14, fontWeight: 600 }}>{provider.name}</span>
                 )}
-                <button title="编辑名称" onClick={() => setEditingProviderName(true)} style={iconBtn}>✎</button>
+                <button title="编辑名称" onClick={() => setEditingProviderName(true)} style={iconBtn}><Pencil size={13} /></button>
                 <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
                   <button onClick={() => updateProvider({ enabled: !provider.enabled })} style={provider.enabled ? { ...smallBtn, background: 'var(--accent)', color: 'var(--accent-text)', borderColor: 'var(--accent)' } : smallBtn}>
                     {provider.enabled ? '已启用' : '启用'}
@@ -116,7 +117,7 @@ export function ModelSettings() {
                   {confirmingProvider === provider.id ? (
                     <button onClick={() => removeProvider(provider.id)} style={{ ...smallBtn, color: 'var(--danger)', borderColor: 'var(--danger)' }}>确认删除？</button>
                   ) : (
-                    <button title="删除供应商" onClick={() => setConfirmingProvider(provider.id)} style={{ ...iconBtn, color: 'var(--danger)' }}>🗑</button>
+                    <button title="删除供应商" onClick={() => setConfirmingProvider(provider.id)} style={{ ...iconBtn, color: 'var(--danger)' }}><Trash2 size={13} /></button>
                   )}
                 </span>
               </div>
@@ -145,7 +146,7 @@ export function ModelSettings() {
                   onClick={() => setShowKey(s => !s)}
                   title={showKey ? '隐藏' : '显示'}
                   style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', background: 'transparent', border: 'none', fontSize: 13, padding: 4 }}
-                >👁</button>
+                >{showKey ? <EyeOff size={13} /> : <Eye size={13} />}</button>
               </div>
 
               {/* 模型列表 */}
@@ -162,12 +163,12 @@ export function ModelSettings() {
                   }}>
                     <span style={{ flex: 1 }}>{m.name}</span>
                     <span style={{ padding: '1px 8px', borderRadius: 999, fontSize: 11, border: '1px solid var(--border)', color: 'var(--text-muted)' }}>{m.contextLength}</span>
-                    <button title="测试连接" style={iconBtn}>🔗</button>
-                    <button title="编辑" style={iconBtn}>✎</button>
+                    <button title="测试连接" style={iconBtn}><Link2 size={13} /></button>
+                    <button title="编辑" style={iconBtn}><Pencil size={13} /></button>
                     {confirmingModel === m.id ? (
                       <button onClick={() => removeModel(m.id)} style={{ ...iconBtn, color: 'var(--danger)' }}>确认？</button>
                     ) : (
-                      <button title="删除" onClick={() => setConfirmingModel(m.id)} style={{ ...iconBtn, color: 'var(--danger)' }}>🗑</button>
+                      <button title="删除" onClick={() => setConfirmingModel(m.id)} style={{ ...iconBtn, color: 'var(--danger)' }}><Trash2 size={13} /></button>
                     )}
                   </div>
                 ))}
