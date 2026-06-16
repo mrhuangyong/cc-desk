@@ -4,7 +4,7 @@ import { SettingsCard } from './SettingsCard'
 import { SettingsRow } from './SettingsRow'
 import { Toggle } from './Toggle'
 
-const selectStyle: React.CSSProperties = { padding: '5px 10px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)' }
+const selectStyle: React.CSSProperties = { padding: '5px 10px', background: 'var(--bg-sidebar)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)' }
 
 const LIGHT_THEMES = ['GitHub Light', 'Solarized Light', 'One Light']
 const DARK_THEMES = ['GitHub Dark', 'Dracula', 'Monokai', 'One Dark']

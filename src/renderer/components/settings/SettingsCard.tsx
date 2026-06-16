@@ -10,7 +10,7 @@ export function SettingsCard({ children }: Props) {
   return (
     <div style={{
       border: '1px solid var(--border)', borderRadius: 'var(--radius)',
-      background: 'var(--bg-elevated)', overflow: 'hidden'
+      background: 'var(--bg)', boxShadow: 'var(--shadow-float)', overflow: 'hidden'
     }}>
       {children}
     </div>

@@ -9,7 +9,7 @@ interface Props {
 
 const fieldLabel: React.CSSProperties = { color: 'var(--text-muted)', fontSize: 11, marginBottom: 4, marginTop: 12 }
 const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '7px 10px', background: 'var(--bg)',
+  width: '100%', padding: '7px 10px', background: 'var(--bg-sidebar)',
   border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)',
   fontFamily: 'var(--font-mono)', fontSize: 12, outline: 'none'
 }
@@ -68,8 +68,8 @@ export function McpEditDialog({ server, onSave, onCancel }: Props) {
         onClick={e => e.stopPropagation()}
         style={{
           width: 'min(560px, 92vw)', maxHeight: '80vh', display: 'flex', flexDirection: 'column',
-          background: 'var(--bg-elevated)', border: '1px solid var(--border)',
-          borderRadius: 'var(--radius)', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', overflow: 'hidden'
+          background: 'var(--bg)', border: '1px solid var(--border)',
+          borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-float)', overflow: 'hidden'
         }}
       >
         {/* 标题栏 + tab */}

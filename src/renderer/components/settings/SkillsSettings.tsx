@@ -15,7 +15,7 @@ export function SkillsSettings() {
     background: 'transparent', border: 'none', color: 'var(--text-muted)', lineHeight: 1
   }
   const inputStyle: React.CSSProperties = {
-    width: '100%', padding: '8px 12px', background: 'var(--bg-elevated)',
+    width: '100%', padding: '8px 12px', background: 'var(--bg-sidebar)',
     border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)',
     outline: 'none'
   }
@@ -44,7 +44,7 @@ export function SkillsSettings() {
       </div>
 
       {/* 技能列表卡片 */}
-      <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--bg-elevated)' }}>
+      <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--bg)', boxShadow: 'var(--shadow-float)' }}>
         {filtered.length === 0 && (
           <div style={{ padding: 20, color: 'var(--text-muted)', textAlign: 'center', fontSize: 13 }}>无匹配技能</div>
         )}
