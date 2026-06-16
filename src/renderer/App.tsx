@@ -3,6 +3,7 @@ import { TitleBar } from './components/TitleBar'
 import { LeftPanel } from './components/LeftPanel'
 import { ChatArea } from './components/ChatArea'
 import { RightPanel } from './components/RightPanel'
+import { SettingsPage } from './components/settings/SettingsPage'
 import { useStore } from './state/store'
 
 export function App() {
@@ -12,6 +13,10 @@ export function App() {
 
   const [leftCollapsed, setLeftCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)
+
+  if (state.currentView === 'settings') {
+    return <SettingsPage />
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
