@@ -1,7 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ArrowLeft, Folder, FolderOpen, FileText } from 'lucide-react'
 import { useStore } from '../state/store'
-import { mockFileTrees } from '../state/mockData'
 import type { FileNode } from '../types'
 
 function Node({ node, depth }: { node: FileNode; depth: number }) {
@@ -40,14 +39,41 @@ function Node({ node, depth }: { node: FileNode; depth: number }) {
 export function FileTree({ projectId, onBack }: { projectId: string; onBack: () => void }) {
   const { state } = useStore()
   const [hovered, setHovered] = useState(false)
+  const [fileTree, setFileTree] = useState<FileNode[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const project = state.projects.find(p => p.id === projectId)
-  const nodes = mockFileTrees[projectId] ?? []
+  const cwd = state.settings?.cwd
+
+  useEffect(() => {
+    if (!cwd) return
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    window.api?.fs.readTree(cwd)
+      .then(tree => { if (!cancelled) setFileTree(tree) })
+      .catch(err => { if (!cancelled) setError(String(err?.message ?? err)) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [cwd])
+
   return (
     <div style={{ flex: 1, overflowY: 'auto' }}>
       <button onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onClick={onBack} style={{ padding: '10px 12px', color: 'var(--text-muted)', background: hovered ? 'var(--bg-hover)' : 'transparent', display: 'flex', alignItems: 'center', gap: 6, borderBottom: '1px solid var(--border)', width: '100%', cursor: 'pointer' }}>
         <ArrowLeft size={14} /> {project?.name}
       </button>
-      {nodes.map(n => <Node key={n.path} node={n} depth={0} />)}
+      {loading && (
+        <div style={{ padding: '12px', color: 'var(--text-muted)' }}>加载中…</div>
+      )}
+      {error && (
+        <div style={{ padding: '12px', color: '#d33' }}>读取目录失败：{error}</div>
+      )}
+      {!loading && !error && fileTree.length === 0 && (
+        <div style={{ padding: '12px', color: 'var(--text-muted)' }}>
+          {cwd ? '空目录' : '未设置工作目录（cwd）'}
+        </div>
+      )}
+      {fileTree.map(n => <Node key={n.path} node={n} depth={0} />)}
     </div>
   )
 }
