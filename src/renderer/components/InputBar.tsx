@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { Paperclip, Check, AtSign, Hash, Slash, ShieldCheck, ChevronDown, ArrowUp, Square } from 'lucide-react'
 import { useStore } from '../state/store'
@@ -20,48 +20,55 @@ export function InputBar() {
   const { state, dispatch } = useStore()
   const { text, attachment } = state.draft
 
-  const [generating, setGenerating] = useState(false)
+  // 当前会话的流式状态：决定发送/停止三态
+  const streaming = state.streamingBySession[state.activeSessionId]
+  const isStreaming = !!streaming?.isStreaming
+
   const [openMenu, setOpenMenu] = useState<MenuId | null>(null)
   const [permission, setPermission] = useState('变更前确认')
   const [modelId, setModelId] = useState(mockModels[0]?.id ?? '')
   const [thinking, setThinking] = useState('standard')
 
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // 卸载时清理定时器，避免 setState on unmounted 泄漏
+  // 卸载时清理 IPC 监听器（仅本组件注册的 claude 事件）
   useEffect(() => {
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current)
+      window.api?.claude?.removeAllListeners()
     }
   }, [])
 
   const canSend = text.trim().length > 0 || !!attachment
 
-  const startGeneration = () => {
-    setGenerating(true)
-    if (timerRef.current) clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(() => setGenerating(false), 3000)
+  // 发送：追加用户消息 + 标记会话进入流式 + IPC 调用主进程
+  const handleSend = () => {
+    if (!text.trim() || isStreaming) return
+    const prompt = text
+    dispatch({ type: 'SEND_MESSAGE' })
+    dispatch({ type: 'STREAM_START', sessionId: state.activeSessionId })
+    window.api?.claude?.send({
+      prompt,
+      sessionId: state.activeSessionId || undefined,
+      cwd: state.settings?.cwd || undefined,
+    })
+  }
+
+  // 停止：IPC 中断主进程的 Claude 调用
+  const handleStop = () => {
+    window.api?.claude?.stop()
   }
 
   const onSendClick = () => {
-    if (generating) {
-      // 点停止：中断生成
-      if (timerRef.current) clearTimeout(timerRef.current)
-      setGenerating(false)
+    if (isStreaming) {
+      handleStop()
       return
     }
     if (!canSend) return
-    dispatch({ type: 'SEND_MESSAGE' })
-    startGeneration()
+    handleSend()
   }
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey && !generating) {
+    if (e.key === 'Enter' && !e.shiftKey && !isStreaming) {
       e.preventDefault()
-      if (canSend) {
-        dispatch({ type: 'SEND_MESSAGE' })
-        startGeneration()
-      }
+      if (canSend) handleSend()
     }
   }
 
@@ -250,17 +257,17 @@ export function InputBar() {
           {/* 发送钮三态 */}
           <button
             onClick={onSendClick}
-            aria-label={generating ? '停止' : '发送'}
+            aria-label={isStreaming ? '停止' : '发送'}
             style={{
               width: 28, height: 28, borderRadius: '50%',
-              background: generating || canSend ? 'var(--accent)' : 'var(--bg-hover)',
-              color: generating || canSend ? 'var(--accent-text)' : 'var(--text-faint)',
-              border: 'none', cursor: generating || canSend ? 'pointer' : 'not-allowed',
+              background: isStreaming || canSend ? 'var(--accent)' : 'var(--bg-hover)',
+              color: isStreaming || canSend ? 'var(--accent-text)' : 'var(--text-faint)',
+              border: 'none', cursor: isStreaming || canSend ? 'pointer' : 'not-allowed',
               padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               fontSize: 12, lineHeight: 1,
             }}
           >
-            {generating ? <Square size={12} /> : <ArrowUp size={14} />}
+            {isStreaming ? <Square size={12} /> : <ArrowUp size={14} />}
           </button>
         </div>
       </div>
