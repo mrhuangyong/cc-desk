@@ -13,6 +13,14 @@ export interface AppState {
   draft: Draft
   currentView: AppView
   activeSettingsSection: SettingsSection
+  // 流式输出：按会话隔离的流式状态（currentText 为增量拼接的临时文本）
+  streamingBySession: Record<string, {
+    isStreaming: boolean
+    currentText: string
+    error?: string
+  }>
+  // 应用设置：apiKey / model / cwd
+  settings: { apiKey: string; model: string; cwd: string }
 }
 
 // TODO: idCounter is module-level mutable state — non-deterministic IDs. Acceptable for prototype; thread through state if persistence/time-travel needed later.
@@ -210,6 +218,70 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'SET_SETTINGS_SECTION': {
       // 切换子页并同时进入设置视图（保证从任何入口点技能/设置都进设置页）
       return { ...state, activeSettingsSection: action.section, currentView: 'settings' }
+    }
+    case 'STREAM_START': {
+      return {
+        ...state,
+        streamingBySession: {
+          ...state.streamingBySession,
+          [action.sessionId]: { isStreaming: true, currentText: '' }
+        }
+      }
+    }
+    case 'STREAM_DELTA': {
+      const prev = state.streamingBySession[action.sessionId]
+      return {
+        ...state,
+        streamingBySession: {
+          ...state.streamingBySession,
+          [action.sessionId]: {
+            ...prev,
+            currentText: (prev?.currentText || '') + action.delta,
+            isStreaming: true,
+          }
+        }
+      }
+    }
+    case 'STREAM_END': {
+      const { [action.sessionId]: _, ...rest } = state.streamingBySession
+      const projects = state.projects.map(p => ({
+        ...p,
+        sessions: p.sessions.map(s =>
+          s.id === action.sessionId
+            ? {
+                ...s,
+                messages: [...s.messages, {
+                  id: `m${Date.now()}`,
+                  role: 'assistant' as const,
+                  content: action.content
+                    .filter((b: any) => b.type === 'text')
+                    .map((b: any) => b.text)
+                    .join(''),
+                }],
+              }
+            : s
+        )
+      }))
+      return { ...state, projects, streamingBySession: rest }
+    }
+    case 'STREAM_ERROR': {
+      return {
+        ...state,
+        streamingBySession: {
+          ...state.streamingBySession,
+          [action.sessionId]: { isStreaming: false, currentText: '', error: action.error }
+        }
+      }
+    }
+    case 'STREAM_ABORTED': {
+      const { [action.sessionId]: _, ...rest } = state.streamingBySession
+      return { ...state, streamingBySession: rest }
+    }
+    case 'SET_SETTINGS': {
+      return { ...state, settings: { ...state.settings, ...action.settings } }
+    }
+    case 'INIT_SESSIONS': {
+      return { ...state, projects: action.projects }
     }
     default:
       return state

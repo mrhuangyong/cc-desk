@@ -15,6 +15,8 @@ function initialState(): AppState {
     draft: { text: '' },
     currentView: 'workspace',
     activeSettingsSection: 'general',
+    streamingBySession: {},
+    settings: { apiKey: '', model: 'sonnet', cwd: '' },
   }
 }
 
@@ -266,5 +268,70 @@ describe('reducer', () => {
     const next = reducer(state, { type: 'SET_SETTINGS_SECTION', section: 'skills' })
     expect(next.currentView).toBe('settings')
     expect(next.activeSettingsSection).toBe('skills')
+  })
+
+  it('STREAM_START 标记会话进入流式状态', () => {
+    const state = initialState()
+    const next = reducer(state, { type: 'STREAM_START', sessionId: 's1' })
+    expect(next.streamingBySession['s1']).toEqual({ isStreaming: true, currentText: '' })
+  })
+
+  it('STREAM_DELTA 增量拼接文本', () => {
+    const state = initialState()
+    const s1 = reducer(state, { type: 'STREAM_START', sessionId: 's1' })
+    const s2 = reducer(s1, { type: 'STREAM_DELTA', sessionId: 's1', delta: 'Hello' })
+    const s3 = reducer(s2, { type: 'STREAM_DELTA', sessionId: 's1', delta: ', World' })
+    expect(s3.streamingBySession['s1'].currentText).toBe('Hello, World')
+    expect(s3.streamingBySession['s1'].isStreaming).toBe(true)
+  })
+
+  it('STREAM_END 把文本块合并为 assistant 消息并清理流式状态', () => {
+    const state = initialState() // s1 有 2 条消息
+    const before = state.projects.find(p => p.id === 'p1')!.sessions.find(s => s.id === 's1')!.messages.length
+    const s1 = reducer(state, { type: 'STREAM_START', sessionId: 's1' })
+    const s2 = reducer(s1, { type: 'STREAM_DELTA', sessionId: 's1', delta: '部分文本' })
+    const next = reducer(s2, {
+      type: 'STREAM_END',
+      sessionId: 's1',
+      content: [{ type: 'text', text: '最终回复' }, { type: 'tool_use', name: 'bash' }],
+      costUSD: 0.01,
+      durationMs: 1234,
+    })
+    const session = next.projects.find(p => p.id === 'p1')!.sessions.find(s => s.id === 's1')!
+    expect(session.messages.length).toBe(before + 1)
+    const last = session.messages[session.messages.length - 1]
+    expect(last.role).toBe('assistant')
+    expect(last.content).toBe('最终回复') // 只保留 text 块
+    // 流式状态清理
+    expect(next.streamingBySession['s1']).toBeUndefined()
+  })
+
+  it('STREAM_ERROR 记录错误并结束流式', () => {
+    const state = initialState()
+    const s1 = reducer(state, { type: 'STREAM_START', sessionId: 's1' })
+    const next = reducer(s1, { type: 'STREAM_ERROR', sessionId: 's1', error: 'boom' })
+    expect(next.streamingBySession['s1']).toEqual({ isStreaming: false, currentText: '', error: 'boom' })
+  })
+
+  it('STREAM_ABORTED 清理流式状态', () => {
+    const state = initialState()
+    const s1 = reducer(state, { type: 'STREAM_START', sessionId: 's1' })
+    const next = reducer(s1, { type: 'STREAM_ABORTED', sessionId: 's1' })
+    expect(next.streamingBySession['s1']).toBeUndefined()
+  })
+
+  it('SET_SETTINGS 部分更新设置', () => {
+    const state = initialState()
+    const next = reducer(state, { type: 'SET_SETTINGS', settings: { apiKey: 'sk-xxx', cwd: '/tmp' } })
+    expect(next.settings.apiKey).toBe('sk-xxx')
+    expect(next.settings.cwd).toBe('/tmp')
+    expect(next.settings.model).toBe('sonnet') // 未传字段保留
+  })
+
+  it('INIT_SESSIONS 用新 projects 列表替换', () => {
+    const state = initialState()
+    const newProjects = structuredClone(mockProjects).slice(0, 1)
+    const next = reducer(state, { type: 'INIT_SESSIONS', projects: newProjects })
+    expect(next.projects).toBe(newProjects)
   })
 })
