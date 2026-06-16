@@ -1,12 +1,6 @@
 # cc-desk
 
-<p align="center">
-  <img src="docs/images/screenshot.png" width="900" alt="cc-desk 界面截图" />
-</p>
-
-<p align="center">
-  <strong>Claude Code 桌面客户端</strong> — 基于 Electron + React + TypeScript 构建的 AI 工作台
-</p>
+**Claude Code 桌面客户端** — 基于 Electron + React + TypeScript 构建的 AI 工作台
 
 <p align="center">
   <a href="#功能特性">功能特性</a> ·
