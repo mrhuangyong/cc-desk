@@ -55,25 +55,32 @@ export function ProjectTree({ onOpenFiles, expandedProjects, onToggleExpand, tre
                 </span>
               </span>
             </div>
-            {expanded && visibleSessions.map(session => (
+            {expanded && visibleSessions.map(session => {
+              const active = state.activeSessionId === session.id
+              return (
               <div
                 key={session.id}
                 onMouseEnter={() => setHoveredSession(session.id)}
                 onMouseLeave={() => setHoveredSession(null)}
                 onClick={() => dispatch({ type: 'SELECT_SESSION', sessionId: session.id })}
                 style={{
-                  padding: '6px 12px 6px 36px', display: 'flex', justifyContent: 'space-between',
-                  color: state.activeSessionId === session.id ? 'var(--accent)' : 'var(--text-muted)',
-                  background: hoveredSession === session.id ? 'var(--bg-hover)' : 'transparent',
+                  padding: '6px 12px 6px 30px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  color: active ? 'var(--text)' : 'var(--text-muted)',
+                  background: active || hoveredSession === session.id ? 'var(--bg-hover)' : 'transparent',
+                  fontWeight: active ? 500 : 400,
                   cursor: 'pointer'
                 }}
               >
-                <span>💬 {session.title}</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: 999, background: active ? 'var(--accent)' : 'transparent', flexShrink: 0 }} />
+                  💬 {session.title}
+                </span>
                 <span style={{ opacity: hoveredSession === session.id ? 1 : 0, pointerEvents: hoveredSession === session.id ? 'auto' : 'none' }}>
                   <DeleteConfirmIcon onConfirm={() => dispatch({ type: 'DELETE_SESSION', projectId: project.id, sessionId: session.id })} />
                 </span>
               </div>
-            ))}
+              )
+            })}
           </div>
         )
       })}
