@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { mockProviders, mockModels } from '../../state/mockData'
 import type { ModelProvider, ModelItem } from '../../types'
-import { RefreshCw, Plus, Pencil, Trash2, Eye, EyeOff } from 'lucide-react'
+import { RefreshCw, Plus, Pencil, Trash2, Link2, Eye, EyeOff } from 'lucide-react'
 import { SettingsLayout } from './SettingsLayout'
 import { SettingsCard } from './SettingsCard'
 import { SettingsRow } from './SettingsRow'
@@ -59,121 +59,124 @@ export function ModelSettings() {
 
   return (
     <SettingsLayout title="模型设置">
-      {/* 供应商列表 */}
-      <SettingsCard>
-        <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1 }}>自定义供应商</span>
-          <div style={{ display: 'flex', gap: 4 }}>
-            <button onClick={addProvider} style={smallBtn}><Plus size={13} /> 添加</button>
+      {/* 供应商列表 + 表单 */}
+      <div style={{ display: 'flex', gap: 12 }}>
+        {/* 左：供应商列表 */}
+        <SettingsCard>
+          <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1 }}>供应商</span>
             <button title="刷新" style={iconBtn}><RefreshCw size={13} /></button>
           </div>
-        </div>
-        {providers.map((p, i) => (
-          <button
-            key={p.id}
-            onClick={() => setActiveId(p.id)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left',
-              padding: '10px 16px', cursor: 'pointer', border: 'none',
-              borderBottom: i < providers.length - 1 ? '1px solid var(--border)' : 'none',
-              background: p.id === activeId ? 'var(--bg-hover)' : 'transparent',
-              color: 'var(--text)', fontSize: 13
-            }}
-          >
-            <span style={{ fontSize: 10, color: p.id === activeId ? 'var(--accent)' : 'var(--text-muted)' }}>{p.id === activeId ? '●' : '○'}</span>
-            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
-            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{p.enabled ? '已启用' : '未启用'}</span>
-          </button>
-        ))}
-        {providers.length === 0 && (
-          <div style={{ padding: 20, color: 'var(--text-muted)', textAlign: 'center', fontSize: 13 }}>暂无供应商</div>
-        )}
-      </SettingsCard>
-
-      {/* 选中供应商的详情表单 */}
-      {provider && (
-        <SettingsCard>
-          {/* 供应商名称 + 操作 */}
-          <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-            {editingProviderName ? (
-              <input
-                autoFocus
-                defaultValue={provider.name}
-                onBlur={e => { updateProvider({ name: e.target.value }); setEditingProviderName(false) }}
-                onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-                style={{ ...inputStyle, width: 'auto', fontFamily: 'var(--font)', fontWeight: 600, fontSize: 14 }}
-              />
-            ) : (
-              <span style={{ color: 'var(--text)', fontSize: 14, fontWeight: 600 }}>{provider.name}</span>
-            )}
-            <button title="编辑名称" onClick={() => setEditingProviderName(true)} style={iconBtn}><Pencil size={13} /></button>
-            <span style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-              <Toggle on={provider.enabled} onChange={v => updateProvider({ enabled: v })} />
-              {confirmingProvider === provider.id ? (
-                <button onClick={() => removeProvider(provider.id)} style={{ ...smallBtn, color: 'var(--danger)', borderColor: 'var(--danger)' }}>确认删除？</button>
-              ) : (
-                <button title="删除供应商" onClick={() => setConfirmingProvider(provider.id)} style={{ ...iconBtn, color: 'var(--danger)' }}><Trash2 size={13} /></button>
-              )}
-            </span>
-          </div>
-
-          <SettingsRow title="Base URL" desc="API 端点地址。">
-            <input value={provider.baseUrl} onChange={e => updateProvider({ baseUrl: e.target.value })} placeholder="http://..." style={{ ...inputStyle, minWidth: 280 }} />
-          </SettingsRow>
-
-          <SettingsRow title="API 格式" desc="选择 API 兼容格式。">
-            <select value={provider.apiFormat} onChange={e => updateProvider({ apiFormat: e.target.value })} style={{ ...selectStyle, minWidth: 280 }}>
-              {API_FORMATS.map(f => <option key={f}>{f}</option>)}
-            </select>
-          </SettingsRow>
-
-          <SettingsRow title="API Key" desc="供应商的 API 密钥。">
-            <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <input
-                type={showKey ? 'text' : 'password'}
-                value={provider.apiKey}
-                onChange={e => updateProvider({ apiKey: e.target.value })}
-                placeholder="sk-..."
-                style={{ ...inputStyle, minWidth: 280 }}
-              />
-              <button onClick={() => setShowKey(s => !s)} style={smallBtn} title={showKey ? '隐藏' : '显示'}>
-                {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
-              </button>
-            </span>
-          </SettingsRow>
-
-          {/* 模型列表 */}
-          <SettingsRow title="模型列表" desc="该供应商下的可用模型。">
-            <button onClick={addModel} style={smallBtn}><Plus size={13} /> 添加</button>
-          </SettingsRow>
-          {providerModels.map((m, i) => (
-            <div key={m.id} style={{
-              display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px',
-              borderBottom: i < providerModels.length - 1 ? '1px solid var(--border)' : 'none',
-              color: 'var(--text)', fontSize: 13
-            }}>
-              <span style={{ flex: 1 }}>{m.name}</span>
-              <span style={{ padding: '1px 8px', borderRadius: 999, fontSize: 11, border: '1px solid var(--border)', color: 'var(--text-muted)' }}>{m.contextLength}</span>
-              <Toggle on={m.enabled} onChange={v => setModels(prev => prev.map(x => x.id === m.id ? { ...x, enabled: v } : x))} />
-              <button title="编辑" style={iconBtn}><Pencil size={13} /></button>
-              {confirmingModel === m.id ? (
-                <button onClick={() => removeModel(m.id)} style={{ ...iconBtn, color: 'var(--danger)' }}>确认？</button>
-              ) : (
-                <button title="删除" onClick={() => setConfirmingModel(m.id)} style={iconBtn}><Trash2 size={13} /></button>
-              )}
-            </div>
+          {providers.map(p => (
+            <button
+              key={p.id}
+              onClick={() => setActiveId(p.id)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left',
+                padding: '8px 14px', cursor: 'pointer', border: 'none',
+                borderBottom: '1px solid var(--border)',
+                background: p.id === activeId ? 'var(--bg-hover)' : 'transparent',
+                color: 'var(--text)', fontSize: 13
+              }}
+            >
+              <span style={{ fontSize: 10, color: p.id === activeId ? 'var(--accent)' : 'var(--text-muted)' }}>{p.id === activeId ? '●' : '○'}</span>
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{p.enabled ? '✓' : ''}</span>
+            </button>
           ))}
-          {providerModels.length === 0 && (
-            <div style={{ padding: 20, color: 'var(--text-muted)', fontSize: 12, textAlign: 'center' }}>暂无模型，点上方添加</div>
-          )}
+          <button onClick={addProvider} style={{ display: 'flex', alignItems: 'center', gap: 4, width: '100%', textAlign: 'left', padding: '10px 14px', cursor: 'pointer', border: 'none', background: 'transparent', color: 'var(--text-muted)', fontSize: 13 }}>
+            <Plus size={13} /> 添加供应商
+          </button>
         </SettingsCard>
-      )}
 
-      {!provider && (
-        <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 40, border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
-          选择上方供应商查看详情，或点"添加"新建
+        {/* 右：表单 */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {provider ? (
+            <SettingsCard>
+              {/* 供应商名称 + 操作 */}
+              <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
+                {editingProviderName ? (
+                  <input
+                    autoFocus
+                    defaultValue={provider.name}
+                    onBlur={e => { updateProvider({ name: e.target.value }); setEditingProviderName(false) }}
+                    onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                    style={{ ...inputStyle, width: 'auto', fontFamily: 'var(--font)', fontWeight: 600, fontSize: 14 }}
+                  />
+                ) : (
+                  <span style={{ color: 'var(--text)', fontSize: 14, fontWeight: 600 }}>{provider.name}</span>
+                )}
+                <button title="编辑名称" onClick={() => setEditingProviderName(true)} style={iconBtn}><Pencil size={13} /></button>
+                <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                  <Toggle on={provider.enabled} onChange={v => updateProvider({ enabled: v })} />
+                  {confirmingProvider === provider.id ? (
+                    <button onClick={() => removeProvider(provider.id)} style={{ ...smallBtn, color: 'var(--danger)', borderColor: 'var(--danger)' }}>确认删除？</button>
+                  ) : (
+                    <button title="删除供应商" onClick={() => setConfirmingProvider(provider.id)} style={{ ...iconBtn, color: 'var(--danger)' }}><Trash2 size={13} /></button>
+                  )}
+                </span>
+              </div>
+
+              {/* Base URL */}
+              <SettingsRow title="Base URL" desc="API 端点地址。">
+                <input value={provider.baseUrl} onChange={e => updateProvider({ baseUrl: e.target.value })} placeholder="http://..." style={{ ...inputStyle, minWidth: 280 }} />
+              </SettingsRow>
+
+              {/* API 格式 */}
+              <SettingsRow title="API 格式" desc="选择 API 兼容格式。">
+                <select value={provider.apiFormat} onChange={e => updateProvider({ apiFormat: e.target.value })} style={{ ...selectStyle, minWidth: 280 }}>
+                  {API_FORMATS.map(f => <option key={f}>{f}</option>)}
+                </select>
+              </SettingsRow>
+
+              {/* API Key */}
+              <SettingsRow title="API Key" desc="供应商的 API 密钥。">
+                <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <input
+                    type={showKey ? 'text' : 'password'}
+                    value={provider.apiKey}
+                    onChange={e => updateProvider({ apiKey: e.target.value })}
+                    placeholder="sk-..."
+                    style={{ ...inputStyle, minWidth: 280 }}
+                  />
+                  <button onClick={() => setShowKey(s => !s)} style={smallBtn} title={showKey ? '隐藏' : '显示'}>
+                    {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </span>
+              </SettingsRow>
+
+              {/* 模型列表 */}
+              <SettingsRow title="模型列表" desc="该供应商下的可用模型。">
+                <button onClick={addModel} style={smallBtn}><Plus size={13} /> 添加</button>
+              </SettingsRow>
+              {providerModels.map((m, i) => (
+                <div key={m.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px',
+                  borderBottom: i < providerModels.length - 1 ? '1px solid var(--border)' : 'none',
+                  color: 'var(--text)', fontSize: 13
+                }}>
+                  <span style={{ flex: 1 }}>{m.name}</span>
+                  <span style={{ padding: '1px 8px', borderRadius: 999, fontSize: 11, border: '1px solid var(--border)', color: 'var(--text-muted)' }}>{m.contextLength}</span>
+                  <Toggle on={m.enabled} onChange={v => setModels(prev => prev.map(x => x.id === m.id ? { ...x, enabled: v } : x))} />
+                  <button title="编辑" style={iconBtn}><Pencil size={13} /></button>
+                  {confirmingModel === m.id ? (
+                    <button onClick={() => removeModel(m.id)} style={{ ...iconBtn, color: 'var(--danger)' }}>确认？</button>
+                  ) : (
+                    <button title="删除" onClick={() => setConfirmingModel(m.id)} style={iconBtn}><Trash2 size={13} /></button>
+                  )}
+                </div>
+              ))}
+              {providerModels.length === 0 && (
+                <div style={{ padding: 20, color: 'var(--text-muted)', fontSize: 12, textAlign: 'center' }}>暂无模型，点上方添加</div>
+              )}
+            </SettingsCard>
+          ) : (
+            <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 60, border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+              选择左侧供应商，或点"添加供应商"
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </SettingsLayout>
   )
 }
