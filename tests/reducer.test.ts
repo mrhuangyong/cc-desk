@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import { reducer } from '../src/renderer/state/reducer'
-import { mockProjects } from '../src/renderer/state/mockData'
+import { seedProjects } from './fixtures'
 import type { AppState } from '../src/renderer/state/reducer'
 
 // helper：构造初始 state，选中第一个项目的第一个会话
 function initialState(): AppState {
   return {
-    projects: structuredClone(mockProjects),
+    projects: structuredClone(seedProjects),
     activeSessionId: 's1',
     // 每个 session 的 Tab 组，key = sessionId
     tabsBySession: { s1: [] },
@@ -331,7 +331,7 @@ describe('reducer', () => {
 
   it('INIT_SESSIONS 用新 projects 列表替换', () => {
     const state = initialState()
-    const newProjects = structuredClone(mockProjects).slice(0, 1)
+    const newProjects = structuredClone(seedProjects).slice(0, 1)
     const next = reducer(state, { type: 'INIT_SESSIONS', projects: newProjects })
     expect(next.projects).toBe(newProjects)
   })

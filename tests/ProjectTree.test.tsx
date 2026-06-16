@@ -1,20 +1,21 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { AppProvider } from '../src/renderer/state/store'
 import { ProjectTree } from '../src/renderer/components/ProjectTree'
-import type { AppState } from '../src/renderer/state/reducer'
-import { mockProjects } from '../src/renderer/state/mockData'
+import { seedProjects } from './fixtures'
 
-function renderWithProvider(ui: React.ReactNode) {
-  return render(<AppProvider>{ui}</AppProvider>)
+// 通过 initialProjects 同步播种（生产环境会话由 Claude 通过 INIT_SESSIONS 注入）
+function renderWithProvider(ui: ReactNode) {
+  return render(<AppProvider initialProjects={structuredClone(seedProjects)}>{ui}</AppProvider>)
 }
 
 // 默认 props：全部展开、无过滤
 const defaultProps = {
   onOpenFiles: () => {},
-  expandedProjects: new Set(mockProjects.map(p => p.id)),
+  expandedProjects: new Set(seedProjects.map((p) => p.id)),
   onToggleExpand: () => {},
-  treeFilter: ''
+  treeFilter: '',
 }
 
 describe('ProjectTree', () => {

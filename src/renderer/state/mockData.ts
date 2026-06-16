@@ -1,51 +1,8 @@
-import type { Project, FileNode, ModelProvider, ModelItem, SkillItem, McpServer, SettingsEntry, Plugin } from '../types'
+import type { ModelProvider, ModelItem, SkillItem, McpServer, SettingsEntry, Plugin } from '../types'
 
-export const mockProjects: Project[] = [
-  {
-    id: 'p1',
-    name: 'cc-desk',
-    sessions: [
-      { id: 's1', title: '重构登录流程', messages: [
-        { id: 'm1', role: 'user', content: '帮我把登录改成 token 刷新机制' },
-        { id: 'm2', role: 'assistant', content: '好的，我先看一下当前的 auth 逻辑……' }
-      ]},
-      { id: 's2', title: '修样式 bug', messages: [] }
-    ]
-  },
-  {
-    id: 'p2',
-    name: '个人博客',
-    sessions: [
-      { id: 's3', title: '部署到 Vercel', messages: [
-        { id: 'm3', role: 'user', content: '怎么部署？' }
-      ]}
-    ]
-  }
-]
-
-export const mockFileTrees: Record<string, FileNode[]> = {
-  p1: [
-    { name: 'src', path: 'src', isDir: true, children: [
-      { name: 'main.tsx', path: 'src/main.tsx', isDir: false },
-      { name: 'App.tsx', path: 'src/App.tsx', isDir: false },
-      { name: 'components', path: 'src/components', isDir: true, children: [
-        { name: 'Button.tsx', path: 'src/components/Button.tsx', isDir: false }
-      ]}
-    ]},
-    { name: 'package.json', path: 'package.json', isDir: false }
-  ],
-  p2: [
-    { name: 'index.md', path: 'index.md', isDir: false },
-    { name: 'about.md', path: 'about.md', isDir: false }
-  ]
-}
-
-// mock 文件内容（按路径）
-export const mockFileContents: Record<string, string> = {
-  'src/main.tsx': 'import React from "react"\nimport App from "./App"\n\nrender(<App />, document.getElementById("root"))',
-  'src/App.tsx': 'export default function App() {\n  return <div>Hello</div>\n}',
-  'package.json': '{\n  "name": "cc-desk"\n}'
-}
+// 注：projects / fileTrees / fileContents 的 mock 已移除——真实会话来自 Claude，
+// 文件树与文件内容通过 IPC（fs:read-tree / fs:read-file）从主进程读取。
+// 以下 mock 仅用于设置页占位展示，待接入真实配置源后替换。
 
 export const mockProviders: ModelProvider[] = [
   { id: 'aiproxy', name: 'aiproxy', apiKey: 'sk-••••••••', baseUrl: 'http://localhost:17860', apiFormat: 'Anthropic Messages (/v1/messages)', enabled: true },
