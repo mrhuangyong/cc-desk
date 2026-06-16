@@ -34,11 +34,16 @@ interface PtyAPI {
   onExit(cb: (data: { tabId: string; code: number }) => void): void
 }
 
+interface DialogAPI {
+  openDirectory(): Promise<string | null>
+}
+
 interface Window {
   api: {
     claude: ClaudeAPI
     settings: SettingsAPI
     fs: FsAPI
     pty: PtyAPI
+    dialog: DialogAPI
   }
 }

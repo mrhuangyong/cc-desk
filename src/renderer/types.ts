@@ -33,6 +33,7 @@ export interface Session {
 export interface Project {
   id: string
   name: string
+  path?: string
   sessions: Session[]
 }
 
