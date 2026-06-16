@@ -14,6 +14,9 @@
   --danger: #d94545;
   --font: -apple-system, 'Segoe UI', 'PingFang SC', sans-serif;
   --font-mono: 'SF Mono', 'Menlo', monospace;
+  --font-size: 13px;
+  --font-size-sm: 12px;
+  --font-size-xs: 11px;
   --radius: 8px;
   --radius-lg: 14px;
   --shadow-float: 0 2px 12px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.03);
@@ -81,6 +84,8 @@
 html, body, #root { height: 100%; }
 body {
   font-family: var(--font);
+  font-size: var(--font-size);
+  line-height: 1.5;
   background: var(--bg);
   color: var(--text);
   overflow: hidden;
