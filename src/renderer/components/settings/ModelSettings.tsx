@@ -56,7 +56,7 @@ export function ModelSettings() {
   }
 
   return (
-    <div style={{ maxWidth: 760, margin: '0 auto', width: '100%' }}>
+    <div style={{ maxWidth: 760, margin: '0 auto', width: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* 标题 + 说明 + 刷新 */}
       <div style={{ padding: '0 0 14px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
