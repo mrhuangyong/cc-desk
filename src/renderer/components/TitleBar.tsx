@@ -43,6 +43,10 @@ export function TitleBar({ projectName, leftCollapsed, rightCollapsed, onToggleL
         {projectName}
       </span>
 
+      <div style={{ display: 'flex', gap: 8, marginRight: 8, ...noDrag }}>
+        <button title="设置" onClick={() => dispatch({ type: 'SET_SETTINGS_SECTION', section: 'general' })} style={{ padding: '4px 8px', lineHeight: 1, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center' }}><Settings size={17} /></button>
+        <ThemeSwitcher />
+      </div>
       {/* 右栏折叠按钮 */}
       <button
         onClick={onToggleRight}
@@ -52,10 +56,6 @@ export function TitleBar({ projectName, leftCollapsed, rightCollapsed, onToggleL
       >
         {rightCollapsed ? <PanelRightOpen size={16} /> : <PanelRightClose size={16} />}
       </button>
-      <div style={{ display: 'flex', gap: 8, marginLeft: 8, ...noDrag }}>
-        <ThemeSwitcher />
-        <button title="设置" onClick={() => dispatch({ type: 'SET_SETTINGS_SECTION', section: 'general' })} style={{ padding: '4px 8px', lineHeight: 1, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center' }}><Settings size={17} /></button>
-      </div>
     </div>
   )
 }
