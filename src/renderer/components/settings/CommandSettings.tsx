@@ -1,3 +1,3 @@
-export function CommandSettings() {
-  return <div style={{ color: 'var(--text)', fontSize: 18 }}>命令</div>
-}
+import { mockCommands } from '../../state/mockData'
+import { EntryListSection } from './EntryListSection'
+export function CommandSettings() { return <EntryListSection title="命令" entries={mockCommands} /> }

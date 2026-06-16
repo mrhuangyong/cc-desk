@@ -1,3 +1,3 @@
-export function PluginSettings() {
-  return <div style={{ color: 'var(--text)', fontSize: 18 }}>插件</div>
-}
+import { mockPlugins } from '../../state/mockData'
+import { EntryListSection } from './EntryListSection'
+export function PluginSettings() { return <EntryListSection title="插件" entries={mockPlugins} /> }
