@@ -12,7 +12,9 @@ const initialState: AppState = {
   activeTabIdBySession: Object.fromEntries(
     mockProjects.flatMap(p => p.sessions.map(s => [s.id, null]))
   ),
-  theme: (localStorage.getItem('cc-desk-theme') as AppState['theme']) || 'dark-warm',
+  theme: ((s) => (s && ['codex-light','codex-warm','codex-cool','codex-paper'].includes(s) ? s : 'codex-light'))(
+    localStorage.getItem('cc-desk-theme')
+  ) as AppState['theme'],
   draft: { text: '' },
   currentView: 'workspace',
   activeSettingsSection: 'general',

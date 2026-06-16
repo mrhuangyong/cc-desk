@@ -11,7 +11,7 @@ function initialState(): AppState {
     // 每个 session 的 Tab 组，key = sessionId
     tabsBySession: { s1: [] },
     activeTabIdBySession: { s1: null },
-    theme: 'dark-warm',
+    theme: 'codex-light',
     draft: { text: '' },
     currentView: 'workspace',
     activeSettingsSection: 'general',
@@ -152,8 +152,8 @@ describe('reducer', () => {
 
   it('SET_THEME 更新主题', () => {
     const state = initialState()
-    const next = reducer(state, { type: 'SET_THEME', theme: 'dark-acid' })
-    expect(next.theme).toBe('dark-acid')
+    const next = reducer(state, { type: 'SET_THEME', theme: 'codex-cool' })
+    expect(next.theme).toBe('codex-cool')
   })
 
   it('ADD_MESSAGE 把消息追加到指定会话', () => {

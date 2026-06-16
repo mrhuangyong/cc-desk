@@ -58,10 +58,10 @@ export function GeneralSettings() {
       <SettingsCard>
         <SettingsRow title="界面主题" desc="切换应用界面使用的主题外观。">
           <select value={theme} onChange={e => applyTheme(e.target.value)} style={selectStyle}>
-            <option value="dark-warm">暖色暗夜</option>
-            <option value="dark-cool">冷峻深空</option>
-            <option value="light-editorial">纸感明亮</option>
-            <option value="dark-acid">酸性极客</option>
+            <option value="codex-light">Codex 浅色</option>
+            <option value="codex-warm">Codex 暖白</option>
+            <option value="codex-cool">Codex 冷灰</option>
+            <option value="codex-paper">Codex 纸感</option>
           </select>
         </SettingsRow>
         <SettingsRow title="界面语言" desc="选择应用 UI 的显示语言。">

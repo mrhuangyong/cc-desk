@@ -1,67 +1,79 @@
-/* ===== 主题变量 ===== */
+/* ===== 主题变量（Codex 浅色质感）===== */
 :root,
-[data-theme='dark-warm'] {
-  --bg: #1a1714;
-  --bg-elevated: #221d18;
-  --bg-sidebar: #161310;
-  --bg-hover: #2a2520;
-  --border: #2f2820;
-  --text: #d8c9b8;
-  --text-muted: #8a7a68;
-  --accent: #d97757;
-  --accent-text: #1a1714;
-  --danger: #e06c6c;
-  --font: -apple-system, 'Segoe UI', 'PingFang SC', sans-serif;
-  --font-mono: 'SF Mono', 'Menlo', monospace;
-  --radius: 6px;
-}
-
-[data-theme='dark-cool'] {
-  --bg: #0d1117;
-  --bg-elevated: #161b22;
-  --bg-sidebar: #010409;
-  --bg-hover: #21262d;
-  --border: #21262d;
-  --text: #c9d1d9;
-  --text-muted: #8b949e;
-  --accent: #2f81f7;
-  --accent-text: #ffffff;
-  --danger: #f85149;
-  --font: -apple-system, 'Segoe UI', 'PingFang SC', sans-serif;
-  --font-mono: 'SF Mono', 'Menlo', monospace;
-  --radius: 6px;
-}
-
-[data-theme='light-editorial'] {
-  --bg: #faf8f3;
+[data-theme='codex-light'] {
+  --bg: #ffffff;
   --bg-elevated: #ffffff;
-  --bg-sidebar: #f2eee5;
-  --bg-hover: #e9e2d3;
-  --border: #e5dfd2;
-  --text: #3a3530;
-  --text-muted: #8a7f70;
-  --accent: #8b6f47;
+  --bg-sidebar: #fafafa;
+  --bg-hover: #f0f0f2;
+  --border: #ececee;
+  --text: #1d1d1f;
+  --text-muted: #86868b;
+  --text-faint: #aeaeb2;
+  --accent: #1d1d1f;
+  --accent-text: #ffffff;
+  --danger: #d94545;
+  --font: -apple-system, 'Segoe UI', 'PingFang SC', sans-serif;
+  --font-mono: 'SF Mono', 'Menlo', monospace;
+  --radius: 8px;
+  --radius-lg: 14px;
+  --shadow-float: 0 2px 12px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.03);
+}
+
+[data-theme='codex-warm'] {
+  --bg: #fdfcfa;
+  --bg-elevated: #ffffff;
+  --bg-sidebar: #f6f4f0;
+  --bg-hover: #eee9e2;
+  --border: #e8e3dc;
+  --text: #2a2520;
+  --text-muted: #8a8076;
+  --text-faint: #b0a89c;
+  --accent: #2a2520;
   --accent-text: #ffffff;
   --danger: #c05050;
-  --font: Georgia, 'Times New Roman', 'Songti SC', serif;
+  --font: -apple-system, 'Segoe UI', 'PingFang SC', sans-serif;
   --font-mono: 'SF Mono', 'Menlo', monospace;
-  --radius: 6px;
+  --radius: 8px;
+  --radius-lg: 14px;
+  --shadow-float: 0 2px 12px rgba(42,37,32,0.06), 0 0 0 1px rgba(42,37,32,0.03);
 }
 
-[data-theme='dark-acid'] {
-  --bg: #0a0a0a;
-  --bg-elevated: #141414;
-  --bg-sidebar: #050505;
-  --bg-hover: #1a1a1a;
-  --border: #222222;
-  --text: #c0c0c0;
-  --text-muted: #707070;
-  --accent: #ccff00;
-  --accent-text: #0a0a0a;
-  --danger: #ff4444;
-  --font: 'SF Mono', 'Menlo', 'Courier New', monospace;
+[data-theme='codex-cool'] {
+  --bg: #fbfcfd;
+  --bg-elevated: #ffffff;
+  --bg-sidebar: #f4f6f9;
+  --bg-hover: #e9edf2;
+  --border: #e2e6ec;
+  --text: #1a2230;
+  --text-muted: #6b7785;
+  --text-faint: #9aa4b2;
+  --accent: #1a2230;
+  --accent-text: #ffffff;
+  --danger: #c04545;
+  --font: -apple-system, 'Segoe UI', 'PingFang SC', sans-serif;
   --font-mono: 'SF Mono', 'Menlo', monospace;
-  --radius: 0px;
+  --radius: 8px;
+  --radius-lg: 14px;
+  --shadow-float: 0 2px 12px rgba(26,34,48,0.06), 0 0 0 1px rgba(26,34,48,0.03);
+}
+
+[data-theme='codex-paper'] {
+  --bg: #f8f6f1;
+  --bg-elevated: #fffefb;
+  --bg-sidebar: #f1ede4;
+  --bg-hover: #e8e2d4;
+  --border: #ddd6c8;
+  --text: #2c2820;
+  --text-muted: #7a7264;
+  --text-faint: #a89e8c;
+  --accent: #2c2820;
+  --accent-text: #fffefb;
+  --danger: #b04545;
+  --font: -apple-system, 'Segoe UI', 'PingFang SC', sans-serif;
+  --font-mono: 'SF Mono', 'Menlo', monospace;
+  --radius: 8px;
+  --radius-lg: 14px;
+  --shadow-float: 0 2px 12px rgba(44,40,32,0.06), 0 0 0 1px rgba(44,40,32,0.03);
 }
 
 /* ===== 全局重置 ===== */
@@ -83,5 +95,5 @@ button {
   color: inherit;
 }
 ::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius); }
+::-webkit-scrollbar-thumb { background: var(--bg-hover); border-radius: var(--radius); }
 ::-webkit-scrollbar-track { background: transparent; }
