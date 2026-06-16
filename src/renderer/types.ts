@@ -60,3 +60,52 @@ export interface FileNode {
   isDir: boolean
   children?: FileNode[]
 }
+
+// ===== 设置页 =====
+
+// 设置子页标识
+export type SettingsSection =
+  | 'general' | 'code-preview' | 'model' | 'skills'
+  | 'mcp' | 'plugins' | 'commands' | 'hooks'
+
+// 顶层视图
+export type AppView = 'workspace' | 'settings'
+
+// 模型提供商（模型设置 - 左侧列表项）
+export interface ModelProvider {
+  id: string
+  name: string
+  apiKey: string     // 表单字段（mock）
+  baseUrl: string    // 表单字段（mock）
+}
+
+// 模型（模型设置 - 右下列表项）
+export interface ModelItem {
+  id: string
+  name: string
+  providerId: string
+}
+
+// 技能（设置子页，带启用状态）
+export interface SkillItem {
+  id: string
+  name: string
+  desc: string
+  enabled: boolean
+}
+
+// MCP 服务器
+export interface McpServer {
+  id: string
+  name: string
+  url: string
+  enabled: boolean
+}
+
+// 插件 / 命令 / hook（结构相似：id + name + desc + enabled）
+export interface SettingsEntry {
+  id: string
+  name: string
+  desc: string
+  enabled: boolean
+}
