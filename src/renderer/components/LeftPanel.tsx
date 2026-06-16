@@ -1,27 +1,38 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useCallback, useRef } from 'react'
 import type { CSSProperties } from 'react'
-import { Plus, Search, Zap, ChevronsUpDown, ArrowUpDown, PanelLeftOpen } from 'lucide-react'
+import { Plus, Search, Zap, ChevronsUpDown, ArrowUpDown } from 'lucide-react'
 import { ProjectTree } from './ProjectTree'
 import { FileTree } from './FileTree'
 import { SearchDialog } from './SearchDialog'
 import { useStore } from '../state/store'
+import { useResizableWidth } from '../hooks/useResizableWidth'
 
 interface Props {
   collapsed: boolean
-  onExpand: () => void
 }
 
-export function LeftPanel({ collapsed, onExpand }: Props) {
+export function LeftPanel({ collapsed }: Props) {
   const { state, dispatch } = useStore()
   const [fileViewProjectId, setFileViewProjectId] = useState<string | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const [hovered, setHovered] = useState<string | null>(null)
-  // 默认全部项目展开
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(
     () => new Set(state.projects.map(p => p.id))
   )
 
-  // 当前激活会话所属项目（顶部"新建会话"的目标）；无则取第一个项目兜底
+  const { width, dragging, onMouseDown, registerApply } = useResizableWidth({
+    initial: 240,
+    min: Math.round(window.innerWidth * 0.5),
+    max: Math.round(window.innerWidth * 0.8),
+    side: 'right'
+  })
+
+  const panelRef = useRef<HTMLDivElement>(null)
+  const refCallback = useCallback((node: HTMLDivElement | null) => {
+    (panelRef as React.MutableRefObject<HTMLDivElement | null>).current = node
+    if (node) registerApply((w: number) => { node.style.width = `${w}px` })
+  }, [registerApply])
+
   const currentProjectId = useMemo(() => {
     const active = state.projects.find(p => p.sessions.some(s => s.id === state.activeSessionId))
     return (active ?? state.projects[0])?.id
@@ -36,7 +47,6 @@ export function LeftPanel({ collapsed, onExpand }: Props) {
     })
   }
 
-  // 一键展开/折叠所有：有任一收起则全部展开，否则全部收起
   const toggleAll = () => {
     const allExpanded = state.projects.every(p => expandedProjects.has(p.id))
     setExpandedProjects(allExpanded ? new Set() : new Set(state.projects.map(p => p.id)))
@@ -46,20 +56,7 @@ export function LeftPanel({ collapsed, onExpand }: Props) {
     if (currentProjectId) dispatch({ type: 'ADD_SESSION', projectId: currentProjectId })
   }
 
-  if (collapsed) {
-    return (
-      <button
-        onClick={onExpand}
-        title="展开左栏"
-        aria-label="展开左栏"
-        style={{
-          width: 32, flexShrink: 0, background: 'var(--bg-sidebar)',
-          borderRight: '1px solid var(--border)', color: 'var(--text-muted)',
-          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
-        }}
-      ><PanelLeftOpen size={16} /></button>
-    )
-  }
+  if (collapsed) return null
 
   const topBtn = (key: string): CSSProperties => ({
     width: '100%', padding: '8px 12px', fontSize: 13, color: 'var(--text)',
@@ -78,18 +75,32 @@ export function LeftPanel({ collapsed, onExpand }: Props) {
 
   return (
     <>
-      <div style={{
-        width: 240, flexShrink: 0, background: 'var(--bg-sidebar)',
-        borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column'
-      }}>
-        {/* 顶部功能区：纵向单列堆叠 */}
+      <div
+        ref={refCallback}
+        style={{
+          width, flexShrink: 0, position: 'relative', background: 'var(--bg-sidebar)',
+          borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column'
+        }}
+      >
+        {/* 拖拽手柄：右边缘竖条 */}
+        <div
+          onMouseDown={onMouseDown}
+          title="拖动调节宽度"
+          style={{
+            position: 'absolute', right: -3, top: 0, bottom: 0, width: 6,
+            cursor: 'col-resize', zIndex: 10,
+            background: dragging ? 'var(--accent)' : 'transparent',
+            transition: dragging ? 'none' : 'background .15s'
+          }}
+        />
+        {/* 顶部功能区 */}
         <div style={{ display: 'flex', flexDirection: 'column', borderBottom: '1px solid var(--border)' }}>
           <button onMouseEnter={() => setHovered('new')} onMouseLeave={() => setHovered(null)} onClick={handleNewSession} title="新建会话" style={topBtn('new')}><Plus size={14} /> 新建会话</button>
           <button onMouseEnter={() => setHovered('search')} onMouseLeave={() => setHovered(null)} onClick={() => setSearchOpen(true)} title="搜索" style={topBtn('search')}><Search size={14} /> 搜索</button>
           <button onMouseEnter={() => setHovered('skills')} onMouseLeave={() => setHovered(null)} onClick={() => dispatch({ type: 'SET_SETTINGS_SECTION', section: 'skills' })} title="技能" style={topBtn('skills')}><Zap size={14} /> 技能</button>
         </div>
 
-        {/* 工作区行：标题 + 三按钮同一行 */}
+        {/* 工作区行 */}
         <div style={{
           display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px',
           borderBottom: '1px solid var(--border)'
