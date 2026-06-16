@@ -1,8 +1,25 @@
+// 拾取的网页元素（从浏览器 Tab 拾取后作为附件）
+export interface PickedElement {
+  source: string
+  tag: string
+  text: string
+  selector: string
+  html: string
+}
+
 // 消息：对话流中的一条
 export interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
+  // 可选：拾取的网页元素附件，发送时带入消息
+  attachment?: PickedElement
+}
+
+// 输入框草稿：文本 + 可选的拾取附件
+export interface Draft {
+  text: string
+  attachment?: PickedElement
 }
 
 // 会话：归属于某个项目

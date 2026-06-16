@@ -1,5 +1,5 @@
 import type { Action } from './actions'
-import type { Project, Session, Tab, ThemeId } from '../types'
+import type { Draft, Project, Session, Tab, ThemeId } from '../types'
 
 export interface AppState {
   projects: Project[]
@@ -9,6 +9,8 @@ export interface AppState {
   // 每个会话当前激活的 Tab（key = sessionId）
   activeTabIdBySession: Record<string, string | null>
   theme: ThemeId
+  // 对话输入框草稿：文本 + 可选拾取附件
+  draft: Draft
 }
 
 // TODO: idCounter is module-level mutable state — non-deterministic IDs. Acceptable for prototype; thread through state if persistence/time-travel needed later.
@@ -95,6 +97,18 @@ export function reducer(state: AppState, action: Action): AppState {
         : state.activeTabIdBySession
       return { ...state, activeSessionId: target, activeTabIdBySession }
     }
+    case 'ADD_MESSAGE': {
+      // 把消息追加到指定会话（不可变）。会话不存在则原样返回。
+      const projects = state.projects.map(p => ({
+        ...p,
+        sessions: p.sessions.map(s =>
+          s.id === action.sessionId
+            ? { ...s, messages: [...s.messages, action.message] }
+            : s
+        )
+      }))
+      return { ...state, projects }
+    }
     case 'OPEN_FILE_TAB': {
       const activeSessionId = state.activeSessionId
       const tabs = state.tabsBySession[activeSessionId] ?? []
@@ -155,6 +169,38 @@ export function reducer(state: AppState, action: Action): AppState {
     }
     case 'SET_THEME': {
       return { ...state, theme: action.theme }
+    }
+    case 'SET_DRAFT_TEXT': {
+      return { ...state, draft: { ...state.draft, text: action.text } }
+    }
+    case 'SET_DRAFT_ATTACHMENT': {
+      return { ...state, draft: { ...state.draft, attachment: action.attachment } }
+    }
+    case 'CLEAR_DRAFT_ATTACHMENT': {
+      const { attachment: _attachment, ...rest } = state.draft
+      return { ...state, draft: rest }
+    }
+    case 'SEND_MESSAGE': {
+      const { text, attachment } = state.draft
+      // 文本和附件都为空则不发送
+      if (!text.trim() && !attachment) return state
+      const sessionId = state.activeSessionId
+      const newMessage = {
+        id: nextId('m'),
+        role: 'user' as const,
+        content: text,
+        ...(attachment ? { attachment } : {})
+      }
+      const projects = state.projects.map(p => ({
+        ...p,
+        sessions: p.sessions.map(s =>
+          s.id === sessionId
+            ? { ...s, messages: [...s.messages, newMessage] }
+            : s
+        )
+      }))
+      // 发送后清空草稿
+      return { ...state, projects, draft: { text: '' } }
     }
     default:
       return state
