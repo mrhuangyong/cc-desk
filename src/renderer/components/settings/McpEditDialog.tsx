@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { McpServer } from '../../types'
+import { ChevronRight, ChevronDown } from 'lucide-react'
 
 interface Props {
   server: McpServer
@@ -129,7 +130,7 @@ export function McpEditDialog({ server, onSave, onCancel }: Props) {
                 <button
                   onClick={() => setShowEnv(s => !s)}
                   style={{ cursor: 'pointer', background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: 12 }}
-                >{showEnv ? '▼' : '▶'} 环境变量（可选）</button>
+                >{showEnv ? <ChevronDown size={12} /> : <ChevronRight size={12} />} 环境变量（可选）</button>
                 {showEnv && (
                   <textarea
                     value={draft.env}

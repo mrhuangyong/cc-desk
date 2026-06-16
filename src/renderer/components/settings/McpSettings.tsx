@@ -3,6 +3,7 @@ import { mockMcpServers } from '../../state/mockData'
 import type { McpServer } from '../../types'
 import { Toggle } from './Toggle'
 import { McpEditDialog } from './McpEditDialog'
+import { Plus, ChevronDown, Plug, Pencil, Trash2 } from 'lucide-react'
 
 const iconBtn: React.CSSProperties = {
   padding: '4px 6px', fontSize: 13, cursor: 'pointer',
@@ -38,8 +39,8 @@ export function McpSettings() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
         <h2 style={{ color: 'var(--text)', fontSize: 18, margin: 0 }}>MCP 服务器</h2>
         <div style={{ display: 'flex', gap: 4 }}>
-          <button title="添加" onClick={addNew} style={topIconBtn}>＋</button>
-          <button title="排序/展开" style={topIconBtn}>↓</button>
+          <button title="添加" onClick={addNew} style={topIconBtn}><Plus size={14} /></button>
+          <button title="排序/展开" style={topIconBtn}><ChevronDown size={14} /></button>
         </div>
       </div>
       <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 14 }}>
@@ -66,16 +67,16 @@ export function McpSettings() {
         {filtered.map((s, i) => (
           <div key={s.id} style={{ borderBottom: i < filtered.length - 1 ? '1px solid var(--border)' : 'none' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px' }}>
-              <span style={{ color: 'var(--accent)', fontSize: 16, flexShrink: 0 }}>⛭</span>
+              <span style={{ color: 'var(--accent)', fontSize: 16, flexShrink: 0, display: 'inline-flex' }}><Plug size={16} /></span>
               <span style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: s.enabled ? 'var(--accent)' : 'var(--text-muted)' }} />
               <span style={{ color: 'var(--text)', fontSize: 13, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
               <span style={{ padding: '1px 7px', borderRadius: 999, fontSize: 10, border: '1px solid var(--border)', color: 'var(--text-muted)' }}>{s.scope}</span>
               <Toggle on={s.enabled} onChange={() => toggle(s.id)} aria-label={`${s.enabled ? '禁用' : '启用'} ${s.name}`} />
-              <button title="编辑" onClick={() => setEditingId(s.id)} style={iconBtn}>✎</button>
+              <button title="编辑" onClick={() => setEditingId(s.id)} style={iconBtn}><Pencil size={13} /></button>
               {confirmingId === s.id ? (
                 <button onClick={() => remove(s.id)} style={{ ...iconBtn, color: 'var(--danger)' }}>确认？</button>
               ) : (
-                <button title="删除" onClick={() => setConfirmingId(s.id)} style={{ ...iconBtn, color: 'var(--danger)' }}>🗑</button>
+                <button title="删除" onClick={() => setConfirmingId(s.id)} style={{ ...iconBtn, color: 'var(--danger)' }}><Trash2 size={13} /></button>
               )}
             </div>
             <div style={{ padding: '0 14px 12px 40px', color: 'var(--text-muted)', fontSize: 12, fontFamily: 'var(--font-mono)' }}>

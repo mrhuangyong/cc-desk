@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { mockSkills } from '../../state/mockData'
 import { Toggle } from './Toggle'
+import { Plus, ChevronDown, RefreshCw, Hexagon } from 'lucide-react'
 
 export function SkillsSettings() {
   const [q, setQ] = useState('')
@@ -26,9 +27,9 @@ export function SkillsSettings() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
         <h2 style={{ color: 'var(--text)', fontSize: 18, margin: 0 }}>技能</h2>
         <div style={{ display: 'flex', gap: 4 }}>
-          <button title="添加技能" style={iconBtn}>＋</button>
-          <button title="排序/展开" style={iconBtn}>↓</button>
-          <button title="刷新" style={iconBtn}>↻</button>
+          <button title="添加技能" style={iconBtn}><Plus size={14} /></button>
+          <button title="排序/展开" style={iconBtn}><ChevronDown size={14} /></button>
+          <button title="刷新" style={iconBtn}><RefreshCw size={14} /></button>
         </div>
       </div>
       <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 14 }}>
@@ -53,7 +54,7 @@ export function SkillsSettings() {
             display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
             borderBottom: i < filtered.length - 1 ? '1px solid var(--border)' : 'none'
           }}>
-            <span style={{ color: 'var(--accent)', fontSize: 16, flexShrink: 0 }}>⬡</span>
+            <span style={{ color: 'var(--accent)', fontSize: 16, flexShrink: 0, display: 'inline-flex' }}><Hexagon size={16} /></span>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ color: 'var(--text)', fontSize: 13, fontFamily: 'var(--font-mono)' }}>{s.name}</span>

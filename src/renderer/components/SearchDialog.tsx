@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useStore } from '../state/store'
+import { MessageSquare } from 'lucide-react'
 
 // 顶部"搜索"触发的全局搜索弹窗：搜会话（点击跳转）+ 命令（mock 占位）。
 interface Props {
@@ -95,7 +96,7 @@ export function SearchDialog({ onClose }: Props) {
                 <div key={session.id} onClick={() => jumpToSession(session.id)} style={rowBase}
                   onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                  <span>💬 {session.title}</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><MessageSquare size={14} /> {session.title}</span>
                   <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{project.name}</span>
                 </div>
               ))}

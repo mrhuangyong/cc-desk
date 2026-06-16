@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { mockPlugins } from '../../state/mockData'
 import type { Plugin } from '../../types'
 import { Toggle } from './Toggle'
+import { RefreshCw, Plug } from 'lucide-react'
 
 const topIconBtn: React.CSSProperties = {
   padding: '4px 8px', fontSize: 14, cursor: 'pointer',
@@ -21,7 +22,7 @@ export function PluginSettings() {
       {/* 标题 + 刷新 */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
         <h2 style={{ color: 'var(--text)', fontSize: 18, margin: 0 }}>插件管理</h2>
-        <button title="刷新" style={topIconBtn}>↻</button>
+        <button title="刷新" style={topIconBtn}><RefreshCw size={14} /></button>
       </div>
       <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 14 }}>
         启用或停用已安装的插件。插件可打包技能、命令和 MCP 服务器。
@@ -46,7 +47,7 @@ export function PluginSettings() {
           }}>
             {/* 标题行：图标 + 名称 + 版本 + 来源 + 开关 */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-              <span style={{ color: 'var(--accent)', fontSize: 16, flexShrink: 0 }}>⛭</span>
+              <span style={{ color: 'var(--accent)', fontSize: 16, flexShrink: 0, display: 'inline-flex' }}><Plug size={16} /></span>
               <span style={{ color: 'var(--text)', fontSize: 13, fontFamily: 'var(--font-mono)' }}>{p.name}</span>
               <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{p.version}</span>
               <span style={{
