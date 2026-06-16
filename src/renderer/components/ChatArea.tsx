@@ -1,5 +1,6 @@
 import { useStore } from '../state/store'
 import { AttachmentChip } from './AttachmentChip'
+import { InputBar } from './InputBar'
 
 export function ChatArea() {
   const { state } = useStore()
@@ -43,6 +44,9 @@ export function ChatArea() {
             </div>
           )
         ))}
+      </div>
+      <div style={{ padding: '0 28px 20px' }}>
+        <InputBar />
       </div>
     </div>
   )
