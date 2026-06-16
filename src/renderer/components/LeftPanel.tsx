@@ -1,6 +1,6 @@
 import { useMemo, useState, useCallback, useRef } from 'react'
 import type { CSSProperties } from 'react'
-import { Plus, Search, Zap, ChevronsUpDown, ArrowUpDown } from 'lucide-react'
+import { Plus, Search, Zap, ChevronsUpDown, ArrowUpDown, FolderPlus } from 'lucide-react'
 import { ProjectTree } from './ProjectTree'
 import { FileTree } from './FileTree'
 import { SearchDialog } from './SearchDialog'
@@ -57,6 +57,13 @@ export function LeftPanel({ collapsed }: Props) {
 
   const handleNewSession = () => {
     if (currentProjectId) dispatch({ type: 'ADD_SESSION', projectId: currentProjectId })
+  }
+
+  const handleAddProject = async () => {
+    const dirPath = await window.api?.dialog.openDirectory()
+    if (!dirPath) return
+    const name = dirPath.split('/').pop() || dirPath
+    dispatch({ type: 'ADD_PROJECT', name, path: dirPath })
   }
 
   if (!mounted) return null
@@ -127,6 +134,7 @@ export function LeftPanel({ collapsed }: Props) {
             borderBottom: '1px solid var(--border)'
           }}>
             <span style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginRight: 'auto' }}>工作区</span>
+            <button onMouseEnter={() => setHovered('addProject')} onMouseLeave={() => setHovered(null)} onClick={handleAddProject} title="添加项目" aria-label="添加项目" style={toolBtn('addProject')}><FolderPlus size={13} /></button>
             <button onMouseEnter={() => setHovered('toggleAll')} onMouseLeave={() => setHovered(null)} onClick={toggleAll} title="展开/折叠" aria-label="展开/折叠" style={toolBtn('toggleAll')}><ChevronsUpDown size={13} /></button>
             <button onMouseEnter={() => setHovered('sort')} onMouseLeave={() => setHovered(null)} title="排序/筛选" aria-label="排序/筛选" style={toolBtn('sort')}><ArrowUpDown size={13} /></button>
             <button onMouseEnter={() => setHovered('search2')} onMouseLeave={() => setHovered(null)} onClick={() => setSearchOpen(true)} title="搜索" aria-label="搜索" style={toolBtn('search2')}><Search size={13} /></button>

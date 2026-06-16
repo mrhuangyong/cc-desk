@@ -53,6 +53,18 @@ function pickSurvivingSessionId(projects: Project[], excludedId: string): string
 
 export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
+    case 'ADD_PROJECT': {
+      // 去重：已有同路径项目则不新增
+      if (state.projects.some(p => p.path === action.path)) return state
+      const newProject: Project = {
+        id: nextId('p'),
+        name: action.name,
+        path: action.path,
+        sessions: [],
+      }
+      const projects = [...state.projects, newProject]
+      return { ...state, projects }
+    }
     case 'DELETE_PROJECT': {
       const projects = state.projects.filter(p => p.id !== action.projectId)
       // 若激活会话在被删项目里，切到存活会话

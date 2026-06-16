@@ -1,6 +1,7 @@
 import type { AppView, Message, PickedElement, Project, SettingsSection, TabType, ThemeId } from '../types'
 
 export type Action =
+  | { type: 'ADD_PROJECT'; name: string; path: string }
   | { type: 'DELETE_PROJECT'; projectId: string }
   | { type: 'DELETE_SESSION'; projectId: string; sessionId: string }
   | { type: 'ADD_SESSION'; projectId: string }
