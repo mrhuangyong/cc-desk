@@ -1,49 +1,61 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-type Phase = 'idle' | 'expanding' | 'expanded' | 'collapsing'
+type Phase = 'idle' | 'expanding' | 'transitioning' | 'expanded' | 'collapsing'
 
 /**
  * 面板展开/折叠动画。
- * 返回动画期间的宽度 style，由调用方合并到面板 div。
- * 展开：首帧 width:0 + overflow:hidden，次帧 transition + 目标宽度。
- * 折叠：transition + width:0，动画结束后 idle（卸载 DOM）。
+ *
+ * 展开 3 步：
+ *   expanding    — width:0, 无 transition（挂载）
+ *   transitioning — transition 已激活，宽度仍 0（准备）
+ *   expanded     — 释放宽度控制，resizable hook 接管 → CSS 动画 0→target
+ *
+ * 折叠 1 步：
+ *   collapsing — transition + width:0 → transitionend → idle（卸载）
  */
 export function usePanelAnimation(collapsed: boolean) {
   const [phase, setPhase] = useState<Phase>(collapsed ? 'idle' : 'expanded')
-  const [animWidth, setAnimWidth] = useState<number | undefined>(undefined)
+  const [targetWidth, setTargetWidth] = useState<number | undefined>(undefined)
   const rafRef = useRef(0)
 
   useEffect(() => {
     cancelAnimationFrame(rafRef.current)
     if (!collapsed) {
-      // 展开：先设 0（无 transition），再设目标宽度（有 transition）
+      // 第 1 帧：挂载，width:0
       setPhase('expanding')
-      setAnimWidth(0)
+      setTargetWidth(0)
       rafRef.current = requestAnimationFrame(() => {
-        setPhase('expanded')
-        setAnimWidth(undefined) // 释放控制，交给 resizable hook
+        // 第 2 帧：激活 transition，宽度仍为 0
+        setPhase('transitioning')
+        rafRef.current = requestAnimationFrame(() => {
+          // 第 3 帧：释放宽度控制 → resizable hook 的 width 生效 → 触发动画
+          setPhase('expanded')
+          setTargetWidth(undefined)
+        })
       })
     } else {
-      // 折叠：激活 transition，宽度设 0
       setPhase('collapsing')
-      setAnimWidth(0)
+      setTargetWidth(0)
     }
     return () => cancelAnimationFrame(rafRef.current)
   }, [collapsed])
 
   const onTransitionEnd = useCallback((e: React.TransitionEvent) => {
-    if (e.propertyName === 'width' && phase === 'collapsing') {
+    if (e.propertyName !== 'width') return
+    if (phase === 'collapsing') {
       setPhase('idle')
-      setAnimWidth(undefined)
+      setTargetWidth(undefined)
     }
   }, [phase])
 
-  const styles: React.CSSProperties = phase === 'collapsing'
-    ? { width: 0, overflow: 'hidden', transition: 'width .25s ease' }
-    : phase === 'expanding'
-    ? { width: animWidth, overflow: 'hidden' }
+  const styles: React.CSSProperties = phase === 'expanding'
+    ? { width: targetWidth, overflow: 'hidden' }
+    : phase === 'transitioning'
+    ? { width: targetWidth, overflow: 'hidden', transition: 'width .25s ease' }
     : phase === 'expanded'
-    ? { overflow: 'hidden' }
+    ? { overflow: 'hidden', transition: 'width .25s ease' }
+    : phase === 'collapsing'
+    ? { width: targetWidth, overflow: 'hidden', transition: 'width .25s ease' }
     : {}
 
   return {
