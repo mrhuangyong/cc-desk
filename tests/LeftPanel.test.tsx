@@ -2,9 +2,10 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { AppProvider } from '../src/renderer/state/store'
 import { LeftPanel } from '../src/renderer/components/LeftPanel'
+import { seedProjects } from './fixtures'
 
 function renderWithProvider(ui: React.ReactNode) {
-  return render(<AppProvider>{ui}</AppProvider>)
+  return render(<AppProvider initialProjects={structuredClone(seedProjects)}>{ui}</AppProvider>)
 }
 
 describe('LeftPanel 顶部新建会话', () => {
