@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Palette } from 'lucide-react'
 import { useTheme } from '../hooks/useTheme'
 import type { ThemeId } from '../types'
 
@@ -18,8 +19,8 @@ export function ThemeSwitcher() {
       <button
         onClick={() => setOpen(o => !o)}
         title="切换主题"
-        style={{ fontSize: 14, padding: '4px 8px' }}
-      >🎨</button>
+        style={{ padding: '4px 8px', display: 'inline-flex', alignItems: 'center', color: 'var(--text-muted)' }}
+      ><Palette size={14} /></button>
       {open && (
         <div style={{
           position: 'absolute', right: 0, top: '100%',

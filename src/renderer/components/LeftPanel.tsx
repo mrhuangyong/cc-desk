@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
+import { Plus, Search, Zap, ChevronsUpDown, ArrowUpDown, PanelLeftOpen } from 'lucide-react'
 import { ProjectTree } from './ProjectTree'
 import { FileTree } from './FileTree'
 import { SearchDialog } from './SearchDialog'
@@ -54,9 +55,9 @@ export function LeftPanel({ collapsed, onExpand }: Props) {
         style={{
           width: 32, flexShrink: 0, background: 'var(--bg-sidebar)',
           borderRight: '1px solid var(--border)', color: 'var(--text-muted)',
-          fontSize: 14, cursor: 'pointer'
+          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
         }}
-      >»</button>
+      ><PanelLeftOpen size={16} /></button>
     )
   }
 
@@ -83,9 +84,9 @@ export function LeftPanel({ collapsed, onExpand }: Props) {
       }}>
         {/* 顶部功能区：纵向单列堆叠 */}
         <div style={{ display: 'flex', flexDirection: 'column', borderBottom: '1px solid var(--border)' }}>
-          <button onMouseEnter={() => setHovered('new')} onMouseLeave={() => setHovered(null)} onClick={handleNewSession} title="新建会话" style={topBtn('new')}>➕ 新建会话</button>
-          <button onMouseEnter={() => setHovered('search')} onMouseLeave={() => setHovered(null)} onClick={() => setSearchOpen(true)} title="搜索" style={topBtn('search')}>🔍 搜索</button>
-          <button onMouseEnter={() => setHovered('skills')} onMouseLeave={() => setHovered(null)} onClick={() => dispatch({ type: 'SET_SETTINGS_SECTION', section: 'skills' })} title="技能" style={topBtn('skills')}>⚡ 技能</button>
+          <button onMouseEnter={() => setHovered('new')} onMouseLeave={() => setHovered(null)} onClick={handleNewSession} title="新建会话" style={topBtn('new')}><Plus size={14} /> 新建会话</button>
+          <button onMouseEnter={() => setHovered('search')} onMouseLeave={() => setHovered(null)} onClick={() => setSearchOpen(true)} title="搜索" style={topBtn('search')}><Search size={14} /> 搜索</button>
+          <button onMouseEnter={() => setHovered('skills')} onMouseLeave={() => setHovered(null)} onClick={() => dispatch({ type: 'SET_SETTINGS_SECTION', section: 'skills' })} title="技能" style={topBtn('skills')}><Zap size={14} /> 技能</button>
         </div>
 
         {/* 工作区行：标题 + 三按钮同一行 */}
@@ -94,9 +95,9 @@ export function LeftPanel({ collapsed, onExpand }: Props) {
           borderBottom: '1px solid var(--border)'
         }}>
           <span style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginRight: 'auto' }}>工作区</span>
-          <button onMouseEnter={() => setHovered('toggleAll')} onMouseLeave={() => setHovered(null)} onClick={toggleAll} title="展开/折叠" aria-label="展开/折叠" style={toolBtn('toggleAll')}>⇕</button>
-          <button onMouseEnter={() => setHovered('sort')} onMouseLeave={() => setHovered(null)} title="排序/筛选" aria-label="排序/筛选" style={toolBtn('sort')}>↕</button>
-          <button onMouseEnter={() => setHovered('search2')} onMouseLeave={() => setHovered(null)} onClick={() => setSearchOpen(true)} title="搜索" aria-label="搜索" style={toolBtn('search2')}>🔍</button>
+          <button onMouseEnter={() => setHovered('toggleAll')} onMouseLeave={() => setHovered(null)} onClick={toggleAll} title="展开/折叠" aria-label="展开/折叠" style={toolBtn('toggleAll')}><ChevronsUpDown size={13} /></button>
+          <button onMouseEnter={() => setHovered('sort')} onMouseLeave={() => setHovered(null)} title="排序/筛选" aria-label="排序/筛选" style={toolBtn('sort')}><ArrowUpDown size={13} /></button>
+          <button onMouseEnter={() => setHovered('search2')} onMouseLeave={() => setHovered(null)} onClick={() => setSearchOpen(true)} title="搜索" aria-label="搜索" style={toolBtn('search2')}><Search size={13} /></button>
         </div>
 
         {/* 项目会话树 / 文件树 */}

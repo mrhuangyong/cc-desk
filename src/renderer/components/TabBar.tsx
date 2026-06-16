@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import type { LucideIcon } from 'lucide-react'
+import { FileText, Globe, SquareTerminal, FileDiff, Plus } from 'lucide-react'
 import { useStore } from '../state/store'
 import { FileTab } from './FileTab'
 import { BrowserTab } from './BrowserTab'
@@ -6,13 +8,13 @@ import { TerminalTab } from './TerminalTab'
 import { ReviewTab } from './ReviewTab'
 import type { TabType } from '../types'
 
-const TAB_ICON: Record<TabType, string> = { file: '📄', browser: '🌐', terminal: '🖥', review: '🔍' }
+const TAB_ICON: Record<TabType, LucideIcon> = { file: FileText, browser: Globe, terminal: SquareTerminal, review: FileDiff }
 
 // 新增 tab 的可选类型（点 + 后下拉菜单展示）
-const ADD_OPTIONS: { type: TabType; label: string; icon: string }[] = [
-  { type: 'browser', label: '浏览器', icon: '🌐' },
-  { type: 'review', label: '审查', icon: '🔍' },
-  { type: 'file', label: '文件', icon: '📄' }
+const ADD_OPTIONS: { type: TabType; label: string; icon: LucideIcon }[] = [
+  { type: 'browser', label: '浏览器', icon: Globe },
+  { type: 'review', label: '审查', icon: FileDiff },
+  { type: 'file', label: '文件', icon: FileText }
 ]
 
 export function TabBar() {
@@ -50,13 +52,13 @@ export function TabBar() {
               maxWidth: 140
             }}
           >
-            <span>{TAB_ICON[t.type]}</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center' }}>{(() => { const Icon = TAB_ICON[t.type]; return <Icon size={14} />; })()}</span>
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</span>
             <button onClick={(e) => { e.stopPropagation(); dispatch({ type: 'CLOSE_TAB', tabId: t.id }) }} style={{ fontSize: 14, opacity: 0.6, lineHeight: 1 }} aria-label="关闭标签">×</button>
           </div>
         ))}
         {/* + 按钮：点击展开类型选择下拉菜单 */}
-        <button onClick={() => setMenuOpen(o => !o)} title="新增 Tab" style={{ padding: '0 12px', color: 'var(--text-muted)', fontSize: 18, lineHeight: 1 }}>+</button>
+        <button onClick={() => setMenuOpen(o => !o)} title="新增 Tab" style={{ padding: '0 12px', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center' }}><Plus size={16} /></button>
         {menuOpen && (
           <>
             {/* 点外部关闭 */}
@@ -77,7 +79,7 @@ export function TabBar() {
                     textAlign: 'left', borderRadius: 'var(--radius)'
                   }}
                 >
-                  <span>{o.icon}</span>{o.label}
+                  <span style={{ display: 'inline-flex', alignItems: 'center' }}><o.icon size={14} /></span>{o.label}
                 </button>
               ))}
             </div>

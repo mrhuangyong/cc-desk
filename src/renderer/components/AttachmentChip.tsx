@@ -1,3 +1,4 @@
+import { Paperclip } from 'lucide-react'
 import type { PickedElement } from '../types'
 
 interface Props {
@@ -21,7 +22,7 @@ export function AttachmentChip({ attachment, onRemove }: Props) {
       }}
       title={`来源: ${attachment.source}\n选择器: ${attachment.selector}`}
     >
-      <span aria-hidden style={{ fontSize: 13 }}>📎</span>
+      <span aria-hidden style={{ display: 'inline-flex', alignItems: 'center' }}><Paperclip size={13} /></span>
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
       {onRemove && (
         <button

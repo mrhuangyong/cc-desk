@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ArrowLeft, Folder, FolderOpen, FileText } from 'lucide-react'
 import { useStore } from '../state/store'
 import { mockFileTrees } from '../state/mockData'
 import type { FileNode } from '../types'
@@ -16,9 +17,9 @@ function Node({ node, depth }: { node: FileNode; depth: number }) {
           onMouseEnter={() => setHovered(true)}
           onMouseLeave={() => setHovered(false)}
           onClick={() => setOpen(o => !o)}
-          style={{ padding: '5px 12px', paddingLeft: 12 + depth * 16, cursor: 'pointer', color: 'var(--text)', background: hoverBg }}
+          style={{ padding: '5px 12px', paddingLeft: 12 + depth * 16, cursor: 'pointer', color: 'var(--text)', background: hoverBg, display: 'flex', alignItems: 'center', gap: 4 }}
         >
-          {open ? '📂' : '📁'} {node.name}
+          {open ? <FolderOpen size={14} /> : <Folder size={14} />} {node.name}
         </div>
         {open && node.children?.map(c => <Node key={c.path} node={c} depth={depth + 1} />)}
       </div>
@@ -29,9 +30,9 @@ function Node({ node, depth }: { node: FileNode; depth: number }) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onClick={() => dispatch({ type: 'OPEN_FILE_TAB', filePath: node.path, fileName: node.name })}
-      style={{ padding: '4px 12px', paddingLeft: 12 + depth * 16, cursor: 'pointer', color: 'var(--text-muted)', background: hoverBg }}
+      style={{ padding: '4px 12px', paddingLeft: 12 + depth * 16, cursor: 'pointer', color: 'var(--text-muted)', background: hoverBg, display: 'flex', alignItems: 'center', gap: 4 }}
     >
-      📄 {node.name}
+      <FileText size={14} /> {node.name}
     </div>
   )
 }
@@ -44,7 +45,7 @@ export function FileTree({ projectId, onBack }: { projectId: string; onBack: () 
   return (
     <div style={{ flex: 1, overflowY: 'auto' }}>
       <button onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onClick={onBack} style={{ padding: '10px 12px', color: 'var(--text-muted)', background: hovered ? 'var(--bg-hover)' : 'transparent', display: 'flex', alignItems: 'center', gap: 6, borderBottom: '1px solid var(--border)', width: '100%', cursor: 'pointer' }}>
-        ← {project?.name}
+        <ArrowLeft size={14} /> {project?.name}
       </button>
       {nodes.map(n => <Node key={n.path} node={n} depth={0} />)}
     </div>
