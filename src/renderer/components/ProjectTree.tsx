@@ -37,7 +37,7 @@ export function ProjectTree({ onOpenFiles, expandedProjects, onToggleExpand, tre
               onClick={() => onToggleExpand(project.id)}
               style={{
                 padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                fontWeight: 600, color: 'var(--text)', cursor: 'pointer',
+                fontSize: 'var(--font-size)', fontWeight: 550, color: 'var(--text)', cursor: 'pointer',
                 background: hoveredProject === project.id ? 'var(--bg-hover)' : 'transparent'
               }}
             >
@@ -65,6 +65,7 @@ export function ProjectTree({ onOpenFiles, expandedProjects, onToggleExpand, tre
                 onClick={() => dispatch({ type: 'SELECT_SESSION', sessionId: session.id })}
                 style={{
                   padding: '6px 12px 6px 30px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  fontSize: 'var(--font-size)',
                   color: active ? 'var(--text)' : 'var(--text-muted)',
                   background: active || hoveredSession === session.id ? 'var(--bg-hover)' : 'transparent',
                   fontWeight: active ? 500 : 400,

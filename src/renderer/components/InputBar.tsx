@@ -88,7 +88,8 @@ export function InputBar() {
   return (
     <div style={{
       background: 'var(--bg-elevated)', borderRadius: 'var(--radius-lg)',
-      boxShadow: 'var(--shadow-float)', overflow: 'hidden',
+      boxShadow: 'var(--shadow-float)',
+      // 不用 overflow:hidden——否则向上展开的下拉菜单会被裁掉
     }}>
       {/* 文本区 */}
       <div style={{ position: 'relative' }}>
