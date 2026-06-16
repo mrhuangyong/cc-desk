@@ -3,10 +3,10 @@ import { useTheme } from '../hooks/useTheme'
 import type { ThemeId } from '../types'
 
 const THEMES: { id: ThemeId; label: string; swatch: string }[] = [
-  { id: 'dark-warm', label: '暖色暗夜', swatch: '#d97757' },
-  { id: 'dark-cool', label: '冷峻深空', swatch: '#2f81f7' },
-  { id: 'light-editorial', label: '纸感明亮', swatch: '#8b6f47' },
-  { id: 'dark-acid', label: '酸性极客', swatch: '#ccff00' }
+  { id: 'codex-light', label: 'Codex 浅色', swatch: '#ffffff' },
+  { id: 'codex-warm', label: 'Codex 暖白', swatch: '#fdfcfa' },
+  { id: 'codex-cool', label: 'Codex 冷灰', swatch: '#fbfcfd' },
+  { id: 'codex-paper', label: 'Codex 纸感', swatch: '#f8f6f1' }
 ]
 
 export function ThemeSwitcher() {
@@ -36,7 +36,7 @@ export function ThemeSwitcher() {
                 background: theme === t.id ? 'var(--bg-hover)' : 'transparent'
               }}
             >
-              <span style={{ width: 12, height: 12, borderRadius: 2, background: t.swatch, display: 'inline-block' }} />
+              <span style={{ width: 12, height: 12, borderRadius: 2, background: t.swatch, display: 'inline-block', border: '1px solid var(--border)' }} />
               {t.label}
             </button>
           ))}

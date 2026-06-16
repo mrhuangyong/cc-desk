@@ -51,7 +51,7 @@ export interface Tab {
 }
 
 // 主题 ID
-export type ThemeId = 'dark-warm' | 'dark-cool' | 'light-editorial' | 'dark-acid'
+export type ThemeId = 'codex-light' | 'codex-warm' | 'codex-cool' | 'codex-paper'
 
 // 文件节点：文件树态用
 export interface FileNode {
