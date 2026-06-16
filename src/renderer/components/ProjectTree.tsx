@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Folder, FolderOpen, MessageCircle, FolderTree, ChevronDown, ChevronRight } from 'lucide-react'
 import { useStore } from '../state/store'
 import { DeleteConfirmIcon } from './DeleteConfirmIcon'
 
@@ -42,13 +43,13 @@ export function ProjectTree({ onOpenFiles, expandedProjects, onToggleExpand, tre
               }}
             >
               <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ width: 12, display: 'inline-block', color: 'var(--text-muted)' }}>{expanded ? '▾' : '▸'}</span>
-                📁 {project.name}
+                <span style={{ width: 12, display: 'inline-flex', alignItems: 'center', color: 'var(--text-muted)' }}>{expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
+                {expanded ? <FolderOpen size={14} /> : <Folder size={14} />} {project.name}
               </span>
               <span style={{ display: 'flex', gap: 8 }}>
                 <button aria-label="项目文件树" title="项目文件树"
                   onClick={(e) => { e.stopPropagation(); onOpenFiles(project.id) }}
-                  style={{ opacity: hoveredProject === project.id ? 0.85 : 0, transition: 'opacity .1s', pointerEvents: hoveredProject === project.id ? 'auto' : 'none' }}>📂</button>
+                  style={{ opacity: hoveredProject === project.id ? 0.85 : 0, transition: 'opacity .1s', pointerEvents: hoveredProject === project.id ? 'auto' : 'none', display: 'inline-flex', alignItems: 'center' }}><FolderTree size={13} /></button>
                 {/* 注：项目行不再有"新增会话"按钮——新建统一走左栏顶部"新建会话" */}
                 <span onClick={e => e.stopPropagation()}>
                   <DeleteConfirmIcon onConfirm={() => dispatch({ type: 'DELETE_PROJECT', projectId: project.id })} />
@@ -74,7 +75,7 @@ export function ProjectTree({ onOpenFiles, expandedProjects, onToggleExpand, tre
               >
                 <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ width: 6, height: 6, borderRadius: 999, background: active ? 'var(--accent)' : 'transparent', flexShrink: 0 }} />
-                  💬 {session.title}
+                  <MessageCircle size={13} /> {session.title}
                 </span>
                 <span style={{ opacity: hoveredSession === session.id ? 1 : 0, pointerEvents: hoveredSession === session.id ? 'auto' : 'none' }}>
                   <DeleteConfirmIcon onConfirm={() => dispatch({ type: 'DELETE_SESSION', projectId: project.id, sessionId: session.id })} />

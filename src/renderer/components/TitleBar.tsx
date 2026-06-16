@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react'
+import { Settings, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from 'lucide-react'
 import { ThemeSwitcher } from './ThemeSwitcher'
 import { useStore } from '../state/store'
 
@@ -33,9 +34,9 @@ export function TitleBar({ projectName, leftCollapsed, rightCollapsed, onToggleL
         onClick={onToggleLeft}
         title={leftCollapsed ? '展开左栏' : '收起左栏'}
         aria-label={leftCollapsed ? '展开左栏' : '收起左栏'}
-        style={{ fontSize: 17, padding: '4px 8px', color: 'var(--text-muted)', lineHeight: 1, ...noDrag }}
+        style={{ padding: '4px 8px', color: 'var(--text-muted)', lineHeight: 1, display: 'inline-flex', alignItems: 'center', ...noDrag }}
       >
-        {leftCollapsed ? '»' : '«'}
+        {leftCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
       </button>
 
       <span style={{ flex: 1, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
@@ -47,13 +48,13 @@ export function TitleBar({ projectName, leftCollapsed, rightCollapsed, onToggleL
         onClick={onToggleRight}
         title={rightCollapsed ? '展开右栏' : '收起右栏'}
         aria-label={rightCollapsed ? '展开右栏' : '收起右栏'}
-        style={{ fontSize: 17, padding: '4px 8px', color: 'var(--text-muted)', lineHeight: 1, ...noDrag }}
+        style={{ padding: '4px 8px', color: 'var(--text-muted)', lineHeight: 1, display: 'inline-flex', alignItems: 'center', ...noDrag }}
       >
-        {rightCollapsed ? '«' : '»'}
+        {rightCollapsed ? <PanelRightOpen size={16} /> : <PanelRightClose size={16} />}
       </button>
       <div style={{ display: 'flex', gap: 8, marginLeft: 8, ...noDrag }}>
         <ThemeSwitcher />
-        <button title="设置" onClick={() => dispatch({ type: 'SET_SETTINGS_SECTION', section: 'general' })} style={{ fontSize: 17, padding: '4px 8px', lineHeight: 1, color: 'var(--text-muted)' }}>⚙</button>
+        <button title="设置" onClick={() => dispatch({ type: 'SET_SETTINGS_SECTION', section: 'general' })} style={{ padding: '4px 8px', lineHeight: 1, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center' }}><Settings size={17} /></button>
       </div>
     </div>
   )

@@ -6,9 +6,10 @@ describe('DeleteConfirmIcon', () => {
   it('初始显示删除图标，点击变为确认图标', () => {
     render(<DeleteConfirmIcon onConfirm={() => {}} />)
     const btn = screen.getByRole('button', { name: /删除/ })
-    expect(btn).toHaveTextContent('🗑️')
+    // 图标现在是 Lucide SVG，不再有文本内容
+    expect(btn.querySelector('svg')).toBeTruthy()
     fireEvent.click(btn)
-    expect(screen.getByRole('button', { name: /确认删除/ })).toHaveTextContent('✅')
+    expect(screen.getByRole('button', { name: /确认删除/ }).querySelector('svg')).toBeTruthy()
   })
 
   it('点击确认图标触发 onConfirm', () => {
@@ -26,7 +27,7 @@ describe('DeleteConfirmIcon', () => {
     fireEvent.click(btn)
     const confirmBtn = screen.getByRole('button', { name: /确认删除/ })
     fireEvent.mouseLeave(confirmBtn)
-    expect(screen.getByRole('button', { name: /删除/ })).toHaveTextContent('🗑️')
+    expect(screen.getByRole('button', { name: /删除/ }).querySelector('svg')).toBeTruthy()
     expect(onConfirm).not.toHaveBeenCalled()
   })
 })

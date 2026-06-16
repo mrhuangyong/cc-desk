@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { ArrowLeft, ArrowRight, RefreshCw, Bug, MousePointerClick } from 'lucide-react'
 import { useStore } from '../state/store'
 
 // 拾取模式注入到 webview guest 页面的脚本。
@@ -162,21 +163,21 @@ export function BrowserTab() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div style={{ display: 'flex', gap: 4, padding: 6, borderBottom: '1px solid var(--border)', alignItems: 'center' }}>
-        <button disabled={idx === 0} onClick={() => go(-1)} style={{ ...btnBase, color: idx === 0 ? 'var(--text-muted)' : 'var(--text-muted)', opacity: idx === 0 ? 0.3 : 1 }}>←</button>
-        <button disabled={idx >= history.length - 1} onClick={() => go(1)} style={{ ...btnBase, color: 'var(--text-muted)', opacity: idx >= history.length - 1 ? 0.3 : 1 }}>→</button>
+        <button disabled={idx === 0} onClick={() => go(-1)} style={{ ...btnBase, color: idx === 0 ? 'var(--text-muted)' : 'var(--text-muted)', opacity: idx === 0 ? 0.3 : 1, display: 'inline-flex', alignItems: 'center' }}><ArrowLeft size={16} /></button>
+        <button disabled={idx >= history.length - 1} onClick={() => go(1)} style={{ ...btnBase, color: 'var(--text-muted)', opacity: idx >= history.length - 1 ? 0.3 : 1, display: 'inline-flex', alignItems: 'center' }}><ArrowRight size={16} /></button>
         <input
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') navigate(input) }}
           style={{ flex: 1, padding: '4px 8px', background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 'var(--radius)' }}
         />
-        <button title="刷新" onClick={() => webviewRef.current?.reload?.()} style={{ ...btnBase, color: 'var(--text-muted)' }}>🔄</button>
-        <button title="控制台 (DevTools)" onClick={() => webviewRef.current?.openDevTools?.()} style={{ ...btnBase, color: 'var(--text-muted)' }}>🐞</button>
+        <button title="刷新" onClick={() => webviewRef.current?.reload?.()} style={{ ...btnBase, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center' }}><RefreshCw size={16} /></button>
+        <button title="控制台 (DevTools)" onClick={() => webviewRef.current?.openDevTools?.()} style={{ ...btnBase, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center' }}><Bug size={16} /></button>
         <button
           title={picking ? '拾取中…（点击取消）' : '拾取元素填入对话输入框'}
           onClick={togglePick}
-          style={pickBtnStyle}
-        >👆</button>
+          style={{ ...pickBtnStyle, display: 'inline-flex', alignItems: 'center' }}
+        ><MousePointerClick size={16} /></button>
       </div>
       {url ? (
         <webview

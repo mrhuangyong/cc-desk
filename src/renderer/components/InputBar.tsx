@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import type { LucideIcon } from 'lucide-react'
+import { Paperclip, Check, AtSign, Hash, Slash, ShieldCheck, ChevronDown, ArrowUp, Square } from 'lucide-react'
 import { useStore } from '../state/store'
 import { mockModels } from '../state/mockData'
 import { AttachmentChip } from './AttachmentChip'
@@ -6,11 +8,11 @@ import { AttachmentChip } from './AttachmentChip'
 type MenuId = 'attach' | 'permission' | 'model' | 'thinking'
 
 const PERMISSIONS = ['变更前确认', '自动编辑', '计划模式', '完全访问']
-const ATTACH_ITEMS = [
-  { icon: '📎', label: '添加附件' },
-  { icon: '＋', label: '插入 @ 提及' },
-  { icon: '＋', label: '插入 # 会话' },
-  { icon: '＋', label: '插入 / 命令' },
+const ATTACH_ITEMS: { icon: LucideIcon; label: string }[] = [
+  { icon: Paperclip, label: '添加附件' },
+  { icon: AtSign, label: '插入 @ 提及' },
+  { icon: Hash, label: '插入 # 会话' },
+  { icon: Slash, label: '插入 / 命令' },
 ]
 const THINKINGS = ['minimal', 'standard', 'thorough']
 
@@ -134,7 +136,7 @@ export function InputBar() {
               onClick={() => toggleMenu('attach')}
               style={{ ...btnBase, background: openMenu === 'attach' ? 'var(--bg-hover)' : undefined, color: openMenu === 'attach' ? 'var(--text)' : undefined }}
             >
-              <span aria-hidden>📎</span><span>附件</span><span aria-hidden>▾</span>
+              <Paperclip size={13} /><span>附件</span><ChevronDown size={10} />
             </button>
             {openMenu === 'attach' && (
               <div style={menuStyle}>
@@ -147,7 +149,7 @@ export function InputBar() {
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                   >
                     <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-                      <span aria-hidden>{it.icon}</span>{it.label}
+                      <it.icon size={13} />{it.label}
                     </span>
                   </div>
                 ))}
@@ -161,7 +163,7 @@ export function InputBar() {
               onClick={() => toggleMenu('permission')}
               style={{ ...btnBase, background: 'var(--bg-hover)', color: 'var(--text)' }}
             >
-              <span aria-hidden>🛡</span><span>{permission}</span><span aria-hidden>▾</span>
+              <ShieldCheck size={13} /><span>{permission}</span><ChevronDown size={10} />
             </button>
             {openMenu === 'permission' && (
               <div style={menuStyle}>
@@ -177,7 +179,7 @@ export function InputBar() {
                     onMouseLeave={e => { if (p !== permission) e.currentTarget.style.background = 'transparent' }}
                   >
                     <span>{p}</span>
-                    {p === permission && <span aria-hidden>✓</span>}
+                    {p === permission && <Check size={13} />}
                   </div>
                 ))}
               </div>
@@ -193,7 +195,7 @@ export function InputBar() {
               onClick={() => toggleMenu('model')}
               style={{ ...btnBase, background: openMenu === 'model' ? 'var(--bg-hover)' : undefined, color: openMenu === 'model' ? 'var(--text)' : undefined }}
             >
-              <span>{modelName}</span><span aria-hidden>▾</span>
+              <span>{modelName}</span><ChevronDown size={10} />
             </button>
             {openMenu === 'model' && (
               <div style={{ ...menuStyle, minWidth: 200 }}>
@@ -209,7 +211,7 @@ export function InputBar() {
                     onMouseLeave={e => { if (m.id !== modelId) e.currentTarget.style.background = 'transparent' }}
                   >
                     <span>{m.name}</span>
-                    {m.id === modelId && <span aria-hidden>✓</span>}
+                    {m.id === modelId && <Check size={13} />}
                   </div>
                 ))}
               </div>
@@ -222,7 +224,7 @@ export function InputBar() {
               onClick={() => toggleMenu('thinking')}
               style={{ ...btnBase, background: openMenu === 'thinking' ? 'var(--bg-hover)' : undefined, color: openMenu === 'thinking' ? 'var(--text)' : undefined }}
             >
-              <span>思考:{thinking}</span><span aria-hidden>▾</span>
+              <span>思考:{thinking}</span><ChevronDown size={10} />
             </button>
             {openMenu === 'thinking' && (
               <div style={menuStyle}>
@@ -238,7 +240,7 @@ export function InputBar() {
                     onMouseLeave={e => { if (t !== thinking) e.currentTarget.style.background = 'transparent' }}
                   >
                     <span>{t}</span>
-                    {t === thinking && <span aria-hidden>✓</span>}
+                    {t === thinking && <Check size={13} />}
                   </div>
                 ))}
               </div>
@@ -258,7 +260,7 @@ export function InputBar() {
               fontSize: 12, lineHeight: 1,
             }}
           >
-            {generating ? '■' : '↑'}
+            {generating ? <Square size={12} /> : <ArrowUp size={14} />}
           </button>
         </div>
       </div>
