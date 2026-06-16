@@ -1,4 +1,4 @@
-import type { Message, PickedElement, TabType, ThemeId } from '../types'
+import type { AppView, Message, PickedElement, SettingsSection, TabType, ThemeId } from '../types'
 
 export type Action =
   | { type: 'DELETE_PROJECT'; projectId: string }
@@ -16,3 +16,5 @@ export type Action =
   | { type: 'SET_DRAFT_ATTACHMENT'; attachment: PickedElement }
   | { type: 'CLEAR_DRAFT_ATTACHMENT' }
   | { type: 'SEND_MESSAGE' } // 把当前 draft（text + attachment）合成消息追加到激活会话
+  | { type: 'SET_VIEW'; view: AppView }
+  | { type: 'SET_SETTINGS_SECTION'; section: SettingsSection }
