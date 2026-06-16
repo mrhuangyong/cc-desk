@@ -6,6 +6,7 @@ import { FileTree } from './FileTree'
 import { SearchDialog } from './SearchDialog'
 import { useStore } from '../state/store'
 import { useResizableWidth } from '../hooks/useResizableWidth'
+import { usePanelAnimation } from '../hooks/usePanelAnimation'
 
 interface Props {
   collapsed: boolean
@@ -26,6 +27,8 @@ export function LeftPanel({ collapsed }: Props) {
     max: Math.round(window.innerWidth * 0.8),
     side: 'right'
   })
+
+  const { mounted, styles: animStyles, onTransitionEnd } = usePanelAnimation(collapsed)
 
   const panelRef = useRef<HTMLDivElement>(null)
   const refCallback = useCallback((node: HTMLDivElement | null) => {
@@ -56,7 +59,7 @@ export function LeftPanel({ collapsed }: Props) {
     if (currentProjectId) dispatch({ type: 'ADD_SESSION', projectId: currentProjectId })
   }
 
-  if (collapsed) return null
+  if (!mounted) return null
 
   const topBtn = (key: string): CSSProperties => ({
     width: '100%', padding: '8px 12px', fontSize: 13, color: 'var(--text)',
@@ -77,22 +80,26 @@ export function LeftPanel({ collapsed }: Props) {
     <>
       <div
         ref={refCallback}
+        onTransitionEnd={onTransitionEnd}
         style={{
           width, flexShrink: 0, position: 'relative', background: 'var(--bg-sidebar)',
-          borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column'
+          borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column',
+          ...animStyles,
         }}
       >
-        {/* 拖拽手柄：右边缘竖条 */}
-        <div
-          onMouseDown={onMouseDown}
-          title="拖动调节宽度"
-          style={{
-            position: 'absolute', right: -3, top: 0, bottom: 0, width: 6,
-            cursor: 'col-resize', zIndex: 10,
-            background: dragging ? 'var(--accent)' : 'transparent',
-            transition: dragging ? 'none' : 'background .15s'
-          }}
-        />
+        {/* 拖拽手柄：右边缘竖条（动画期间禁用） */}
+        {!collapsed && (
+          <div
+            onMouseDown={onMouseDown}
+            title="拖动调节宽度"
+            style={{
+              position: 'absolute', right: -3, top: 0, bottom: 0, width: 6,
+              cursor: 'col-resize', zIndex: 10,
+              background: dragging ? 'var(--accent)' : 'transparent',
+              transition: dragging ? 'none' : 'background .15s'
+            }}
+          />
+        )}
         {/* 顶部功能区 */}
         <div style={{ display: 'flex', flexDirection: 'column', borderBottom: '1px solid var(--border)' }}>
           <button onMouseEnter={() => setHovered('new')} onMouseLeave={() => setHovered(null)} onClick={handleNewSession} title="新建会话" style={topBtn('new')}><Plus size={14} /> 新建会话</button>
