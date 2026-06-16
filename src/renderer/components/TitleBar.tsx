@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react'
 import { ThemeSwitcher } from './ThemeSwitcher'
+import { useStore } from '../state/store'
 
 // WebkitAppRegion is an Electron/WebKit CSS property not present in React's
 // CSSProperties. Define a local superset so the drag regions type-check.
@@ -17,6 +18,7 @@ interface Props {
 }
 
 export function TitleBar({ projectName, leftCollapsed, rightCollapsed, onToggleLeft, onToggleRight }: Props) {
+  const { dispatch } = useStore()
   return (
     <div style={{
       display: 'flex', alignItems: 'center', height: 36, padding: '0 8px',
@@ -51,7 +53,7 @@ export function TitleBar({ projectName, leftCollapsed, rightCollapsed, onToggleL
       </button>
       <div style={{ display: 'flex', gap: 8, marginLeft: 8, ...noDrag }}>
         <ThemeSwitcher />
-        <button title="设置" style={{ fontSize: 17, padding: '4px 8px', lineHeight: 1 }}>⚙</button>
+        <button title="设置" onClick={() => dispatch({ type: 'SET_SETTINGS_SECTION', section: 'general' })} style={{ fontSize: 17, padding: '4px 8px', lineHeight: 1 }}>⚙</button>
       </div>
     </div>
   )

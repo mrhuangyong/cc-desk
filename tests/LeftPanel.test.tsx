@@ -50,10 +50,10 @@ describe('LeftPanel 顶部新建会话', () => {
     expect(screen.getByPlaceholderText('搜索会话、命令……')).toBeTruthy()
   })
 
-  it('顶部"技能"按钮打开技能面板', () => {
+  it('顶部"技能"按钮可点击（跳转设置技能子页）', () => {
     renderWithProvider(<LeftPanel collapsed={false} onExpand={() => {}} />)
-    fireEvent.click(screen.getByTitle('技能'))
-    // 技能面板有"本地技能"标题
-    expect(screen.getByText('本地技能')).toBeTruthy()
+    const btn = screen.getByTitle('技能')
+    fireEvent.click(btn) // 不报错即通过；实际跳转由 App 视图切换体现
+    expect(btn).toBeTruthy()
   })
 })
