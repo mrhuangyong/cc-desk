@@ -26,13 +26,13 @@ export function TabBar() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--bg-sidebar)' }}>
+      <div style={{ display: 'flex', minHeight: 36, alignItems: 'stretch', borderBottom: '1px solid var(--border)', background: 'var(--bg-sidebar)' }}>
         {tabs.map(t => (
           <div
             key={t.id}
             onClick={() => dispatch({ type: 'SELECT_TAB', tabId: t.id })}
             style={{
-              padding: '7px 10px', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+              padding: '0 12px', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
               borderBottom: activeTabId === t.id ? '2px solid var(--accent)' : '2px solid transparent',
               color: activeTabId === t.id ? 'var(--text)' : 'var(--text-muted)', fontSize: 13,
               maxWidth: 140
@@ -40,10 +40,10 @@ export function TabBar() {
           >
             <span>{TAB_ICON[t.type]}</span>
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</span>
-            <button onClick={(e) => { e.stopPropagation(); dispatch({ type: 'CLOSE_TAB', tabId: t.id }) }} style={{ fontSize: 12, opacity: 0.6 }} aria-label="关闭标签">×</button>
+            <button onClick={(e) => { e.stopPropagation(); dispatch({ type: 'CLOSE_TAB', tabId: t.id }) }} style={{ fontSize: 14, opacity: 0.6, lineHeight: 1 }} aria-label="关闭标签">×</button>
           </div>
         ))}
-        <button onClick={addTab} title="新增 Tab" style={{ padding: '0 10px', color: 'var(--text-muted)' }}>+</button>
+        <button onClick={addTab} title="新增 Tab" style={{ padding: '0 12px', color: 'var(--text-muted)', fontSize: 18, lineHeight: 1 }}>+</button>
       </div>
       {renderContent()}
     </div>
