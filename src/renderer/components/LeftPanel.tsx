@@ -28,7 +28,7 @@ export function LeftPanel({ collapsed }: Props) {
     side: 'right'
   })
 
-  const { mounted, styles: animStyles, onTransitionEnd } = usePanelAnimation(collapsed)
+  const { mounted, animating, originalWidthRef, styles: animStyles, onTransitionEnd } = usePanelAnimation(collapsed)
 
   const panelRef = useRef<HTMLDivElement>(null)
   const refCallback = useCallback((node: HTMLDivElement | null) => {
@@ -76,6 +76,14 @@ export function LeftPanel({ collapsed }: Props) {
     transition: 'background .1s'
   })
 
+  // 动画开始时锁定原始宽度，防止内容换行
+  if (animating && originalWidthRef.current === 0) {
+    originalWidthRef.current = width
+  }
+  if (!animating) {
+    originalWidthRef.current = 0
+  }
+
   return (
     <>
       <div
@@ -100,35 +108,41 @@ export function LeftPanel({ collapsed }: Props) {
             }}
           />
         )}
-        {/* 顶部功能区 */}
-        <div style={{ display: 'flex', flexDirection: 'column', borderBottom: '1px solid var(--border)' }}>
-          <button onMouseEnter={() => setHovered('new')} onMouseLeave={() => setHovered(null)} onClick={handleNewSession} title="新建会话" style={topBtn('new')}><Plus size={14} /> 新建会话</button>
-          <button onMouseEnter={() => setHovered('search')} onMouseLeave={() => setHovered(null)} onClick={() => setSearchOpen(true)} title="搜索" style={topBtn('search')}><Search size={14} /> 搜索</button>
-          <button onMouseEnter={() => setHovered('skills')} onMouseLeave={() => setHovered(null)} onClick={() => dispatch({ type: 'SET_SETTINGS_SECTION', section: 'skills' })} title="技能" style={topBtn('skills')}><Zap size={14} /> 技能</button>
-        </div>
-
-        {/* 工作区行 */}
+        {/* 内层 wrapper：动画期间固定原始宽度，overflow:hidden 裁剪 */}
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px',
-          borderBottom: '1px solid var(--border)'
+          display: 'flex', flexDirection: 'column', flex: 1, minWidth: animating ? originalWidthRef.current : undefined,
+          overflow: 'hidden',
         }}>
-          <span style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginRight: 'auto' }}>工作区</span>
-          <button onMouseEnter={() => setHovered('toggleAll')} onMouseLeave={() => setHovered(null)} onClick={toggleAll} title="展开/折叠" aria-label="展开/折叠" style={toolBtn('toggleAll')}><ChevronsUpDown size={13} /></button>
-          <button onMouseEnter={() => setHovered('sort')} onMouseLeave={() => setHovered(null)} title="排序/筛选" aria-label="排序/筛选" style={toolBtn('sort')}><ArrowUpDown size={13} /></button>
-          <button onMouseEnter={() => setHovered('search2')} onMouseLeave={() => setHovered(null)} onClick={() => setSearchOpen(true)} title="搜索" aria-label="搜索" style={toolBtn('search2')}><Search size={13} /></button>
-        </div>
+          {/* 顶部功能区 */}
+          <div style={{ display: 'flex', flexDirection: 'column', borderBottom: '1px solid var(--border)' }}>
+            <button onMouseEnter={() => setHovered('new')} onMouseLeave={() => setHovered(null)} onClick={handleNewSession} title="新建会话" style={topBtn('new')}><Plus size={14} /> 新建会话</button>
+            <button onMouseEnter={() => setHovered('search')} onMouseLeave={() => setHovered(null)} onClick={() => setSearchOpen(true)} title="搜索" style={topBtn('search')}><Search size={14} /> 搜索</button>
+            <button onMouseEnter={() => setHovered('skills')} onMouseLeave={() => setHovered(null)} onClick={() => dispatch({ type: 'SET_SETTINGS_SECTION', section: 'skills' })} title="技能" style={topBtn('skills')}><Zap size={14} /> 技能</button>
+          </div>
 
-        {/* 项目会话树 / 文件树 */}
-        {fileViewProjectId ? (
-          <FileTree projectId={fileViewProjectId} onBack={() => setFileViewProjectId(null)} />
-        ) : (
-          <ProjectTree
-            onOpenFiles={(pid) => setFileViewProjectId(pid)}
-            expandedProjects={expandedProjects}
-            onToggleExpand={toggleExpand}
-            treeFilter=""
-          />
-        )}
+          {/* 工作区行 */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px',
+            borderBottom: '1px solid var(--border)'
+          }}>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginRight: 'auto' }}>工作区</span>
+            <button onMouseEnter={() => setHovered('toggleAll')} onMouseLeave={() => setHovered(null)} onClick={toggleAll} title="展开/折叠" aria-label="展开/折叠" style={toolBtn('toggleAll')}><ChevronsUpDown size={13} /></button>
+            <button onMouseEnter={() => setHovered('sort')} onMouseLeave={() => setHovered(null)} title="排序/筛选" aria-label="排序/筛选" style={toolBtn('sort')}><ArrowUpDown size={13} /></button>
+            <button onMouseEnter={() => setHovered('search2')} onMouseLeave={() => setHovered(null)} onClick={() => setSearchOpen(true)} title="搜索" aria-label="搜索" style={toolBtn('search2')}><Search size={13} /></button>
+          </div>
+
+          {/* 项目会话树 / 文件树 */}
+          {fileViewProjectId ? (
+            <FileTree projectId={fileViewProjectId} onBack={() => setFileViewProjectId(null)} />
+          ) : (
+            <ProjectTree
+              onOpenFiles={(pid) => setFileViewProjectId(pid)}
+              expandedProjects={expandedProjects}
+              onToggleExpand={toggleExpand}
+              treeFilter=""
+            />
+          )}
+        </div>
       </div>
 
       {searchOpen && <SearchDialog onClose={() => setSearchOpen(false)} />}
