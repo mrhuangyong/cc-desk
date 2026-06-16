@@ -50,7 +50,7 @@ export function McpSettings() {
       <input
         placeholder="搜索 MCP 服务器..."
         value={q} onChange={e => setQ(e.target.value)}
-        style={{ width: '100%', padding: '8px 12px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', marginBottom: 14 }}
+        style={{ width: '100%', padding: '8px 12px', background: 'var(--bg-sidebar)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', marginBottom: 14 }}
       />
 
       {/* 计数 */}
@@ -59,7 +59,7 @@ export function McpSettings() {
       </div>
 
       {/* 列表 */}
-      <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--bg-elevated)' }}>
+      <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--bg)', boxShadow: 'var(--shadow-float)' }}>
         {filtered.length === 0 && (
           <div style={{ padding: 20, color: 'var(--text-muted)', textAlign: 'center', fontSize: 13 }}>无匹配 MCP</div>
         )}

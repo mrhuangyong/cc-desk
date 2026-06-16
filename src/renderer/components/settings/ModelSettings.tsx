@@ -2,10 +2,10 @@ import { useState } from 'react'
 import { mockProviders, mockModels } from '../../state/mockData'
 import type { ModelProvider, ModelItem } from '../../types'
 
-const inputStyle: React.CSSProperties = { width: '100%', padding: '7px 10px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)', fontFamily: 'var(--font-mono)', fontSize: 12 }
+const inputStyle: React.CSSProperties = { width: '100%', padding: '7px 10px', background: 'var(--bg-sidebar)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)', fontFamily: 'var(--font-mono)', fontSize: 12 }
 const fieldLabelStyle: React.CSSProperties = { color: 'var(--text-muted)', fontSize: 11, marginBottom: 4, marginTop: 12 }
 const iconBtn: React.CSSProperties = { padding: '4px 6px', fontSize: 13, cursor: 'pointer', background: 'transparent', border: 'none', color: 'var(--text-muted)', lineHeight: 1 }
-const smallBtn: React.CSSProperties = { padding: '4px 10px', fontSize: 12, cursor: 'pointer', border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'transparent', color: 'var(--text)' }
+const smallBtn: React.CSSProperties = { padding: '4px 10px', fontSize: 12, cursor: 'pointer', border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--bg)', color: 'var(--text)' }
 
 const API_FORMATS = [
   'Anthropic Messages (/v1/messages)',
@@ -80,7 +80,7 @@ export function ModelSettings() {
                 padding: '8px 10px', marginBottom: 2, borderRadius: 'var(--radius)', cursor: 'pointer',
                 border: 'none',
                 background: p.id === activeId ? 'var(--bg-hover)' : 'transparent',
-                color: p.id === activeId ? 'var(--accent)' : 'var(--text)', fontSize: 13
+                color: p.id === activeId ? 'var(--text)' : 'var(--text)', fontSize: 13
               }}
             >
               <span style={{ fontSize: 10 }}>{p.id === activeId ? '●' : '○'}</span>

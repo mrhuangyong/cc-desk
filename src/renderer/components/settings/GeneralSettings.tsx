@@ -24,9 +24,9 @@ function Segmented({ value, options, onChange }: { value: string; options: { id:
   )
 }
 
-const selectStyle: React.CSSProperties = { padding: '5px 10px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)' }
-const inputStyle: React.CSSProperties = { padding: '6px 10px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)', fontFamily: 'var(--font-mono)', fontSize: 12, minWidth: 280 }
-const saveBtnStyle: React.CSSProperties = { padding: '5px 12px', fontSize: 12, cursor: 'pointer', border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'transparent', color: 'var(--text)' }
+const selectStyle: React.CSSProperties = { padding: '5px 10px', background: 'var(--bg-sidebar)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)' }
+const inputStyle: React.CSSProperties = { padding: '6px 10px', background: 'var(--bg-sidebar)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)', fontFamily: 'var(--font-mono)', fontSize: 12, minWidth: 280 }
+const saveBtnStyle: React.CSSProperties = { padding: '5px 12px', fontSize: 12, cursor: 'pointer', border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--bg)', color: 'var(--text)' }
 
 export function GeneralSettings() {
   const { state, dispatch } = useStore()

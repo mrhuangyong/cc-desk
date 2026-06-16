@@ -31,7 +31,7 @@ export function PluginSettings() {
       <input
         placeholder="搜索插件..."
         value={q} onChange={e => setQ(e.target.value)}
-        style={{ width: '100%', padding: '8px 12px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', marginBottom: 14 }}
+        style={{ width: '100%', padding: '8px 12px', background: 'var(--bg-sidebar)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', marginBottom: 14 }}
       />
 
       {/* 插件卡片列表 */}
@@ -42,7 +42,7 @@ export function PluginSettings() {
         {filtered.map(p => (
           <div key={p.id} style={{
             border: '1px solid var(--border)', borderRadius: 'var(--radius)',
-            background: 'var(--bg-elevated)', padding: '14px 16px'
+            background: 'var(--bg)', boxShadow: 'var(--shadow-float)', padding: '14px 16px'
           }}>
             {/* 标题行：图标 + 名称 + 版本 + 来源 + 开关 */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>

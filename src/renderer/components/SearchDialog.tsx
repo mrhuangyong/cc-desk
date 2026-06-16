@@ -69,8 +69,8 @@ export function SearchDialog({ onClose }: Props) {
         onClick={e => e.stopPropagation()}
         style={{
           width: 'min(560px, 90vw)', maxHeight: '70vh', display: 'flex', flexDirection: 'column',
-          background: 'var(--bg-elevated)', border: '1px solid var(--border)',
-          borderRadius: 'var(--radius)', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', overflow: 'hidden'
+          background: 'var(--bg)', border: '1px solid var(--border)',
+          borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-float)', overflow: 'hidden'
         }}
       >
         <input

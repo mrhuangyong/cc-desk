@@ -39,8 +39,9 @@ export function SettingsMenu() {
               display: 'block', width: '100%', textAlign: 'left',
               padding: '8px 12px', marginBottom: 2, borderRadius: 'var(--radius)',
               cursor: 'pointer', border: 'none',
-              background: isActive ? 'var(--bg-hover)' : 'transparent',
-              color: isActive ? 'var(--accent)' : 'var(--text)',
+              background: isActive ? 'var(--bg)' : 'transparent',
+              color: isActive ? 'var(--text)' : 'var(--text)',
+              boxShadow: isActive ? 'var(--shadow-float)' : 'none',
               fontFamily: 'var(--font)', fontSize: 13
             }}
           >{item.label}</button>

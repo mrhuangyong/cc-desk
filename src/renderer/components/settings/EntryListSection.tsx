@@ -4,7 +4,7 @@ import { SettingsLayout } from './SettingsLayout'
 
 interface Props { title: string; entries: SettingsEntry[] }
 
-const inputStyle: React.CSSProperties = { padding: '6px 10px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)' }
+const inputStyle: React.CSSProperties = { width: '100%', padding: '6px 10px', background: 'var(--bg-sidebar)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)' }
 const entryRowStyle: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border)' }
 
 export function EntryListSection({ title, entries }: Props) {
