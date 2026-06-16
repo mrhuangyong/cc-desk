@@ -16,7 +16,7 @@ export function RightPanel({ collapsed }: Props) {
     // 不传 storageKey：右栏宽度不持久化，每次展开恢复默认宽度
   })
 
-  const { mounted, styles: animStyles, onTransitionEnd } = usePanelAnimation(collapsed)
+  const { mounted, animating, originalWidthRef, styles: animStyles, onTransitionEnd } = usePanelAnimation(collapsed)
 
   const panelRef = useRef<HTMLDivElement>(null)
 
@@ -27,6 +27,14 @@ export function RightPanel({ collapsed }: Props) {
       registerApply((w: number) => { node.style.width = `${w}px` })
     }
   }, [registerApply])
+
+  // 动画开始时锁定原始宽度，防止内容换行
+  if (animating && originalWidthRef.current === 0) {
+    originalWidthRef.current = width
+  }
+  if (!animating) {
+    originalWidthRef.current = 0
+  }
 
   if (!mounted) return null
 
@@ -53,7 +61,13 @@ export function RightPanel({ collapsed }: Props) {
           }}
         />
       )}
-      <TabBar />
+      {/* 内层 wrapper：动画期间固定原始宽度，overflow:hidden 裁剪 */}
+      <div style={{
+        display: 'flex', flexDirection: 'column', flex: 1, minWidth: animating ? originalWidthRef.current : undefined,
+        overflow: 'hidden',
+      }}>
+        <TabBar />
+      </div>
     </div>
   )
 }

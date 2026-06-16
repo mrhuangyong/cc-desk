@@ -5,30 +5,26 @@ type Phase = 'idle' | 'expanding' | 'transitioning' | 'expanded' | 'collapsing'
 /**
  * 面板展开/折叠动画。
  *
- * 展开 3 步：
- *   expanding    — width:0, 无 transition（挂载）
- *   transitioning — transition 已激活，宽度仍 0（准备）
- *   expanded     — 释放宽度控制，resizable hook 接管 → CSS 动画 0→target
+ * 用内层 wrapper 固定原始宽度（minWidth），外层 overflow:hidden 裁剪，
+ * 避免动画过程中内容换行。
  *
- * 折叠 1 步：
- *   collapsing — transition + width:0 → transitionend → idle（卸载）
+ * 展开 3 步：expanding → transitioning → expanded
+ * 折叠 1 步：collapsing → transitionend → idle
  */
 export function usePanelAnimation(collapsed: boolean) {
   const [phase, setPhase] = useState<Phase>(collapsed ? 'idle' : 'expanded')
   const [targetWidth, setTargetWidth] = useState<number | undefined>(undefined)
+  const originalWidthRef = useRef(0)
   const rafRef = useRef(0)
 
   useEffect(() => {
     cancelAnimationFrame(rafRef.current)
     if (!collapsed) {
-      // 第 1 帧：挂载，width:0
       setPhase('expanding')
       setTargetWidth(0)
       rafRef.current = requestAnimationFrame(() => {
-        // 第 2 帧：激活 transition，宽度仍为 0
         setPhase('transitioning')
         rafRef.current = requestAnimationFrame(() => {
-          // 第 3 帧：释放宽度控制 → resizable hook 的 width 生效 → 触发动画
           setPhase('expanded')
           setTargetWidth(undefined)
         })
@@ -48,6 +44,8 @@ export function usePanelAnimation(collapsed: boolean) {
     }
   }, [phase])
 
+  const animating = phase === 'expanding' || phase === 'transitioning' || phase === 'collapsing'
+
   const styles: React.CSSProperties = phase === 'expanding'
     ? { width: targetWidth, overflow: 'hidden' }
     : phase === 'transitioning'
@@ -60,6 +58,8 @@ export function usePanelAnimation(collapsed: boolean) {
 
   return {
     mounted: phase !== 'idle',
+    animating,
+    originalWidthRef,
     styles,
     onTransitionEnd,
   }
