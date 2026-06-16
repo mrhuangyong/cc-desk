@@ -1,3 +1,3 @@
-export function HooksSettings() {
-  return <div style={{ color: 'var(--text)', fontSize: 18 }}>hooks</div>
-}
+import { mockHooks } from '../../state/mockData'
+import { EntryListSection } from './EntryListSection'
+export function HooksSettings() { return <EntryListSection title="hooks" entries={mockHooks} /> }
