@@ -11,7 +11,8 @@ function initialState(): AppState {
     // 每个 session 的 Tab 组，key = sessionId
     tabsBySession: { s1: [] },
     activeTabIdBySession: { s1: null },
-    theme: 'dark-warm'
+    theme: 'dark-warm',
+    draft: { text: '' }
   }
 }
 
@@ -153,6 +154,45 @@ describe('reducer', () => {
     expect(next.theme).toBe('dark-acid')
   })
 
+  it('ADD_MESSAGE 把消息追加到指定会话', () => {
+    const state = initialState() // s1 有 2 条消息
+    const before = state.projects.find(p => p.id === 'p1')!.sessions.find(s => s.id === 's1')!.messages.length
+    const next = reducer(state, {
+      type: 'ADD_MESSAGE',
+      sessionId: 's1',
+      message: { id: 'pick1', role: 'user', content: '[拾取的网页元素] ...' }
+    })
+    const after = next.projects.find(p => p.id === 'p1')!.sessions.find(s => s.id === 's1')!.messages.length
+    expect(after).toBe(before + 1)
+  })
+
+  it('ADD_MESSAGE 不影响其他会话的消息', () => {
+    const state = initialState()
+    const next = reducer(state, {
+      type: 'ADD_MESSAGE',
+      sessionId: 's1',
+      message: { id: 'pick1', role: 'user', content: 'x' }
+    })
+    const s2msgs = next.projects.find(p => p.id === 'p1')!.sessions.find(s => s.id === 's2')!.messages.length
+    expect(s2msgs).toBe(0) // s2 仍空
+  })
+
+  it('ADD_MESSAGE 对不存在的会话：现有会话消息数不变，不崩', () => {
+    const state = initialState()
+    const next = reducer(state, {
+      type: 'ADD_MESSAGE',
+      sessionId: 'nope',
+      message: { id: 'x', role: 'user', content: 'x' }
+    })
+    // 逐会话比对消息数——不存在的 sessionId 不应改变任何真实会话
+    state.projects.forEach(p => {
+      p.sessions.forEach(s => {
+        const after = next.projects.find(pp => pp.id === p.id)!.sessions.find(ss => ss.id === s.id)!.messages.length
+        expect(after).toBe(s.messages.length)
+      })
+    })
+  })
+
   it('reducer 保持不可变性 (返回新对象，不改原 state)', () => {
     const state = initialState()
     const next = reducer(state, { type: 'ADD_SESSION', projectId: 'p2' })
@@ -160,5 +200,55 @@ describe('reducer', () => {
     expect(next.projects).not.toBe(state.projects)
     // 原 state 的 p2 会话数应不变
     expect(state.projects.find(p => p.id === 'p2')!.sessions.length).toBe(1)
+  })
+
+  it('SET_DRAFT_ATTACHMENT / CLEAR_DRAFT_ATTACHMENT 管理草稿附件', () => {
+    const state = initialState()
+    const att = { source: 'https://x.com', tag: 'div', text: 'hi', selector: 'div', html: '<div/>' }
+    const s1 = reducer(state, { type: 'SET_DRAFT_ATTACHMENT', attachment: att })
+    expect(s1.draft.attachment).toEqual(att)
+    expect(s1.draft.text).toBe('') // 文本不丢
+    const s2 = reducer(s1, { type: 'SET_DRAFT_TEXT', text: '看看这个' })
+    expect(s2.draft.text).toBe('看看这个')
+    expect(s2.draft.attachment).toEqual(att) // 附件还在
+    const s3 = reducer(s2, { type: 'CLEAR_DRAFT_ATTACHMENT' })
+    expect(s3.draft.attachment).toBeUndefined()
+    expect(s3.draft.text).toBe('看看这个') // 文本保留
+  })
+
+  it('SEND_MESSAGE 把文本+附件合成消息追加，发送后草稿清空', () => {
+    const state = initialState() // 激活 s1
+    const att = { source: 'https://x.com', tag: 'a', text: '链接', selector: 'a', html: '<a/>' }
+    const s1 = reducer(state, { type: 'SET_DRAFT_TEXT', text: '分析下' })
+    const s2 = reducer(s1, { type: 'SET_DRAFT_ATTACHMENT', attachment: att })
+    const before = state.projects.find(p => p.id === 'p1')!.sessions.find(s => s.id === 's1')!.messages.length
+    const sent = reducer(s2, { type: 'SEND_MESSAGE' })
+    const session = sent.projects.find(p => p.id === 'p1')!.sessions.find(s => s.id === 's1')!
+    expect(session.messages.length).toBe(before + 1)
+    const last = session.messages[session.messages.length - 1]
+    expect(last.role).toBe('user')
+    expect(last.content).toBe('分析下')
+    expect(last.attachment).toEqual(att)
+    // 草稿清空
+    expect(sent.draft.text).toBe('')
+    expect(sent.draft.attachment).toBeUndefined()
+  })
+
+  it('SEND_MESSAGE 文本和附件都为空时不发送', () => {
+    const state = initialState()
+    const sent = reducer(state, { type: 'SEND_MESSAGE' })
+    // 无变化（消息数不变、草稿不变）
+    expect(sent).toEqual(state)
+  })
+
+  it('SEND_MESSAGE 只有附件无文本也能发送', () => {
+    const state = initialState()
+    const att = { source: 'u', tag: 'img', text: '', selector: 'img', html: '<img/>' }
+    const s1 = reducer(state, { type: 'SET_DRAFT_ATTACHMENT', attachment: att })
+    const sent = reducer(s1, { type: 'SEND_MESSAGE' })
+    const session = sent.projects.find(p => p.id === 'p1')!.sessions.find(s => s.id === 's1')!
+    const last = session.messages[session.messages.length - 1]
+    expect(last.attachment).toEqual(att)
+    expect(last.content).toBe('')
   })
 })

@@ -12,7 +12,8 @@ const initialState: AppState = {
   activeTabIdBySession: Object.fromEntries(
     mockProjects.flatMap(p => p.sessions.map(s => [s.id, null]))
   ),
-  theme: (localStorage.getItem('cc-desk-theme') as AppState['theme']) || 'dark-warm'
+  theme: (localStorage.getItem('cc-desk-theme') as AppState['theme']) || 'dark-warm',
+  draft: { text: '' }
 }
 
 interface StoreContextValue {
