@@ -30,7 +30,7 @@ export function TabBar() {
     if (active.type === 'file') return <FileTab filePath={active.filePath} />
     if (active.type === 'browser') return <BrowserTab />
     if (active.type === 'review') return <ReviewTab />
-    return <TerminalTab />
+    return <TerminalTab tabId={active.id} />
   }
 
   const addTab = (type: TabType) => {
