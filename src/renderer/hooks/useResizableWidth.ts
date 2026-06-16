@@ -19,7 +19,7 @@ interface Options {
 
 /**
  * 拖拽调节宽度。返回当前宽度、是否正在拖拽、手柄的 onMouseDown。
- * 拖动期间监听 window 的 mousemove/mouseup，松手时持久化。
+ * 拖拽期间用 ref + rAF 直接更新 DOM，松手时才同步 React state，避免重渲染延迟导致不跟手。
  */
 export function useResizableWidth({ initial, min, max, storageKey, side }: Options) {
   const [width, setWidth] = useState<number>(() => {
@@ -30,34 +30,52 @@ export function useResizableWidth({ initial, min, max, storageKey, side }: Optio
     return initial
   })
   const [dragging, setDragging] = useState(false)
-  // 拖动起点：鼠标 x 与当前宽度
+
+  // 拖拽期间用 ref 跟踪，避免 setState 逐帧重渲染
+  const widthRef = useRef(width)
   const startXRef = useRef(0)
-  const startWidthRef = useRef(width)
+  const startWidthRef = useRef(0)
+  const rafRef = useRef(0)
+  // 暴露给外部的回调，由 effect 注册到 DOM 元素上
+  const applyWidthRef = useRef<((w: number) => void) | null>(null)
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
     startXRef.current = e.clientX
-    startWidthRef.current = width
+    startWidthRef.current = widthRef.current
     setDragging(true)
-  }, [width])
+  }, [])
+
+  /** 注册：外部传入一个直接操作 DOM 宽度的函数 */
+  const registerApply = useCallback((fn: (w: number) => void) => {
+    applyWidthRef.current = fn
+  }, [])
 
   useEffect(() => {
     if (!dragging) return
 
     const onMove = (e: MouseEvent) => {
       const delta = e.clientX - startXRef.current
-      // 手柄在左侧：鼠标右移(delta>0) → 宽度变小
-      const next = side === 'left' ? startWidthRef.current - delta : startWidthRef.current + delta
-      setWidth(Math.min(max, Math.max(min, next)))
+      const next = side === 'left'
+        ? startWidthRef.current - delta
+        : startWidthRef.current + delta
+      const clamped = Math.min(max, Math.max(min, next))
+      widthRef.current = clamped
+
+      // 用 rAF 批量更新 DOM，避免每帧多次重渲染
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = requestAnimationFrame(() => {
+        applyWidthRef.current?.(clamped)
+      })
     }
+
     const onUp = () => {
+      cancelAnimationFrame(rafRef.current)
       setDragging(false)
-      if (storageKey) {
-        setWidth(w => {
-          localStorage.setItem(storageKey, String(w))
-          return w
-        })
-      }
+      // 松手时同步 state + 持久化
+      const final = widthRef.current
+      setWidth(final)
+      if (storageKey) localStorage.setItem(storageKey, String(final))
     }
 
     window.addEventListener('mousemove', onMove)
@@ -65,6 +83,7 @@ export function useResizableWidth({ initial, min, max, storageKey, side }: Optio
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
     return () => {
+      cancelAnimationFrame(rafRef.current)
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
       document.body.style.cursor = ''
@@ -72,5 +91,8 @@ export function useResizableWidth({ initial, min, max, storageKey, side }: Optio
     }
   }, [dragging, min, max, side, storageKey])
 
-  return { width, dragging, onMouseDown }
+  // state 变化时同步 ref
+  useEffect(() => { widthRef.current = width }, [width])
+
+  return { width, dragging, onMouseDown, registerApply }
 }
