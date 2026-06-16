@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Eye, EyeOff } from 'lucide-react'
 import { useStore } from '../../state/store'
 import { SettingsLayout } from './SettingsLayout'
 import { SettingsCard } from './SettingsCard'
@@ -32,6 +33,7 @@ export function GeneralSettings() {
   const { state, dispatch } = useStore()
 
   // 本地状态（原型不持久化）
+  const [showKey, setShowKey] = useState(false)
   const [theme, setTheme] = useState(state.theme)
   const [lang, setLang] = useState('zh-CN')
   const [zoom, setZoom] = useState('normal')
@@ -54,6 +56,57 @@ export function GeneralSettings() {
 
   return (
     <SettingsLayout title="常规">
+      {/* 账户 */}
+      <SettingsCard>
+        <SettingsRow title="API Key" desc="Anthropic API 密钥，用于调用 Claude。">
+          <span style={{ display: 'flex', gap: 6 }}>
+            <input
+              type={showKey ? 'text' : 'password'}
+              value={state.settings.apiKey}
+              onChange={e => {
+                dispatch({ type: 'SET_SETTINGS', settings: { apiKey: e.target.value } })
+                window.api?.settings.save({ apiKey: e.target.value })
+              }}
+              placeholder="sk-ant-..."
+              style={{ ...inputStyle, minWidth: 320 }}
+            />
+            <button
+              onClick={() => setShowKey(!showKey)}
+              style={saveBtnStyle}
+              aria-label={showKey ? '隐藏密钥' : '显示密钥'}
+            >
+              {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
+            </button>
+          </span>
+        </SettingsRow>
+        <SettingsRow title="模型" desc="Claude Code 会话使用的默认模型。">
+          <select
+            value={state.settings.model}
+            onChange={e => {
+              dispatch({ type: 'SET_SETTINGS', settings: { model: e.target.value } })
+              window.api?.settings.save({ model: e.target.value })
+            }}
+            style={selectStyle}
+          >
+            <option value="sonnet">Sonnet</option>
+            <option value="opus">Opus</option>
+            <option value="haiku">Haiku</option>
+          </select>
+        </SettingsRow>
+        <SettingsRow title="工作目录" desc="新会话默认的工作目录路径。" noBorder>
+          <input
+            type="text"
+            value={state.settings.cwd}
+            onChange={e => {
+              dispatch({ type: 'SET_SETTINGS', settings: { cwd: e.target.value } })
+              window.api?.settings.save({ cwd: e.target.value })
+            }}
+            placeholder="/path/to/project"
+            style={{ ...inputStyle, minWidth: 320 }}
+          />
+        </SettingsRow>
+      </SettingsCard>
+
       {/* 外观 */}
       <SettingsCard>
         <SettingsRow title="界面主题" desc="切换应用界面使用的主题外观。">

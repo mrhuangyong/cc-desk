@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { TitleBar } from './components/TitleBar'
 import { LeftPanel } from './components/LeftPanel'
 import { ChatArea } from './components/ChatArea'
@@ -7,12 +7,19 @@ import { SettingsPage } from './components/settings/SettingsPage'
 import { useStore } from './state/store'
 
 export function App() {
-  const { state } = useStore()
+  const { state, dispatch } = useStore()
   const activeProject = state.projects.find(p => p.sessions.some(s => s.id === state.activeSessionId))
   const projectName = activeProject?.name ?? 'cc-desk'
 
   const [leftCollapsed, setLeftCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(true)  // 右栏默认隐藏
+
+  // 启动时加载持久化设置
+  useEffect(() => {
+    window.api?.settings.get().then(s => {
+      if (s) dispatch({ type: 'SET_SETTINGS', settings: s })
+    })
+  }, [])
 
   if (state.currentView === 'settings') {
     return <SettingsPage />
