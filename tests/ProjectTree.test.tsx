@@ -2,22 +2,30 @@ import { describe, it, expect } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { AppProvider } from '../src/renderer/state/store'
 import { ProjectTree } from '../src/renderer/components/ProjectTree'
+import type { AppState } from '../src/renderer/state/reducer'
+import { mockProjects } from '../src/renderer/state/mockData'
 
 function renderWithProvider(ui: React.ReactNode) {
   return render(<AppProvider>{ui}</AppProvider>)
 }
 
+// 默认 props：全部展开、无过滤
+const defaultProps = {
+  onOpenFiles: () => {},
+  expandedProjects: new Set(mockProjects.map(p => p.id)),
+  onToggleExpand: () => {},
+  treeFilter: ''
+}
+
 describe('ProjectTree', () => {
   it('项目行点删除→确认→项目被删（级联删会话）', () => {
-    renderWithProvider(<ProjectTree onOpenFiles={() => {}} />)
-    // 删除前第一个项目 cc-desk 应可见（用正则，因行渲染为 "📁 cc-desk"）
+    renderWithProvider(<ProjectTree {...defaultProps} />)
+    // 删除前第一个项目 cc-desk 应可见（行渲染为 "📁 cc-desk"）
     expect(screen.queryByText(/cc-desk/)).not.toBeNull()
 
-    // 找到所有"删除"按钮。项目行先于其会话行渲染，故 deleteBtns[0]
-    // 是第一个项目（p1=cc-desk）的项目级删除按钮。
+    // 项目行先于其会话行渲染，deleteBtns[0] 是第一个项目（p1=cc-desk）的项目级删除
     const deleteBtns = screen.getAllByRole('button', { name: '删除' })
     fireEvent.click(deleteBtns[0])
-    // 该按钮变为确认态
     fireEvent.click(screen.getAllByRole('button', { name: '确认删除' })[0])
 
     // cc-desk 项目应消失（含其下所有会话级联删除）
@@ -26,14 +34,27 @@ describe('ProjectTree', () => {
     expect(screen.queryByText(/个人博客/)).not.toBeNull()
   })
 
-  it('点新增会话，项目已有空会话时数量不变（去重切换）', () => {
-    renderWithProvider(<ProjectTree onOpenFiles={() => {}} />)
-    // 会话标题：重构登录流程(登录) / 修样式 bug(样式) / 部署到 Vercel(部署)
-    const before = screen.getAllByText(/会话|登录|样式|部署/).length
-    // p1 (cc-desk) 已有空会话 s2；点其新增按钮
-    const addBtns = screen.getAllByRole('button', { name: '新增会话' })
-    fireEvent.click(addBtns[0])
-    const after = screen.getAllByText(/会话|登录|样式|部署/).length
-    expect(after).toBe(before)
+  it('项目行不再有"新增会话"按钮（已迁移到左栏顶部）', () => {
+    renderWithProvider(<ProjectTree {...defaultProps} />)
+    expect(screen.queryAllByRole('button', { name: '新增会话' })).toHaveLength(0)
+  })
+
+  it('treeFilter 过滤：只显示标题匹配的会话，无匹配的项目隐藏', () => {
+    const props = { ...defaultProps, treeFilter: '部署' }
+    renderWithProvider(<ProjectTree {...props} />)
+    // "部署到 Vercel" 在 p2，应可见
+    expect(screen.queryByText(/部署到 Vercel/)).not.toBeNull()
+    // p1 的会话不匹配"部署"，整个 p1 隐藏（cc-desk 项目名不显示）
+    expect(screen.queryByText(/重构登录流程/)).toBeNull()
+  })
+
+  it('展开时显示会话，收起时不显示', () => {
+    // 全部收起
+    const props = { ...defaultProps, expandedProjects: new Set<string>() }
+    renderWithProvider(<ProjectTree {...props} />)
+    // 项目名仍可见
+    expect(screen.queryByText(/cc-desk/)).not.toBeNull()
+    // 会话被收起
+    expect(screen.queryByText(/重构登录流程/)).toBeNull()
   })
 })
