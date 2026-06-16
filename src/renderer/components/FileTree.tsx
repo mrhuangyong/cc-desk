@@ -5,7 +5,7 @@ import type { FileNode } from '../types'
 
 function Node({ node, depth }: { node: FileNode; depth: number }) {
   const { dispatch } = useStore()
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(depth === 0)
   const [hovered, setHovered] = useState(false)
 
   const hoverBg = hovered ? 'var(--bg-hover)' : 'transparent'
