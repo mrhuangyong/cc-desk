@@ -29,6 +29,16 @@ export function ChatArea() {
     api.onStreamDelta(({ delta }) => {
       dispatch({ type: 'STREAM_DELTA', sessionId: state.activeSessionId, delta })
     })
+    // 捕获 Claude 返回的真实 sessionId，建立 localSessionId → claudeSessionId 映射，供后续消息 resume 续接
+    api.onSystem((data) => {
+      if (data?.sessionId) {
+        dispatch({
+          type: 'SET_CLAUDE_SESSION_ID',
+          localSessionId: state.activeSessionId,
+          claudeSessionId: data.sessionId,
+        })
+      }
+    })
     api.onResult((data) => {
       dispatch({
         type: 'STREAM_END',

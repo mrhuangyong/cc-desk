@@ -17,6 +17,7 @@ function initialState(): AppState {
     activeSettingsSection: 'general',
     streamingBySession: {},
     settings: { apiKey: '', model: 'sonnet', cwd: '' },
+    claudeSessionMap: {},
   }
 }
 
@@ -333,5 +334,17 @@ describe('reducer', () => {
     const newProjects = structuredClone(mockProjects).slice(0, 1)
     const next = reducer(state, { type: 'INIT_SESSIONS', projects: newProjects })
     expect(next.projects).toBe(newProjects)
+  })
+
+  it('SET_CLAUDE_SESSION_ID 建立 local→claude sessionId 映射', () => {
+    const state = initialState()
+    const next = reducer(state, {
+      type: 'SET_CLAUDE_SESSION_ID',
+      localSessionId: 's1',
+      claudeSessionId: 'abc-123',
+    })
+    expect(next.claudeSessionMap.s1).toBe('abc-123')
+    // 不可变：原 state 未变
+    expect(state.claudeSessionMap.s1).toBeUndefined()
   })
 })

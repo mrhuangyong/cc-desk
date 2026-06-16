@@ -28,3 +28,5 @@ export type Action =
   | { type: 'SET_SETTINGS'; settings: Partial<{ apiKey: string; model: string; cwd: string }> }
   // 初始化：从主进程拉取的 projects 列表
   | { type: 'INIT_SESSIONS'; projects: Project[] }
+  // 捕获 Claude 返回的真实 sessionId，建立 localSessionId → claudeSessionId 映射
+  | { type: 'SET_CLAUDE_SESSION_ID'; localSessionId: string; claudeSessionId: string }

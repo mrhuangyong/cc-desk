@@ -20,6 +20,7 @@ const initialState: AppState = {
   activeSettingsSection: 'general',
   streamingBySession: {},
   settings: { apiKey: '', model: 'sonnet', cwd: '' },
+  claudeSessionMap: {},
 }
 
 interface StoreContextValue {
