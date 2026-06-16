@@ -76,9 +76,9 @@ type WebviewEl = HTMLDivElement & {
 export function BrowserTab() {
   const { state, dispatch } = useStore()
   const webviewRef = useRef<WebviewEl | null>(null)
-  const [url, setUrl] = useState('https://example.com')
+  const [url, setUrl] = useState('')
   const [input, setInput] = useState(url)
-  const [history, setHistory] = useState<string[]>([url])
+  const [history, setHistory] = useState<string[]>(url ? [url] : [])
   const [idx, setIdx] = useState(0)
   const [picking, setPicking] = useState(false)
 
@@ -178,11 +178,17 @@ export function BrowserTab() {
           style={pickBtnStyle}
         >👆</button>
       </div>
-      <webview
-        ref={setWebviewRef}
-        src={url}
-        style={{ flex: 1, border: 'none', background: '#fff' }}
-      />
+      {url ? (
+        <webview
+          ref={setWebviewRef}
+          src={url}
+          style={{ flex: 1, border: 'none', background: '#fff' }}
+        />
+      ) : (
+        <div style={{ flex: 1, display: 'grid', placeItems: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+          在地址栏输入网址开始浏览
+        </div>
+      )}
     </div>
   )
 }

@@ -12,7 +12,7 @@ export function App() {
   const projectName = activeProject?.name ?? 'cc-desk'
 
   const [leftCollapsed, setLeftCollapsed] = useState(false)
-  const [rightCollapsed, setRightCollapsed] = useState(false)
+  const [rightCollapsed, setRightCollapsed] = useState(true)  // 右栏默认隐藏
 
   if (state.currentView === 'settings') {
     return <SettingsPage />
