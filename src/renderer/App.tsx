@@ -30,7 +30,6 @@ export function App() {
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
         <LeftPanel
           collapsed={leftCollapsed}
-          onExpand={() => setLeftCollapsed(false)}
         />
         <ChatArea />
         <RightPanel collapsed={rightCollapsed} />
