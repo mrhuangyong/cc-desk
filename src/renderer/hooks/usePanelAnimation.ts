@@ -5,8 +5,8 @@ type Phase = 'idle' | 'expanding' | 'transitioning' | 'expanded' | 'collapsing'
 /**
  * 面板展开/折叠动画。
  *
- * 用内层 wrapper 固定原始宽度（minWidth），外层 overflow:hidden 裁剪，
- * 避免动画过程中内容换行。
+ * 内层 wrapper 用固定 width 锁定原始宽度，外层 overflow:hidden 裁剪，
+ * 展开和折叠过程中内容均不换行。
  *
  * 展开 3 步：expanding → transitioning → expanded
  * 折叠 1 步：collapsing → transitionend → idle

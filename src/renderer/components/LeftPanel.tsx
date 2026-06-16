@@ -108,9 +108,10 @@ export function LeftPanel({ collapsed }: Props) {
             }}
           />
         )}
-        {/* 内层 wrapper：动画期间固定原始宽度，overflow:hidden 裁剪 */}
+        {/* 内层 wrapper：动画期间固定原始宽度，外层 overflow:hidden 裁剪 */}
         <div style={{
-          display: 'flex', flexDirection: 'column', flex: 1, minWidth: animating ? originalWidthRef.current : undefined,
+          display: 'flex', flexDirection: 'column', flex: 1,
+          width: animating ? originalWidthRef.current : undefined,
           overflow: 'hidden',
         }}>
           {/* 顶部功能区 */}
