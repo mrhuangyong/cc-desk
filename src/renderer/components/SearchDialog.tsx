@@ -47,6 +47,11 @@ export function SearchDialog({ onClose }: Props) {
     onClose()
   }
 
+  const onCommandClick = (cmdId: string) => {
+    if (cmdId === 'cmd-settings') dispatch({ type: 'SET_SETTINGS_SECTION', section: 'general' })
+    onClose()
+  }
+
   const rowBase: React.CSSProperties = {
     padding: '8px 12px', cursor: 'pointer', borderRadius: 'var(--radius)',
     display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8
@@ -100,7 +105,7 @@ export function SearchDialog({ onClose }: Props) {
             <>
               <div style={{ padding: '4px 12px', marginTop: 4, fontSize: 11, color: 'var(--text-muted)' }}>命令</div>
               {matchedCommands.map(c => (
-                <div key={c.id} onClick={onClose} style={rowBase}
+                <div key={c.id} onClick={() => onCommandClick(c.id)} style={rowBase}
                   onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                   <span>⌘ {c.label}</span>

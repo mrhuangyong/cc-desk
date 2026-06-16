@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 import { ProjectTree } from './ProjectTree'
 import { FileTree } from './FileTree'
 import { SearchDialog } from './SearchDialog'
-import { SkillsPanel } from './SkillsPanel'
 import { useStore } from '../state/store'
 
 interface Props {
@@ -14,7 +13,6 @@ export function LeftPanel({ collapsed, onExpand }: Props) {
   const { state, dispatch } = useStore()
   const [fileViewProjectId, setFileViewProjectId] = useState<string | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
-  const [skillsOpen, setSkillsOpen] = useState(false)
   // 默认全部项目展开
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(
     () => new Set(state.projects.map(p => p.id))
@@ -81,7 +79,7 @@ export function LeftPanel({ collapsed, onExpand }: Props) {
         <div style={{ display: 'flex', flexDirection: 'column', borderBottom: '1px solid var(--border)' }}>
           <button onClick={handleNewSession} title="新建会话" style={topBtn}>➕ 新建会话</button>
           <button onClick={() => setSearchOpen(true)} title="搜索" style={topBtn}>🔍 搜索</button>
-          <button onClick={() => setSkillsOpen(true)} title="技能" style={topBtn}>⚡ 技能</button>
+          <button onClick={() => dispatch({ type: 'SET_SETTINGS_SECTION', section: 'skills' })} title="技能" style={topBtn}>⚡ 技能</button>
         </div>
 
         {/* 工作区行：标题 + 三按钮同一行 */}
@@ -109,7 +107,6 @@ export function LeftPanel({ collapsed, onExpand }: Props) {
       </div>
 
       {searchOpen && <SearchDialog onClose={() => setSearchOpen(false)} />}
-      {skillsOpen && <SkillsPanel onClose={() => setSkillsOpen(false)} />}
     </>
   )
 }
