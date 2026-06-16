@@ -1,5 +1,5 @@
 import type { Action } from './actions'
-import type { Draft, Project, Session, Tab, ThemeId } from '../types'
+import type { AppView, Draft, Project, Session, SettingsSection, Tab, ThemeId } from '../types'
 
 export interface AppState {
   projects: Project[]
@@ -11,6 +11,8 @@ export interface AppState {
   theme: ThemeId
   // 对话输入框草稿：文本 + 可选拾取附件
   draft: Draft
+  currentView: AppView
+  activeSettingsSection: SettingsSection
 }
 
 // TODO: idCounter is module-level mutable state — non-deterministic IDs. Acceptable for prototype; thread through state if persistence/time-travel needed later.
@@ -201,6 +203,13 @@ export function reducer(state: AppState, action: Action): AppState {
       }))
       // 发送后清空草稿
       return { ...state, projects, draft: { text: '' } }
+    }
+    case 'SET_VIEW': {
+      return { ...state, currentView: action.view }
+    }
+    case 'SET_SETTINGS_SECTION': {
+      // 切换子页并同时进入设置视图（保证从任何入口点技能/设置都进设置页）
+      return { ...state, activeSettingsSection: action.section, currentView: 'settings' }
     }
     default:
       return state

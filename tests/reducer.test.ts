@@ -12,7 +12,9 @@ function initialState(): AppState {
     tabsBySession: { s1: [] },
     activeTabIdBySession: { s1: null },
     theme: 'dark-warm',
-    draft: { text: '' }
+    draft: { text: '' },
+    currentView: 'workspace',
+    activeSettingsSection: 'general',
   }
 }
 
@@ -250,5 +252,19 @@ describe('reducer', () => {
     const last = session.messages[session.messages.length - 1]
     expect(last.attachment).toEqual(att)
     expect(last.content).toBe('')
+  })
+
+  it('SET_VIEW 切换顶层视图', () => {
+    const state = initialState()
+    expect(state.currentView).toBe('workspace')
+    const next = reducer(state, { type: 'SET_VIEW', view: 'settings' })
+    expect(next.currentView).toBe('settings')
+  })
+
+  it('SET_SETTINGS_SECTION 切换子页并同时进入设置视图', () => {
+    const state = initialState()
+    const next = reducer(state, { type: 'SET_SETTINGS_SECTION', section: 'skills' })
+    expect(next.currentView).toBe('settings')
+    expect(next.activeSettingsSection).toBe('skills')
   })
 })
