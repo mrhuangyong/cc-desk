@@ -43,7 +43,7 @@ export function FileTree({ projectId, onBack }: { projectId: string; onBack: () 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const project = state.projects.find(p => p.id === projectId)
-  const cwd = state.settings?.cwd
+  const cwd = project?.path || state.settings?.cwd
 
   useEffect(() => {
     if (!cwd) return
