@@ -8,18 +8,21 @@ type Phase = 'idle' | 'expanding' | 'transitioning' | 'expanded' | 'collapsing'
  * 内层 wrapper 用固定 width 锁定原始宽度，外层 overflow:hidden 裁剪，
  * 展开和折叠过程中内容均不换行。
  *
- * 展开 3 步：expanding → transitioning → expanded
+ * 展开 3 步：expanding → transitioning → expanded → transitionend 清除 expandingRef
  * 折叠 1 步：collapsing → transitionend → idle
  */
 export function usePanelAnimation(collapsed: boolean) {
   const [phase, setPhase] = useState<Phase>(collapsed ? 'idle' : 'expanded')
   const [targetWidth, setTargetWidth] = useState<number | undefined>(undefined)
   const originalWidthRef = useRef(0)
+  // 追踪展开动画：expanding 开始 → transitionEnd 结束
+  const expandingRef = useRef(false)
   const rafRef = useRef(0)
 
   useEffect(() => {
     cancelAnimationFrame(rafRef.current)
     if (!collapsed) {
+      expandingRef.current = true
       setPhase('expanding')
       setTargetWidth(0)
       rafRef.current = requestAnimationFrame(() => {
@@ -30,6 +33,7 @@ export function usePanelAnimation(collapsed: boolean) {
         })
       })
     } else {
+      expandingRef.current = false
       setPhase('collapsing')
       setTargetWidth(0)
     }
@@ -38,13 +42,18 @@ export function usePanelAnimation(collapsed: boolean) {
 
   const onTransitionEnd = useCallback((e: React.TransitionEvent) => {
     if (e.propertyName !== 'width') return
-    if (phase === 'collapsing') {
+    if (expandingRef.current) {
+      // 展开动画结束
+      expandingRef.current = false
+    } else if (phase === 'collapsing') {
+      // 折叠动画结束
       setPhase('idle')
       setTargetWidth(undefined)
     }
   }, [phase])
 
-  const animating = phase === 'expanding' || phase === 'transitioning' || phase === 'collapsing'
+  // animating 覆盖展开 transition 全过程（expanding → expanded → transitionEnd）
+  const animating = phase === 'expanding' || phase === 'transitioning' || phase === 'collapsing' || expandingRef.current
 
   const styles: React.CSSProperties = phase === 'expanding'
     ? { width: targetWidth, overflow: 'hidden' }
