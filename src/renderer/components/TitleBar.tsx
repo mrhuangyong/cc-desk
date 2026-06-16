@@ -8,24 +8,50 @@ type DragStyle = CSSProperties & { WebkitAppRegion?: 'drag' | 'no-drag' }
 const drag: DragStyle = { WebkitAppRegion: 'drag' }
 const noDrag: DragStyle = { WebkitAppRegion: 'no-drag' }
 
-export function TitleBar({ projectName }: { projectName: string }) {
+interface Props {
+  projectName: string
+  leftCollapsed: boolean
+  rightCollapsed: boolean
+  onToggleLeft: () => void
+  onToggleRight: () => void
+}
+
+export function TitleBar({ projectName, leftCollapsed, rightCollapsed, onToggleLeft, onToggleRight }: Props) {
   return (
     <div style={{
-      display: 'flex', alignItems: 'center', height: 32, padding: '0 12px',
+      display: 'flex', alignItems: 'center', height: 36, padding: '0 8px',
       background: 'var(--bg-sidebar)', borderBottom: '1px solid var(--border)',
       ...drag
     }}>
-      <div style={{ display: 'flex', gap: 8, ...noDrag }}>
-        <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#ff5f57' }} />
-        <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#febc2e' }} />
-        <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#28c840' }} />
-      </div>
+      {/* 左侧：macOS 原生红绿灯由系统渲染在左上角，给它预留宽度避免与折叠钮重叠；
+          非 macOS 这里为空，窗口控制由系统或后续补。 */}
+      <div style={{ width: 70, flexShrink: 0, ...noDrag }} />
+      {/* 左栏折叠按钮 */}
+      <button
+        onClick={onToggleLeft}
+        title={leftCollapsed ? '展开左栏' : '收起左栏'}
+        aria-label={leftCollapsed ? '展开左栏' : '收起左栏'}
+        style={{ fontSize: 17, padding: '4px 8px', color: 'var(--text-muted)', lineHeight: 1, ...noDrag }}
+      >
+        {leftCollapsed ? '»' : '«'}
+      </button>
+
       <span style={{ flex: 1, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
         {projectName}
       </span>
-      <div style={{ display: 'flex', gap: 8, ...noDrag }}>
+
+      {/* 右栏折叠按钮 */}
+      <button
+        onClick={onToggleRight}
+        title={rightCollapsed ? '展开右栏' : '收起右栏'}
+        aria-label={rightCollapsed ? '展开右栏' : '收起右栏'}
+        style={{ fontSize: 17, padding: '4px 8px', color: 'var(--text-muted)', lineHeight: 1, ...noDrag }}
+      >
+        {rightCollapsed ? '«' : '»'}
+      </button>
+      <div style={{ display: 'flex', gap: 8, marginLeft: 8, ...noDrag }}>
         <ThemeSwitcher />
-        <button title="设置" style={{ fontSize: 14, padding: '4px 8px' }}>⚙</button>
+        <button title="设置" style={{ fontSize: 17, padding: '4px 8px', lineHeight: 1 }}>⚙</button>
       </div>
     </div>
   )

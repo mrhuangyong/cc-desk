@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { TitleBar } from './components/TitleBar'
 import { LeftPanel } from './components/LeftPanel'
 import { ChatArea } from './components/ChatArea'
@@ -9,13 +10,25 @@ export function App() {
   const activeProject = state.projects.find(p => p.sessions.some(s => s.id === state.activeSessionId))
   const projectName = activeProject?.name ?? 'cc-desk'
 
+  const [leftCollapsed, setLeftCollapsed] = useState(false)
+  const [rightCollapsed, setRightCollapsed] = useState(false)
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <TitleBar projectName={projectName} />
+      <TitleBar
+        projectName={projectName}
+        leftCollapsed={leftCollapsed}
+        rightCollapsed={rightCollapsed}
+        onToggleLeft={() => setLeftCollapsed(c => !c)}
+        onToggleRight={() => setRightCollapsed(c => !c)}
+      />
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-        <LeftPanel />
+        <LeftPanel
+          collapsed={leftCollapsed}
+          onExpand={() => setLeftCollapsed(false)}
+        />
         <ChatArea />
-        <RightPanel />
+        <RightPanel collapsed={rightCollapsed} />
       </div>
     </div>
   )

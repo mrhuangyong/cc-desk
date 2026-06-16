@@ -5,16 +5,21 @@ const isDev = !app.isPackaged
 
 function createWindow() {
   const win = new BrowserWindow({
-    width: 1280,
-    height: 800,
-    minWidth: 900,
-    minHeight: 600,
+    width: 1680,
+    height: 1040,
+    minWidth: 960,
+    minHeight: 640,
     frame: false, // 无系统边框，用自定义 titleBar
-    titleBarStyle: 'hidden',
+    // macOS: 用原生红绿灯但隐藏标题栏；hiddenInset 让红绿灯内嵌、留出空间给左侧内容
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
+    // 非 macOS 没有原生红绿灯，由自定义 titleBar 自绘窗口控制按钮（暂仅占位）
+    trafficLightPosition: process.platform === 'darwin' ? { x: 12, y: 12 } : undefined,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       nodeIntegration: false,
-      contextIsolation: true
+      contextIsolation: true,
+      // 启用 <webview> 标签：浏览器 Tab 用它替代 iframe，以支持元素拾取（注入脚本到任意页面）
+      webviewTag: true
     }
   })
 
