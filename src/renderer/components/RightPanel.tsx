@@ -10,8 +10,8 @@ export function RightPanel({ collapsed }: Props) {
     initial: 420,
     min: 320,
     max: 1200,
-    side: 'left',
-    storageKey: 'cc-desk-right-width'
+    side: 'left'
+    // 不传 storageKey：右栏宽度不持久化，每次展开恢复默认宽度
   })
 
   if (collapsed) return null
