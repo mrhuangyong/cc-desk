@@ -4,8 +4,8 @@ import type { Action } from './actions'
 import { mockProjects } from './mockData'
 
 const initialState: AppState = {
-  projects: mockProjects,
-  activeSessionId: mockProjects[0].sessions[0].id,
+  projects: mockProjects, // keep mock for now, will be replaced in Task 11
+  activeSessionId: mockProjects[0]?.sessions[0]?.id || '',
   tabsBySession: Object.fromEntries(
     mockProjects.flatMap(p => p.sessions.map(s => [s.id, []]))
   ),
@@ -18,6 +18,8 @@ const initialState: AppState = {
   draft: { text: '' },
   currentView: 'workspace',
   activeSettingsSection: 'general',
+  streamingBySession: {},
+  settings: { apiKey: '', model: 'sonnet', cwd: '' },
 }
 
 interface StoreContextValue {
