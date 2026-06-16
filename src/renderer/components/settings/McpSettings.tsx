@@ -1,46 +1,98 @@
 import { useState } from 'react'
 import { mockMcpServers } from '../../state/mockData'
 import type { McpServer } from '../../types'
-import { SettingsLayout } from './SettingsLayout'
+import { Toggle } from './Toggle'
+import { McpEditDialog } from './McpEditDialog'
 
-const inputStyle: React.CSSProperties = { padding: '6px 10px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)' }
-const rowStyle: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid var(--border)' }
-const primaryBtn: React.CSSProperties = { padding: '6px 12px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: 'var(--accent-text)', cursor: 'pointer', fontSize: 12 }
-const smallBtn: React.CSSProperties = { padding: '4px 8px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12 }
-const enabledBtn: React.CSSProperties = { ...smallBtn, background: 'var(--accent)', color: 'var(--accent-text)', borderColor: 'var(--accent)' }
-const dangerBtn: React.CSSProperties = { ...smallBtn, color: 'var(--danger)', borderColor: 'var(--danger)' }
+const iconBtn: React.CSSProperties = {
+  padding: '4px 6px', fontSize: 13, cursor: 'pointer',
+  background: 'transparent', border: 'none', color: 'var(--text-muted)', lineHeight: 1
+}
+const topIconBtn: React.CSSProperties = { ...iconBtn, fontSize: 14, padding: '4px 8px' }
 
 export function McpSettings() {
   const [q, setQ] = useState('')
   const [servers, setServers] = useState(() => mockMcpServers.map(s => ({ ...s })))
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
 
   const filtered = servers.filter(s => s.name.toLowerCase().includes(q.toLowerCase()))
-  const toggle = (id: string) => setServers(prev => prev.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s))
-  const addNew = () => setServers(prev => [...prev, { id: `mcp-${Date.now()}`, name: '新 MCP', url: '', enabled: true }])
-  const remove = (id: string) => { setServers(prev => prev.filter(s => s.id !== id)); setConfirmingId(null) }
-  const edit = (id: string, patch: Partial<McpServer>) => setServers(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s))
+  const update = (id: string, patch: Partial<McpServer>) =>
+    setServers(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s))
+  const toggle = (id: string) => update(id, { enabled: !servers.find(s => s.id === id)!.enabled })
+  const remove = (id: string) => {
+    setServers(prev => prev.filter(s => s.id !== id))
+    setConfirmingId(null)
+  }
+  const addNew = () => {
+    const id = `mcp-${Date.now()}`
+    setServers(prev => [...prev, { id, name: '新 MCP', transport: 'stdio', command: '', args: '', env: '', enabled: true, scope: '用户' }])
+    setEditingId(id)
+  }
+
+  const editing = servers.find(s => s.id === editingId) ?? null
 
   return (
-    <SettingsLayout title="MCP 服务器">
-      <div style={{ display: 'flex', gap: 8 }}>
-        <input placeholder="搜索 MCP…" value={q} onChange={e => setQ(e.target.value)} style={{ flex: 1, ...inputStyle }} />
-        <button onClick={addNew} style={primaryBtn}>+ 添加</button>
-      </div>
-      {filtered.map(s => (
-        <div key={s.id} style={rowStyle}>
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <input defaultValue={s.name} onBlur={e => edit(s.id, { name: e.target.value })} style={inputStyle} aria-label="MCP 名称" />
-            <input defaultValue={s.url} placeholder="url" onBlur={e => edit(s.id, { url: e.target.value })} style={inputStyle} aria-label="MCP URL" />
-          </div>
-          <button onClick={() => toggle(s.id)} style={s.enabled ? enabledBtn : smallBtn}>{s.enabled ? '启用' : '禁用'}</button>
-          {confirmingId === s.id ? (
-            <button onClick={() => remove(s.id)} style={dangerBtn}>确认删除？</button>
-          ) : (
-            <button onClick={() => setConfirmingId(s.id)} style={smallBtn}>删除</button>
-          )}
+    <div style={{ maxWidth: 760, margin: '0 auto' }}>
+      {/* 标题 + 操作图标 */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+        <h2 style={{ color: 'var(--text)', fontSize: 18, margin: 0 }}>MCP 服务器</h2>
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button title="添加" onClick={addNew} style={topIconBtn}>＋</button>
+          <button title="排序/展开" style={topIconBtn}>↓</button>
         </div>
-      ))}
-    </SettingsLayout>
+      </div>
+      <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 14 }}>
+        管理 ZCode Agent 使用的 MCP 服务器配置。
+      </div>
+
+      {/* 搜索框 */}
+      <input
+        placeholder="搜索 MCP 服务器..."
+        value={q} onChange={e => setQ(e.target.value)}
+        style={{ width: '100%', padding: '8px 12px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', marginBottom: 14 }}
+      />
+
+      {/* 计数 */}
+      <div style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
+        已配置 MCP 服务器 {servers.length}
+      </div>
+
+      {/* 列表 */}
+      <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--bg-elevated)' }}>
+        {filtered.length === 0 && (
+          <div style={{ padding: 20, color: 'var(--text-muted)', textAlign: 'center', fontSize: 13 }}>无匹配 MCP</div>
+        )}
+        {filtered.map((s, i) => (
+          <div key={s.id} style={{ borderBottom: i < filtered.length - 1 ? '1px solid var(--border)' : 'none' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px' }}>
+              <span style={{ color: 'var(--accent)', fontSize: 16, flexShrink: 0 }}>⛭</span>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: s.enabled ? 'var(--accent)' : 'var(--text-muted)' }} />
+              <span style={{ color: 'var(--text)', fontSize: 13, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+              <span style={{ padding: '1px 7px', borderRadius: 999, fontSize: 10, border: '1px solid var(--border)', color: 'var(--text-muted)' }}>{s.scope}</span>
+              <Toggle on={s.enabled} onChange={() => toggle(s.id)} aria-label={`${s.enabled ? '禁用' : '启用'} ${s.name}`} />
+              <button title="编辑" onClick={() => setEditingId(s.id)} style={iconBtn}>✎</button>
+              {confirmingId === s.id ? (
+                <button onClick={() => remove(s.id)} style={{ ...iconBtn, color: 'var(--danger)' }}>确认？</button>
+              ) : (
+                <button title="删除" onClick={() => setConfirmingId(s.id)} style={{ ...iconBtn, color: 'var(--danger)' }}>🗑</button>
+              )}
+            </div>
+            <div style={{ padding: '0 14px 12px 40px', color: 'var(--text-muted)', fontSize: 12, fontFamily: 'var(--font-mono)' }}>
+              {s.transport} · {[s.command, s.args].filter(Boolean).join(' ') || '(未配置)'}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* 编辑弹窗 */}
+      {editing && (
+        <McpEditDialog
+          server={editing}
+          onSave={(patch) => { update(editing.id, patch); setEditingId(null) }}
+          onCancel={() => setEditingId(null)}
+        />
+      )}
+    </div>
   )
 }

@@ -27,7 +27,7 @@ export function SettingsMenu() {
   return (
     <div style={{
       width: 200, flexShrink: 0, background: 'var(--bg-sidebar)',
-      borderRight: '1px solid var(--border)', padding: 8, overflowY: 'auto'
+      borderRight: '1px solid var(--border)', padding: '44px 8px 8px', overflowY: 'auto'
     }}>
       {ITEMS.map(item => {
         const isActive = item.id !== 'back' && item.id === active

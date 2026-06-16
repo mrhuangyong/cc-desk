@@ -37,7 +37,7 @@ export interface Project {
 }
 
 // Tab 类型
-export type TabType = 'file' | 'browser' | 'terminal'
+export type TabType = 'file' | 'browser' | 'terminal' | 'review'
 
 // Tab：右栏的一个面板
 export interface Tab {
@@ -77,6 +77,8 @@ export interface ModelProvider {
   name: string
   apiKey: string     // 表单字段（mock）
   baseUrl: string    // 表单字段（mock）
+  apiFormat: string  // API 格式（mock），如 'Anthropic Messages (/v1/messages)'
+  enabled: boolean
 }
 
 // 模型（模型设置 - 右下列表项）
@@ -84,6 +86,8 @@ export interface ModelItem {
   id: string
   name: string
   providerId: string
+  contextLength: string  // 上下文窗口标签（mock），如 '20万'
+  enabled: boolean
 }
 
 // 技能（设置子页，带启用状态）
@@ -92,14 +96,19 @@ export interface SkillItem {
   name: string
   desc: string
   enabled: boolean
+  scope: '个人' | '工作区'  // 技能来源层级
 }
 
 // MCP 服务器
 export interface McpServer {
   id: string
   name: string
-  url: string
+  transport: 'stdio' | 'http'  // 传输协议
+  command: string               // stdio: 命令本体(如 npx)；http: 完整 URL
+  args: string                  // stdio: 参数(空格分隔, 如 -y @playwright/mcp@latest)；http: 空
+  env: string                   // 环境变量(KEY=VALUE 每行一个)，可选
   enabled: boolean
+  scope: '用户' | '工作区'       // 来源层级
 }
 
 // 插件 / 命令 / hook（结构相似：id + name + desc + enabled）
@@ -108,4 +117,17 @@ export interface SettingsEntry {
   name: string
   desc: string
   enabled: boolean
+}
+
+// 插件（含版本/来源/技能命令MCP 统计）
+export interface Plugin {
+  id: string
+  name: string
+  version: string
+  desc: string
+  enabled: boolean
+  source: '官方' | '社区'   // 来源
+  skills: number             // 技能数
+  commands: number           // 命令数
+  mcps: number               // MCP 数
 }
