@@ -11,8 +11,8 @@ export const seedProjects: Project[] = [
         id: 's1',
         title: '重构登录流程',
         messages: [
-          { id: 'm1', role: 'user', content: '帮我把登录改成 token 刷新机制' },
-          { id: 'm2', role: 'assistant', content: '好的，我先看一下当前的 auth 逻辑……' },
+          { id: 'm1', role: 'user', content: [{ type: 'text', text: '帮我把登录改成 token 刷新机制' }] },
+          { id: 'm2', role: 'assistant', content: [{ type: 'text', text: '好的，我先看一下当前的 auth 逻辑……' }] },
         ],
       },
       { id: 's2', title: '修样式 bug', messages: [] },
@@ -25,7 +25,7 @@ export const seedProjects: Project[] = [
       {
         id: 's3',
         title: '部署到 Vercel',
-        messages: [{ id: 'm3', role: 'user', content: '怎么部署？' }],
+        messages: [{ id: 'm3', role: 'user', content: [{ type: 'text', text: '怎么部署？' }] }],
       },
     ],
   },
