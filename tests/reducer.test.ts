@@ -172,7 +172,7 @@ describe('reducer', () => {
     const next = reducer(state, {
       type: 'ADD_MESSAGE',
       sessionId: 's1',
-      message: { id: 'pick1', role: 'user', content: '[拾取的网页元素] ...' }
+      message: { id: 'pick1', role: 'user', content: [{ type: 'text', text: '[拾取的网页元素] ...' }] }
     })
     const after = next.projects.find(p => p.id === 'p1')!.sessions.find(s => s.id === 's1')!.messages.length
     expect(after).toBe(before + 1)
@@ -183,7 +183,7 @@ describe('reducer', () => {
     const next = reducer(state, {
       type: 'ADD_MESSAGE',
       sessionId: 's1',
-      message: { id: 'pick1', role: 'user', content: 'x' }
+      message: { id: 'pick1', role: 'user', content: [{ type: 'text', text: 'x' }] }
     })
     const s2msgs = next.projects.find(p => p.id === 'p1')!.sessions.find(s => s.id === 's2')!.messages.length
     expect(s2msgs).toBe(0) // s2 仍空
@@ -194,7 +194,7 @@ describe('reducer', () => {
     const next = reducer(state, {
       type: 'ADD_MESSAGE',
       sessionId: 'nope',
-      message: { id: 'x', role: 'user', content: 'x' }
+      message: { id: 'x', role: 'user', content: [{ type: 'text', text: 'x' }] }
     })
     // 逐会话比对消息数——不存在的 sessionId 不应改变任何真实会话
     state.projects.forEach(p => {
@@ -239,7 +239,7 @@ describe('reducer', () => {
     expect(session.messages.length).toBe(before + 1)
     const last = session.messages[session.messages.length - 1]
     expect(last.role).toBe('user')
-    expect(last.content).toBe('分析下')
+    expect(last.content).toEqual([{ type: 'text', text: '分析下' }])
     expect(last.attachment).toEqual(att)
     // 草稿清空
     expect(sent.draft.text).toBe('')
@@ -261,7 +261,7 @@ describe('reducer', () => {
     const session = sent.projects.find(p => p.id === 'p1')!.sessions.find(s => s.id === 's1')!
     const last = session.messages[session.messages.length - 1]
     expect(last.attachment).toEqual(att)
-    expect(last.content).toBe('')
+    expect(last.content).toEqual([{ type: 'text', text: '' }])
   })
 
   it('SET_VIEW 切换顶层视图', () => {
@@ -309,7 +309,7 @@ describe('reducer', () => {
     expect(session.messages.length).toBe(before + 1)
     const last = session.messages[session.messages.length - 1]
     expect(last.role).toBe('assistant')
-    expect(last.content).toBe('最终回复') // 只保留 text 块
+    expect(last.content).toEqual([{ type: 'text', text: '最终回复' }]) // 只保留 text 块
     // 流式状态清理
     expect(next.streamingBySession['s1']).toBeUndefined()
   })
@@ -457,7 +457,7 @@ describe('reducer ARCHIVE_STALE 自动归档', () => {
         id: 'p1', name: 'p', path: '/p',
         sessions: [
           { id: 'old-empty', title: '旧空会话', messages: [], updatedAt: 1000 },           // 古早空 → 归档
-          { id: 'old-msg', title: '旧有消息', messages: [{ id: 'm', role: 'user', content: 'hi' }], updatedAt: 1000 }, // 有消息 → 保留
+          { id: 'old-msg', title: '旧有消息', messages: [{ id: 'm', role: 'user', content: [{ type: 'text', text: 'hi' }] }], updatedAt: 1000 }, // 有消息 → 保留
           { id: 'new-empty', title: '新空会话', messages: [], updatedAt: Date.now() },       // 新空 → 保留
         ],
       }],
