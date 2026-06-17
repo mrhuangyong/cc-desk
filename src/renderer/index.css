@@ -99,9 +99,12 @@ button {
   border: none;
   color: inherit;
 }
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-thumb { background: var(--bg-hover); border-radius: var(--radius); }
+/* 隐藏所有滚动条（保留滚动能力）：Electron 为 Chromium，webkit 规则即可覆盖全部 */
+::-webkit-scrollbar { width: 0; height: 0; }
+::-webkit-scrollbar-thumb { background: transparent; }
 ::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-corner { background: transparent; }
+* { scrollbar-width: none; } /* Firefox 兜底（防御性，非 Chromium 环境生效） */
 
 /* ===== Codex 深色主题 ===== */
 [data-theme='codex-dark'] {
