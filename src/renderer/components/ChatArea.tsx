@@ -190,7 +190,7 @@ export function ChatArea() {
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        style={{ flex: 1, overflowY: 'auto', padding: '24px 28px 40px', display: 'flex', flexDirection: 'column', gap: 14, width: '100%', maxWidth: 'var(--chat-max-width)', margin: '0 auto' }}
+        style={{ flex: 1, overflowY: 'auto', padding: '24px 28px 40px', display: 'flex', flexDirection: 'column', gap: 50, width: '100%', maxWidth: 'var(--chat-max-width)', margin: '0 auto' }}
       >
         {session.messages.length === 0 && !streaming && (
           <div style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: 60 }}>{t('chat.empty')}</div>
