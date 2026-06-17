@@ -40,7 +40,6 @@ function createWindow() {
 
   // Claude
   ipcMain.handle('claude:send', (_e, opts) => {
-    console.log('[cc-stream] [1.5] ipc claude:send received', { promptLen: opts?.prompt?.length, sessionId: opts?.sessionId })
     return claude.send({ ...opts, webContents: win.webContents })
   })
   ipcMain.handle('claude:stop', () => {

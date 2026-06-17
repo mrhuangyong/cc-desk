@@ -39,7 +39,17 @@ function createStore(): Store<{ snapshot: ProjectsSnapshot }> {
 let store = createStore()
 
 export function getProjectsSnapshot(): ProjectsSnapshot {
-  return store.get('snapshot', EMPTY)
+  const snap = store.get('snapshot', EMPTY)
+  // 旧格式兼容：早期消息的 content 是 string（新格式为 ContentBlock[]）。
+  // 直接渲染旧格式会导致崩溃——发现即清空该 session 的历史消息。
+  for (const p of snap.projects) {
+    for (const s of p.sessions) {
+      if (s.messages.some((m: any) => typeof m.content === 'string')) {
+        s.messages = []
+      }
+    }
+  }
+  return snap
 }
 
 // 整体覆盖写。lastSeq 在写入前由 computeLastSeq 回填，保证恢复后 ID 不冲突。
