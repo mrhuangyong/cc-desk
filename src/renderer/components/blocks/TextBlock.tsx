@@ -1,4 +1,6 @@
+import { MarkdownRenderer } from '../markdown/MarkdownRenderer'
+
 export function TextBlock({ text }: { text: string }) {
   if (!text) return null
-  return <div style={{ whiteSpace: 'pre-wrap' }}>{text}</div>
+  return <MarkdownRenderer text={text} />
 }

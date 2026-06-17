@@ -25,8 +25,8 @@ export function LeftPanel({ collapsed }: Props) {
 
   const { width, dragging, onMouseDown, registerApply } = useResizableWidth({
     initial: 240,
-    min: Math.round(window.innerWidth * 0.5),
-    max: Math.round(window.innerWidth * 0.8),
+    min: 180,
+    max: Math.round(window.innerWidth * 0.5),
     side: 'right'
   })
 
