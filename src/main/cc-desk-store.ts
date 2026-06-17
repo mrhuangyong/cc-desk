@@ -14,9 +14,8 @@ export interface ModelProvider {
 }
 export interface ModelItem {
   id: string
-  name: string
   providerId: string
-  sdkModelId: string
+  sdkModelId: string   // 模型 ID，传给 SDK query() options.model 的真实模型名，也用作展示名
   contextLength: string
   enabled: boolean
 }
