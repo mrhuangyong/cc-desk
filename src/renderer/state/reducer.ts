@@ -223,13 +223,23 @@ export function reducer(state: AppState, action: Action): AppState {
         content: [{ type: 'text' as const, text }],
         ...(attachment ? { attachment } : {})
       }
+      // 首条消息：用消息文本生成会话标题（截断到 30 字，换行折叠为空格）
+      const makeTitle = (raw: string) => {
+        const clean = raw.replace(/\s+/g, ' ').trim()
+        return clean.length > 30 ? clean.slice(0, 30) + '…' : clean
+      }
       const projects = state.projects.map(p => ({
         ...p,
-        sessions: p.sessions.map(s =>
-          s.id === sessionId
-            ? { ...s, messages: [...s.messages, newMessage] }
-            : s
-        )
+        sessions: p.sessions.map(s => {
+          if (s.id !== sessionId) return s
+          const isFirst = s.messages.length === 0
+          return {
+            ...s,
+            messages: [...s.messages, newMessage],
+            // 仅首条且标题仍是默认占位时改名，避免覆盖用户手改的标题
+            ...(isFirst && s.title === '新会话' && text.trim() ? { title: makeTitle(text) } : {}),
+          }
+        })
       }))
       // 发送后清空草稿
       return { ...state, projects, draft: { text: '' } }
