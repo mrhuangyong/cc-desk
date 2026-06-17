@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { ArrowDown } from 'lucide-react'
 import { useStore } from '../state/store'
 import { useI18n } from '../i18n/useI18n'
 import { AttachmentChip } from './AttachmentChip'
@@ -18,6 +19,46 @@ export function ChatArea() {
 
   // 当前会话的流式状态（增量拼接的 blocks/notices）
   const streaming = state.streamingBySession[state.activeSessionId]
+
+  // ===== 滚动「贴底」逻辑 =====
+  // 原则：AI 输出时若用户在底部则自动滚动跟随；用户主动上滑后停止自动滚动，
+  //       直到用户再次滚到底部才恢复。isAtBottomRef 用 ref 在 scroll 回调里取最新值，
+  //       避免滚轮触发频繁重渲染；isAtBottom state 仅用于控制「回到底部」按钮显隐。
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const isAtBottomRef = useRef(true)
+  const [showScrollBtn, setShowScrollBtn] = useState(false)
+  const BOTTOM_THRESHOLD = 40 // 距底部多少像素内视为「在底部」
+
+  const checkAtBottom = () => {
+    const el = scrollRef.current
+    if (!el) return true
+    return el.scrollHeight - el.scrollTop - el.clientHeight < BOTTOM_THRESHOLD
+  }
+  const scrollToBottom = (behavior: ScrollBehavior = 'auto') => {
+    const el = scrollRef.current
+    if (!el) return
+    el.scrollTo({ top: el.scrollHeight, behavior })
+    isAtBottomRef.current = true
+    setShowScrollBtn(false)
+  }
+  const onScroll = () => {
+    const at = checkAtBottom()
+    isAtBottomRef.current = at
+    setShowScrollBtn(!at)
+  }
+
+  // 流式内容/消息变化时，若用户在底部则跟随滚动
+  useEffect(() => {
+    if (isAtBottomRef.current) scrollToBottom('auto')
+  }, [streaming, session?.messages.length])
+
+  // 切换会话：立即贴底（重置 isAtBottom）
+  useEffect(() => {
+    isAtBottomRef.current = true
+    setShowScrollBtn(false)
+    scrollToBottom('auto')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.activeSessionId])
 
   // 监听器只在挂载时注册一次，回调内需要的"会变值"通过 ref 取最新值，
   // 避免因依赖数组变化而 removeAllListeners→重注册，造成 claude:result 事件丢失、
@@ -112,10 +153,14 @@ export function ChatArea() {
   }
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: 'var(--bg)' }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: 'var(--bg)', position: 'relative' }}>
       {/* 闪烁光标动画 */}
       <style>{`@keyframes blink { 50% { opacity: 0 } }`}</style>
-      <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 14, width: '100%', maxWidth: 'var(--chat-max-width)', margin: '0 auto' }}>
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        style={{ flex: 1, overflowY: 'auto', padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 14, width: '100%', maxWidth: 'var(--chat-max-width)', margin: '0 auto' }}
+      >
         {session.messages.length === 0 && !streaming && (
           <div style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: 60 }}>{t('chat.empty')}</div>
         )}
@@ -163,6 +208,24 @@ export function ChatArea() {
           </div>
         )}
       </div>
+      {/* 回到底部按钮：仅当不在底部时显示，相对最外层 relative 定位在右下 */}
+      {showScrollBtn && (
+        <button
+          onClick={() => scrollToBottom('smooth')}
+          aria-label="回到底部"
+          title="回到底部"
+          style={{
+            position: 'absolute', right: 28, bottom: 88,
+            width: 34, height: 34, borderRadius: '50%',
+            background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+            boxShadow: 'var(--shadow-float)', color: 'var(--text)',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer', zIndex: 50,
+          }}
+        >
+          <ArrowDown size={16} />
+        </button>
+      )}
       <div style={{ padding: '0 28px 20px', width: '100%', maxWidth: 'var(--chat-max-width)', margin: '0 auto' }}>
         <InputDock />
       </div>
