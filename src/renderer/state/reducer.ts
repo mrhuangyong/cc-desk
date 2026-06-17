@@ -220,7 +220,7 @@ export function reducer(state: AppState, action: Action): AppState {
       const newMessage = {
         id: nextId('m'),
         role: 'user' as const,
-        content: text,
+        content: [{ type: 'text' as const, text }],
         ...(attachment ? { attachment } : {})
       }
       const projects = state.projects.map(p => ({
@@ -295,6 +295,7 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'STREAM_END': {
       console.log('[cc-stream] [8] reducer STREAM_END', { sessionId: action.sessionId, hasEntry: !!state.streamingBySession[action.sessionId] })
       const { [action.sessionId]: _, ...rest } = state.streamingBySession
+      const textBlocks = action.content.filter((b: any) => b.type === 'text')
       const projects = state.projects.map(p => ({
         ...p,
         sessions: p.sessions.map(s =>
@@ -304,10 +305,9 @@ export function reducer(state: AppState, action: Action): AppState {
                 messages: [...s.messages, {
                   id: `m${Date.now()}`,
                   role: 'assistant' as const,
-                  content: action.content
-                    .filter((b: any) => b.type === 'text')
-                    .map((b: any) => b.text)
-                    .join(''),
+                  content: textBlocks.length > 0
+                    ? textBlocks.map((b: any) => ({ type: 'text' as const, text: b.text }))
+                    : [{ type: 'text' as const, text: '' }],
                 }],
               }
             : s

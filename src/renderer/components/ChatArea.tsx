@@ -113,7 +113,10 @@ export function ChatArea() {
               userSelect: 'text', cursor: 'text',
             }}>
               {m.attachment && <AttachmentChip attachment={m.attachment} />}
-              {m.content && <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}</div>}
+              {(() => {
+                const text = m.content.filter(b => b.type === 'text').map((b:any) => b.text).join('')
+                return text && <div style={{ whiteSpace: 'pre-wrap' }}>{text}</div>
+              })()}
             </div>
           ) : (
             // 用户消息：右对齐，浅灰块
@@ -125,7 +128,10 @@ export function ChatArea() {
               userSelect: 'text', cursor: 'text',
             }}>
               {m.attachment && <AttachmentChip attachment={m.attachment} />}
-              {m.content && <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}</div>}
+              {(() => {
+                const text = m.content.filter(b => b.type === 'text').map((b:any) => b.text).join('')
+                return text && <div style={{ whiteSpace: 'pre-wrap' }}>{text}</div>
+              })()}
             </div>
           )
         ))}
