@@ -86,7 +86,8 @@ export function buildFileExtension(getCwd: () => string): Extension {
       }
     },
     addProseMirrorPlugins() {
-      return [Suggestion(this.options.suggestion as any)]
+      // v3 要求显式传 editor 给 Suggestion（v2 自动从 context 取）
+      return [Suggestion({ ...this.options.suggestion, editor: this.editor } as any)]
     },
   })
 }
