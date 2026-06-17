@@ -22,12 +22,12 @@ export function App() {
     localStorage.setItem('cc-desk-theme', state.theme)
   }, [state.theme])
 
-  // 界面缩放：zoom 字段驱动 document zoom（small=0.85 / normal=1 / large=1.2）
-  useEffect(() => {
+  // 界面缩放：zoom 只作用于内容区（TitleBar 之外），避免缩放自定义 titleBar
+  // 导致其按钮与 macOS 原生红绿灯（不受 CSS zoom 影响）错位。
+  const zoomFactor = (() => {
     const z = state.settings.zoom
-    const factor = z === 'small' ? 0.85 : z === 'large' ? 1.2 : 1
-    document.documentElement.style.zoom = String(factor)
-  }, [state.settings.zoom])
+    return z === 'small' ? 0.85 : z === 'large' ? 1.2 : 1
+  })()
 
   // 工作区持久化的运行时状态：保存防抖定时器 + 是否已完成首次加载的标志
   const saveTimer = useRef<number | null>(null)
@@ -99,7 +99,7 @@ export function App() {
         onToggleLeft={() => setLeftCollapsed(c => !c)}
         onToggleRight={() => setRightCollapsed(c => !c)}
       />
-      <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+      <div style={{ flex: 1, display: 'flex', minHeight: 0, zoom: zoomFactor }}>
         <LeftPanel
           collapsed={leftCollapsed}
         />
