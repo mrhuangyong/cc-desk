@@ -313,11 +313,32 @@ export function reducer(state: AppState, action: Action): AppState {
       if (seen?.includes(action.uuid)) {
         return state
       }
+      // assistant 完整消息是本轮输出的权威版本，用于校正流式临时态。
+      // 关键：流式 text_delta 已拼出同一段文本，校正时不能直接 push 否则重复。
+      // 策略：流式期间末尾连续的 text/thinking block 视为本轮草稿，用 assistant
+      // 的对应内容替换；tool_use 按 id 合并（保留已回填的 result/status）。
       const merged = [...prev.blocks]
+      // 1) 丢弃末尾连续的纯文本/思考草稿块（它们将由 assistant 的 text/thinking 取代）
+      while (merged.length) {
+        const t = merged[merged.length - 1].type
+        if (t === 'text' || t === 'thinking') merged.pop()
+        else break
+      }
+      // 2) 合入 assistant 的 blocks
       for (const nb of action.blocks) {
         if (nb.type === 'tool_use') {
           const idx = merged.findIndex(b => b.type === 'tool_use' && b.id === nb.id)
-          if (idx >= 0) merged[idx] = { ...merged[idx], ...nb } as ContentBlock
+          if (idx >= 0) {
+            // 校正 input，但不降级已有的 status/result（review #3）
+            const old = merged[idx] as any
+            merged[idx] = { ...nb, input: nb.input ?? old.input, status: old.status !== 'running' ? old.status : nb.status, result: old.result } as ContentBlock
+          } else {
+            merged.push(nb)
+          }
+        } else if (nb.type === 'text' || nb.type === 'thinking') {
+          // 与流式残留的同类块合并去重：若末尾已是同类型，则替换（同一段文本的权威版）
+          const last = merged[merged.length - 1]
+          if (last && last.type === nb.type) merged[merged.length - 1] = nb
           else merged.push(nb)
         } else {
           merged.push(nb)

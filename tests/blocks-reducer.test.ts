@@ -130,4 +130,40 @@ describe('notice / error / end', () => {
     s = reducer(s, { type: 'STREAM_ASSISTANT_BLOCKS', sessionId: 's1', uuid: 'u1', blocks: [{ type: 'text', text: 'A2' }] })
     expect(s.streamingBySession['s1'].blocks.length).toBe(1)
   })
+
+  it('流式 text + assistant 完整消息不重复（校正去重）', () => {
+    // 回归：流式 text_delta 拼出文本后，assistant 完整消息到达时不能重复 push
+    let s = initialState()
+    s = reducer(s, { type: 'STREAM_START', sessionId: 's1' })
+    s = reducer(s, { type: 'STREAM_DELTA', sessionId: 's1', kind: 'text', delta: '你好' })
+    s = reducer(s, { type: 'STREAM_DELTA', sessionId: 's1', kind: 'text', delta: '！' })
+    // assistant 完整消息含同一段文本
+    s = reducer(s, { type: 'STREAM_ASSISTANT_BLOCKS', sessionId: 's1', uuid: 'u1', blocks: [{ type: 'text', text: '你好！' }] })
+    const blocks = s.streamingBySession['s1'].blocks
+    const texts = blocks.filter(b => b.type === 'text')
+    expect(texts.length).toBe(1)
+    expect((texts[0] as any).text).toBe('你好！')
+  })
+
+  it('assistant 完整消息不降级已回填的 tool_use 状态', () => {
+    let s = initialState()
+    s = reducer(s, { type: 'STREAM_START', sessionId: 's1' })
+    s = reducer(s, {
+      type: 'STREAM_TOOL_USE_START', sessionId: 's1',
+      block: { type: 'tool_use', id: 'tu1', name: 'Read', input: {}, status: 'running' },
+    })
+    s = reducer(s, {
+      type: 'STREAM_TOOL_RESULT', sessionId: 's1', toolUseId: 'tu1',
+      result: { content: '内容', isError: false },
+    })
+    // 此时 tu1 已 completed + result；assistant 校正到达时（input 权威）不应降级 status
+    s = reducer(s, {
+      type: 'STREAM_ASSISTANT_BLOCKS', sessionId: 's1', uuid: 'u1',
+      blocks: [{ type: 'tool_use', id: 'tu1', name: 'Read', input: { file_path: 'a' }, status: 'running' }],
+    })
+    const tu = s.streamingBySession['s1'].blocks.find(b => b.type === 'tool_use') as any
+    expect(tu.status).toBe('completed')
+    expect(tu.result).toEqual({ content: '内容', isError: false })
+    expect(tu.input).toEqual({ file_path: 'a' })
+  })
 })

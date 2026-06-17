@@ -135,15 +135,13 @@ export class ClaudeService {
             const sys = message as any
             if (sys.subtype === 'init') {
               webContents.send('claude:system', { sessionId: sys.session_id, model: sys.model, tools: sys.tools })
-            } else if (sys.subtype === 'status') {
-              webContents.send('claude:notice', mkNotice('status', `状态：${sys.status}`, 'info'))
             } else if (sys.subtype === 'permission_denied') {
               webContents.send('claude:notice', mkNotice('permission_denied', `权限拒绝：${sys.tool_name}`, 'warn'))
-            } else if (sys.subtype && String(sys.subtype).startsWith('compact')) {
-              webContents.send('claude:notice', mkNotice('compact', `压缩：${sys.subtype}`, 'info'))
-            } else {
-              webContents.send('claude:notice', mkNotice('info', `system.${sys.subtype}`, 'info'))
+            } else if (sys.subtype === 'compact' || (sys.subtype && String(sys.subtype).startsWith('compact') && sys.compact_result === 'failed')) {
+              webContents.send('claude:notice', mkNotice('compact', `上下文压缩失败：${sys.compact_error ?? sys.subtype}`, 'warn'))
             }
+            // 其余 system 子类型（status 的 requesting/processing 瞬态、hook_started/hook_response
+            // 协议进度等）属内部噪声，仅记日志、不打扰用户。
             break
           }
           case 'stream_event': {
