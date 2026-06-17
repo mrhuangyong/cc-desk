@@ -23,7 +23,7 @@ function extractText(blocks: ContentBlock[]): string {
   }).join('\n').trim()
 }
 
-function CopyButton({ text }: { text: string }) {
+function CopyButton({ text, inline }: { text: string; inline?: boolean }) {
   const [copied, setCopied] = useState(false)
   const onCopy = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -33,7 +33,7 @@ function CopyButton({ text }: { text: string }) {
     })
   }
   return (
-    <button className="msg-copy" onClick={onCopy} title="复制" aria-label="复制">
+    <button className={inline ? 'msg-copy msg-copy-inline' : 'msg-copy'} onClick={onCopy} title="复制" aria-label="复制">
       {copied ? <Check size={13} /> : <Copy size={13} />}
     </button>
   )
@@ -204,17 +204,20 @@ export function ChatArea() {
               display: 'flex', flexDirection: 'column', gap: 6,
               userSelect: 'text', cursor: 'text',
             }}>
-              <CopyButton text={extractText(m.content)} />
               {m.attachment && <AttachmentChip attachment={m.attachment} />}
               <Notices notices={m.notices ?? []} />
               {m.content.map((b, i) => <BlockRenderer key={i} block={b} />)}
-              {(m.costUSD != null || m.durationMs != null) && (
-                <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>
-                  {m.costUSD != null && `$${m.costUSD.toFixed(4)} `}
-                  {m.durationMs != null && `${(m.durationMs / 1000).toFixed(1)}s`}
-                  {m.turns != null && ` · ${m.turns} 轮`}
-                </div>
-              )}
+              {/* 底部行：cost 元数据 + 复制钮，同一水平线，距上方 md 内容 10px */}
+              <div className="msg-foot" style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
+                {(m.costUSD != null || m.durationMs != null) && (
+                  <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>
+                    {m.costUSD != null && `$${m.costUSD.toFixed(4)} `}
+                    {m.durationMs != null && `${(m.durationMs / 1000).toFixed(1)}s`}
+                    {m.turns != null && ` · ${m.turns} 轮`}
+                  </div>
+                )}
+                <CopyButton text={extractText(m.content)} inline />
+              </div>
             </div>
           ) : (
             // 用户消息：右对齐，浅灰块
