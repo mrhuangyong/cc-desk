@@ -84,6 +84,7 @@ export class ClaudeService {
     // 本次流绑定的渲染端会话 id。所有事件载荷带上它，渲染端据此路由到正确会话，
     // 避免「在 A 发送后切到 B，A 的流式输出串到 B」（之前用「当前激活会话」导致串台）。
     const lsid = localSessionId ?? ''
+    console.log('[cc-stream] ClaudeService.send', { lsid, hasLocalSessionId: !!localSessionId, sessionId })
     const settings = getSettings()
 
     // 从 cc-desk 自有配置（~/.cc-desk/config.json）取激活的供应商+模型。
