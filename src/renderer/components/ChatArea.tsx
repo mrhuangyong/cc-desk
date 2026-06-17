@@ -208,25 +208,25 @@ export function ChatArea() {
           </div>
         )}
       </div>
-      {/* 回到底部按钮：仅当不在底部时显示，相对最外层 relative 定位在右下 */}
-      {showScrollBtn && (
-        <button
-          onClick={() => scrollToBottom('smooth')}
-          aria-label="回到底部"
-          title="回到底部"
-          style={{
-            position: 'absolute', left: '50%', transform: 'translateX(-50%)', bottom: 110,
-            width: 34, height: 34, borderRadius: '50%',
-            background: 'var(--bg-elevated)', border: '1px solid var(--border)',
-            boxShadow: 'var(--shadow-float)', color: 'var(--text)',
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer', zIndex: 50,
-          }}
-        >
-          <ArrowDown size={16} />
-        </button>
-      )}
-      <div style={{ padding: '0 28px 20px', width: '100%', maxWidth: 'var(--chat-max-width)', margin: '0 auto' }}>
+      <div style={{ padding: '0 28px 20px', width: '100%', maxWidth: 'var(--chat-max-width)', margin: '0 auto', position: 'relative' }}>
+        {/* 回到底部按钮：相对输入框容器定位，底边恒在输入框上边框上方 20px */}
+        {showScrollBtn && (
+          <button
+            onClick={() => scrollToBottom('smooth')}
+            aria-label="回到底部"
+            title="回到底部"
+            style={{
+              position: 'absolute', left: '50%', transform: 'translateX(-50%)', bottom: '100%', marginBottom: 20,
+              width: 34, height: 34, borderRadius: '50%',
+              background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+              boxShadow: 'var(--shadow-float)', color: 'var(--text)',
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', zIndex: 50,
+            }}
+          >
+            <ArrowDown size={16} />
+          </button>
+        )}
         <InputDock />
       </div>
     </div>
