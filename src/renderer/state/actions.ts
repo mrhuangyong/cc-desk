@@ -49,3 +49,6 @@ export type Action =
   | { type: 'SET_CLAUDE_SESSION_ID'; localSessionId: string; claudeSessionId: string }
   // 自动归档：删除超过阈值无活动且无消息的空会话
   | { type: 'ARCHIVE_STALE'; beforeTs: number }
+  // AskUserQuestion 等用户对话：显示/应答
+  | { type: 'SHOW_DIALOG'; reqId: string; dialogKind: string; payload: any; toolUseId?: string }
+  | { type: 'ANSWER_DIALOG' }

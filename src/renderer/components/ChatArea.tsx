@@ -3,6 +3,7 @@ import { useStore } from '../state/store'
 import { useI18n } from '../i18n/useI18n'
 import { AttachmentChip } from './AttachmentChip'
 import { InputBar } from './InputBar'
+import { InputDock } from './InputDock'
 import { BlockRenderer } from './blocks/BlockRenderer'
 import { Notices } from './Notices'
 
@@ -96,6 +97,10 @@ export function ChatArea() {
     api.onAborted(() => {
       dispatch({ type: 'STREAM_ABORTED', sessionId: activeSessionIdRef.current })
     })
+    // AskUserQuestion 等用户对话请求
+    api.onDialogRequest((data) => {
+      dispatch({ type: 'SHOW_DIALOG', reqId: data.reqId, dialogKind: data.dialogKind, payload: data.payload, toolUseId: data.toolUseId })
+    })
 
     return () => api.removeAllListeners()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -159,7 +164,7 @@ export function ChatArea() {
         )}
       </div>
       <div style={{ padding: '0 28px 20px' }}>
-        <InputBar />
+        <InputDock />
       </div>
     </div>
   )

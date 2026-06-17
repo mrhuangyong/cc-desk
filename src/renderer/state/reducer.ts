@@ -409,6 +409,12 @@ export function reducer(state: AppState, action: Action): AppState {
       }))
       return { ...state, projects }
     }
+    case 'SHOW_DIALOG': {
+      return { ...state, pendingDialog: { reqId: action.reqId, dialogKind: action.dialogKind, payload: action.payload, toolUseId: action.toolUseId } }
+    }
+    case 'ANSWER_DIALOG': {
+      return { ...state, pendingDialog: null }
+    }
     default:
       return state
   }
