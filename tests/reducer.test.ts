@@ -12,7 +12,7 @@ function initialState(): AppState {
     tabsBySession: { s1: [] },
     activeTabIdBySession: { s1: null },
     theme: 'codex-light',
-    draft: { text: '' },
+    draft: { doc: null, attachments: [] },
     currentView: 'workspace',
     activeSettingsSection: 'general',
     streamingBySession: {},
@@ -215,25 +215,27 @@ describe('reducer', () => {
     expect(state.projects.find(p => p.id === 'p2')!.sessions.length).toBe(1)
   })
 
-  it('SET_DRAFT_ATTACHMENT / CLEAR_DRAFT_ATTACHMENT 管理草稿附件', () => {
+  it('SET_DRAFT_DOC / ADD_DRAFT_ATTACHMENT / REMOVE_DRAFT_ATTACHMENT / CLEAR_DRAFT 管理草稿', () => {
     const state = initialState()
-    const att = { source: 'https://x.com', tag: 'div', text: 'hi', selector: 'div', html: '<div/>' }
-    const s1 = reducer(state, { type: 'SET_DRAFT_ATTACHMENT', attachment: att })
-    expect(s1.draft.attachment).toEqual(att)
-    expect(s1.draft.text).toBe('') // 文本不丢
-    const s2 = reducer(s1, { type: 'SET_DRAFT_TEXT', text: '看看这个' })
-    expect(s2.draft.text).toBe('看看这个')
-    expect(s2.draft.attachment).toEqual(att) // 附件还在
-    const s3 = reducer(s2, { type: 'CLEAR_DRAFT_ATTACHMENT' })
-    expect(s3.draft.attachment).toBeUndefined()
-    expect(s3.draft.text).toBe('看看这个') // 文本保留
+    const doc = { type: 'doc' as const, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'hi' }] }] }
+    const s1 = reducer(state, { type: 'SET_DRAFT_DOC', doc })
+    expect(s1.draft.doc).toEqual(doc)
+    const att = { type: 'file' as const, name: 'a.ts', path: '/a.ts' }
+    const s2 = reducer(s1, { type: 'ADD_DRAFT_ATTACHMENT', attachment: att })
+    expect(s2.draft.attachments).toEqual([att])
+    expect(s2.draft.doc).toEqual(doc) // doc 不丢
+    const s3 = reducer(s2, { type: 'REMOVE_DRAFT_ATTACHMENT', index: 0 })
+    expect(s3.draft.attachments).toEqual([])
+    const s4 = reducer(s3, { type: 'CLEAR_DRAFT' })
+    expect(s4.draft).toEqual({ doc: null, attachments: [] })
   })
 
-  it('SEND_MESSAGE 把文本+附件合成消息追加，发送后草稿清空', () => {
+  it('SEND_MESSAGE 用 serializeForPrompt 从 doc 序列化消息，发送后草稿清空', () => {
     const state = initialState() // 激活 s1
-    const att = { source: 'https://x.com', tag: 'a', text: '链接', selector: 'a', html: '<a/>' }
-    const s1 = reducer(state, { type: 'SET_DRAFT_TEXT', text: '分析下' })
-    const s2 = reducer(s1, { type: 'SET_DRAFT_ATTACHMENT', attachment: att })
+    const doc = { type: 'doc' as const, content: [{ type: 'paragraph', content: [{ type: 'text', text: '分析下' }] }] }
+    const att = { type: 'pickedElement' as const, el: { source: 'https://x.com', tag: 'a', text: '链接', selector: 'a', html: '<a/>' } }
+    const s1 = reducer(state, { type: 'SET_DRAFT_DOC', doc })
+    const s2 = reducer(s1, { type: 'ADD_DRAFT_ATTACHMENT', attachment: att })
     const before = state.projects.find(p => p.id === 'p1')!.sessions.find(s => s.id === 's1')!.messages.length
     const sent = reducer(s2, { type: 'SEND_MESSAGE' })
     const session = sent.projects.find(p => p.id === 'p1')!.sessions.find(s => s.id === 's1')!
@@ -241,27 +243,26 @@ describe('reducer', () => {
     const last = session.messages[session.messages.length - 1]
     expect(last.role).toBe('user')
     expect(last.content).toEqual([{ type: 'text', text: '分析下' }])
-    expect(last.attachment).toEqual(att)
+    expect(last.attachments).toEqual([att])
     // 草稿清空
-    expect(sent.draft.text).toBe('')
-    expect(sent.draft.attachment).toBeUndefined()
+    expect(sent.draft).toEqual({ doc: null, attachments: [] })
   })
 
   it('SEND_MESSAGE 文本和附件都为空时不发送', () => {
     const state = initialState()
     const sent = reducer(state, { type: 'SEND_MESSAGE' })
     // 无变化（消息数不变、草稿不变）
-    expect(sent).toEqual(state)
+    expect(sent).toBe(state)
   })
 
   it('SEND_MESSAGE 只有附件无文本也能发送', () => {
     const state = initialState()
-    const att = { source: 'u', tag: 'img', text: '', selector: 'img', html: '<img/>' }
-    const s1 = reducer(state, { type: 'SET_DRAFT_ATTACHMENT', attachment: att })
+    const att = { type: 'file' as const, name: 'b.ts', path: '/b.ts' }
+    const s1 = reducer(state, { type: 'ADD_DRAFT_ATTACHMENT', attachment: att })
     const sent = reducer(s1, { type: 'SEND_MESSAGE' })
     const session = sent.projects.find(p => p.id === 'p1')!.sessions.find(s => s.id === 's1')!
     const last = session.messages[session.messages.length - 1]
-    expect(last.attachment).toEqual(att)
+    expect(last.attachments).toEqual([att])
     expect(last.content).toEqual([{ type: 'text', text: '' }])
   })
 
@@ -368,8 +369,8 @@ describe('reducer HYDRATE 持久化恢复', () => {
   it('HYDRATE 注入 projects/activeSessionId/tabs/sessionMap，且保留 theme/draft/streaming', () => {
     const base = initialState()
     // 先制造一些临时态，验证 HYDRATE 不覆盖它们
-    const withDraft = reducer(base, { type: 'SET_DRAFT_TEXT', text: '草稿保留?' })
-    const withStream = reducer(withDraft, { type: 'STREAM_START', sessionId: 's1' })
+    const withDoc = reducer(base, { type: 'SET_DRAFT_DOC', doc: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: '草稿保留?' }] }] } })
+    const withStream = reducer(withDoc, { type: 'STREAM_START', sessionId: 's1' })
 
     const next = reducer(withStream, {
       type: 'HYDRATE',
@@ -387,7 +388,7 @@ describe('reducer HYDRATE 持久化恢复', () => {
     expect(next.activeTabIdBySession['s3']).toBe('t1')
     expect(next.claudeSessionMap.s3).toBe('claude-xyz')
     // 临时态保留
-    expect(next.draft.text).toBe('草稿保留?')
+    expect(next.draft.doc).toEqual({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: '草稿保留?' }] }] })
     expect(next.streamingBySession['s1']).toBeDefined()
     // settings/theme 保留
     expect(next.theme).toBe('codex-light')

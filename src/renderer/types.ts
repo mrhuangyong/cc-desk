@@ -44,6 +44,7 @@ export interface Message {
   content: ContentBlock[]
   // 可选：拾取的网页元素附件，发送时带入消息
   attachment?: PickedElement
+  attachments?: DraftAttachment[]   // 输入框上方 chip 栏的附件（图片/文件/网页元素）
   notices?: SystemNotice[]
   costUSD?: number
   durationMs?: number
