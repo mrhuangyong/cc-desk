@@ -71,7 +71,7 @@ export function ModelSettings() {
   const addModel = () => {
     const id = `model-${Date.now()}`
     const name = t('model.newModel')
-    const m: ModelItem = { id, name, providerId: activeId, sdkModelId: name, contextLength: '8', enabled: true }
+    const m: ModelItem = { id, name, providerId: activeId, sdkModelId: name, contextLength: '200000', enabled: true }
     persist({ models: [...cfg.models, m] })
     setEditingModel(id) // 新增后自动展开编辑表单，省去再点编辑图标
   }
