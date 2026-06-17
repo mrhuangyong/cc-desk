@@ -117,7 +117,11 @@ export function ChatArea() {
     // 否则 A 发送后切到 B，A 的流式会串到 B。
     api.onDelta((data: any) => {
       const sid = data?.localSessionId
-      if (!sid) return
+      console.log('[cc-stream] onDelta', { sid, kind: data?.kind, keys: Object.keys(data || {}) })
+      if (!sid) {
+        console.warn('[cc-stream] onDelta 丢弃：事件缺 localSessionId（主进程可能未重启，仍在跑旧代码）', data)
+        return
+      }
       dispatch({ type: 'STREAM_DELTA', sessionId: sid, kind: data.kind, delta: data.delta })
     })
     // 归一化 blocks：工具开始 / assistant 整块 / 工具结果
