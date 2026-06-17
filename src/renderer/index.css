@@ -197,6 +197,12 @@ button {
 }
 .msg-row:hover .msg-copy { opacity: 1; }
 .msg-copy:hover { color: var(--text); }
+/* inline 变体：正常文档流（与 cost 同行），非绝对定位 */
+.msg-copy-inline {
+  position: static;
+  width: 24px; height: 24px;
+  padding: 3px;
+}
 /* user 消息右对齐 → 复制钮放左上；assistant 左对齐 → 放右上 */
 .msg-row.is-user .msg-copy { right: 0; }
 .msg-row.is-assistant .msg-copy { left: 0; }
