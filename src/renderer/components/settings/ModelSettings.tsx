@@ -71,7 +71,7 @@ export function ModelSettings() {
   const addModel = () => {
     const id = `model-${Date.now()}`
     const name = t('model.newModel')
-    const m: ModelItem = { id, name, providerId: activeId, sdkModelId: name, contextLength: '8万', enabled: true }
+    const m: ModelItem = { id, name, providerId: activeId, sdkModelId: name, contextLength: '8', enabled: true }
     persist({ models: [...cfg.models, m] })
     setEditingModel(id) // 新增后自动展开编辑表单，省去再点编辑图标
   }
@@ -159,7 +159,7 @@ export function ModelSettings() {
                       <div style={{ display: 'flex', gap: 8 }}>
                         <input value={m.name} onChange={e => updateModel(m.id, { name: e.target.value })} placeholder="名称" style={{ ...inputStyle, flex: 1 }} />
                         <input value={m.sdkModelId} onChange={e => updateModel(m.id, { sdkModelId: e.target.value })} placeholder={t('model.sdkModelId')} style={{ ...inputStyle, flex: 1 }} />
-                        <input value={m.contextLength} onChange={e => updateModel(m.id, { contextLength: e.target.value })} placeholder={t('model.contextLength')} style={{ ...inputStyle, width: 80 }} />
+                        <input type="number" min={0} value={m.contextLength} onChange={e => updateModel(m.id, { contextLength: e.target.value })} placeholder={t('model.contextLength')} style={{ ...inputStyle, width: 80 }} />
                       </div>
                     )}
                   </div>
