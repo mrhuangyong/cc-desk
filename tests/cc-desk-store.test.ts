@@ -1,0 +1,60 @@
+import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
+import os from 'os'
+import path from 'path'
+import fs from 'fs'
+
+const TMP_HOME = path.join(os.tmpdir(), `cc-desk-test-${Date.now()}`)
+const ORIG_HOME = process.env.HOME
+beforeEach(() => {
+  fs.rmSync(TMP_HOME, { recursive: true, force: true })
+  fs.mkdirSync(TMP_HOME, { recursive: true })
+  process.env.HOME = TMP_HOME
+  vi.resetModules()
+})
+afterAll(() => { process.env.HOME = ORIG_HOME; fs.rmSync(TMP_HOME, { recursive: true, force: true }) })
+
+describe('cc-desk-store', () => {
+  it('无文件时返回空初始值', async () => {
+    const { getModelProvidersConfig } = await import('../src/main/cc-desk-store')
+    expect(getModelProvidersConfig()).toEqual({
+      providers: [], models: [], modelRoleMap: {}, activeModelId: '',
+    })
+  })
+
+  it('saveModelProvidersConfig 浅合并写回，再读能拿到', async () => {
+    const { getModelProvidersConfig, saveModelProvidersConfig } = await import('../src/main/cc-desk-store')
+    saveModelProvidersConfig({ providers: [{ id: 'p1', name: 'ai', apiKey: 'sk', baseUrl: 'http://x', enabled: true }] })
+    expect(getModelProvidersConfig().providers.length).toBe(1)
+    saveModelProvidersConfig({ models: [{ id: 'm1', name: 'glm', providerId: 'p1', sdkModelId: 'glm-5.2', contextLength: '200K', enabled: true }] })
+    const cfg = getModelProvidersConfig()
+    expect(cfg.providers.length).toBe(1)
+    expect(cfg.models.length).toBe(1)
+  })
+
+  it('resolveActiveProviderModel: activeModelId 指向 enabled 模型时返回它', async () => {
+    const { resolveActiveProviderModel } = await import('../src/main/cc-desk-store')
+    const cfg = {
+      providers: [{ id: 'p1', name: 'ai', apiKey: 'sk', baseUrl: 'http://x', enabled: true }],
+      models: [{ id: 'm1', name: 'glm', providerId: 'p1', sdkModelId: 'glm-5.2', contextLength: '200K', enabled: true }],
+      modelRoleMap: {}, activeModelId: 'm1',
+    }
+    const r = resolveActiveProviderModel(cfg)
+    expect(r?.provider.id).toBe('p1')
+    expect(r?.model.sdkModelId).toBe('glm-5.2')
+  })
+
+  it('resolveActiveProviderModel: activeModelId 为空时回退首个 enabled provider 的首个 enabled 模型', async () => {
+    const { resolveActiveProviderModel } = await import('../src/main/cc-desk-store')
+    const cfg = {
+      providers: [{ id: 'p1', name: 'ai', apiKey: 'sk', baseUrl: 'http://x', enabled: true }],
+      models: [{ id: 'm1', name: 'glm', providerId: 'p1', sdkModelId: 'glm-5.2', contextLength: '200K', enabled: true }],
+      modelRoleMap: {}, activeModelId: '',
+    }
+    expect(resolveActiveProviderModel(cfg)?.model.id).toBe('m1')
+  })
+
+  it('resolveActiveProviderModel: 无任何 enabled provider+model 时返回 null', async () => {
+    const { resolveActiveProviderModel } = await import('../src/main/cc-desk-store')
+    expect(resolveActiveProviderModel({ providers: [], models: [], modelRoleMap: {}, activeModelId: '' })).toBeNull()
+  })
+})

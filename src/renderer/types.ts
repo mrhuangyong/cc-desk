@@ -27,6 +27,7 @@ export interface Session {
   id: string
   title: string
   messages: Message[]
+  updatedAt?: number    // 最后活动时间戳（ms），用于自动归档判断
 }
 
 // 项目：包含多个会话
@@ -76,19 +77,67 @@ export type AppView = 'workspace' | 'settings'
 export interface ModelProvider {
   id: string
   name: string
-  apiKey: string     // 表单字段（mock）
-  baseUrl: string    // 表单字段（mock）
-  apiFormat: string  // API 格式（mock），如 'Anthropic Messages (/v1/messages)'
+  apiKey: string     // 供应商独立的 API Key（Anthropic）
+  baseUrl: string    // 可选占位；SDK 当前不支持自定义 baseUrl
   enabled: boolean
 }
 
 // 模型（模型设置 - 右下列表项）
 export interface ModelItem {
   id: string
-  name: string
+  name: string             // 模型名（如 glm-5.2）
   providerId: string
-  contextLength: string  // 上下文窗口标签（mock），如 '20万'
+  sdkModelId: string       // 传给 SDK query() options.model 的真实模型名
+  contextLength: string    // 上下文窗口标签（展示用，如 '20万'）
   enabled: boolean
+}
+
+// 模型映射槽位：Claude Agent SDK 认识的三个角色
+export type ModelRole = 'opus' | 'sonnet' | 'haiku'
+
+// 代码预览设置（CodePreviewSettings 子页）
+export interface CodePreviewSettings {
+  lightTheme: string
+  darkTheme: string
+  showLineNumbers: boolean
+  wordWrap: boolean
+  fontSize: number
+}
+
+// 应用设置：与主进程 src/main/settings-store.ts 的 AppSettings 保持一致
+export interface AppSettings {
+  apiKey: string
+  model: string               // 当前会话模型 —— 指向某个 ModelItem.id
+  cwd: string
+  providers: ModelProvider[]
+  models: ModelItem[]
+  // 按供应商分别映射：key = `${providerId}:${role}`，value = ModelItem.id
+  // 含义：在该供应商下，Claude 的 opus/sonnet/haiku 角色分别用哪个自定义模型
+  modelRoleMap: Record<string, string>
+
+  // ===== 常规设置（GeneralSettings）=====
+  theme: string
+  lang: string
+  zoom: string
+  proxy: string
+  inheritTerminal: boolean
+  terminalFont: string
+  taskNotify: boolean
+  notifySound: boolean
+  queueMode: string
+  showThinking: boolean
+  showTodo: boolean
+  autoArchive: boolean
+  archiveDays: string
+  dataPath: string
+
+  // ===== 各设置子页 =====
+  codePreview: CodePreviewSettings
+  skills: SkillItem[]
+  mcpServers: McpServer[]
+  plugins: Plugin[]
+  commands: SettingsEntry[]
+  hooks: SettingsEntry[]
 }
 
 // 技能（设置子页，带启用状态）
