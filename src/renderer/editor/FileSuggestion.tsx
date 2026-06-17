@@ -2,6 +2,7 @@
 // @ 触发：文件菜单，实时 fs.readTree + 目录导航 + 上限 50。
 import { Extension } from '@tiptap/core'
 import Suggestion from '@tiptap/suggestion'
+import { PluginKey } from '@tiptap/pm/state'
 import { makeSuggestionController } from './suggestionController'
 import { listDir, filterFileItems } from './fileNav'
 import { Folder, File as FileIcon } from 'lucide-react'
@@ -9,6 +10,9 @@ import type { FileNode } from '../types'
 import type { FileMenuItem } from './types'
 
 const FILE_LIMIT = 50
+
+// 独立 pluginKey：与 slashSuggestion 区分，避免 ProseMirror 同 key plugin 冲突。
+const filePluginKey = new PluginKey('fileSuggestion')
 
 export function buildFileExtension(getCwd: () => string): Extension {
   // 缓存：同一 cwd 的树只读一次（输入框生命周期内）。cwd 变（切项目）时重置。
@@ -34,6 +38,7 @@ export function buildFileExtension(getCwd: () => string): Extension {
     addOptions() {
       return {
         suggestion: {
+          pluginKey: filePluginKey,
           char: '@',
           startOfLine: false,
           allowSpaces: false,
