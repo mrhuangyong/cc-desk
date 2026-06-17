@@ -3,6 +3,8 @@ import { useStore } from '../state/store'
 import { useI18n } from '../i18n/useI18n'
 import { AttachmentChip } from './AttachmentChip'
 import { InputBar } from './InputBar'
+import { BlockRenderer } from './blocks/BlockRenderer'
+import { Notices } from './Notices'
 
 export function ChatArea() {
   const { state, dispatch } = useStore()
@@ -122,10 +124,15 @@ export function ChatArea() {
               userSelect: 'text', cursor: 'text',
             }}>
               {m.attachment && <AttachmentChip attachment={m.attachment} />}
-              {(() => {
-                const text = m.content.filter(b => b.type === 'text').map((b:any) => b.text).join('')
-                return text && <div style={{ whiteSpace: 'pre-wrap' }}>{text}</div>
-              })()}
+              <Notices notices={m.notices ?? []} />
+              {m.content.map((b, i) => <BlockRenderer key={i} block={b} />)}
+              {(m.costUSD != null || m.durationMs != null) && (
+                <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>
+                  {m.costUSD != null && `$${m.costUSD.toFixed(4)} `}
+                  {m.durationMs != null && `${(m.durationMs / 1000).toFixed(1)}s`}
+                  {m.turns != null && ` · ${m.turns} 轮`}
+                </div>
+              )}
             </div>
           ) : (
             // 用户消息：右对齐，浅灰块
@@ -137,47 +144,17 @@ export function ChatArea() {
               userSelect: 'text', cursor: 'text',
             }}>
               {m.attachment && <AttachmentChip attachment={m.attachment} />}
-              {(() => {
-                const text = m.content.filter(b => b.type === 'text').map((b:any) => b.text).join('')
-                return text && <div style={{ whiteSpace: 'pre-wrap' }}>{text}</div>
-              })()}
+              {m.content.map((b, i) => <BlockRenderer key={i} block={b} />)}
             </div>
           )
         ))}
-        {/* 流式消息：思考过程 + 工具卡片 + 增量文本 + 闪烁光标 */}
-        {streaming && (() => {
-          const blocks = streaming.blocks || []
-          const thinking = (blocks.filter(b => b.type === 'thinking').map((b: any) => b.text).join('')) as string
-          const currentText = (blocks.filter(b => b.type === 'text').map((b: any) => b.text).join('')) as string
-          const tools = blocks.filter(b => b.type === 'tool_use') as { id: string; name: string }[]
-          return (
+        {/* 流式消息：notice + blocks + 错误 + 闪烁光标 */}
+        {streaming && (
           <div style={{ color: 'var(--text)', fontSize: 14, lineHeight: 1.6, padding: '0 28px', display: 'flex', flexDirection: 'column', gap: 8, userSelect: 'text' }}>
-            {/* 显示思考过程（受常规设置 showThinking 控制） */}
-            {state.settings.showThinking && thinking && (
-              <details style={{ color: 'var(--text-muted)', fontSize: 12, borderLeft: '2px solid var(--border)', paddingLeft: 10 }}>
-                <summary style={{ cursor: 'pointer' }}>{t('chat.thinking')}</summary>
-                <div style={{ whiteSpace: 'pre-wrap', marginTop: 4 }}>{thinking}</div>
-              </details>
-            )}
-            {/* 显示待办/工具卡片（受常规设置 showTodo 控制） */}
-            {state.settings.showTodo && tools.length > 0 && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {tools.map((tl, i) => (
-                  <span key={`${tl.id}-${i}`} style={{ padding: '2px 8px', borderRadius: 6, fontSize: 11, background: 'var(--bg-hover)', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                    🔧 {tl.name}
-                  </span>
-                ))}
-              </div>
-            )}
-            {currentText}
+            <Notices notices={streaming.notices ?? []} />
+            {streaming.blocks.map((b, i) => <BlockRenderer key={i} block={b} />)}
+            {streaming.error && <div style={{ color: '#ef4444', fontSize: 13 }}>❌ {streaming.error}</div>}
             <span style={{ animation: 'blink 1s step-end infinite' }}>▌</span>
-          </div>
-          )
-        })()}
-        {/* 错误提示 */}
-        {streaming?.error && (
-          <div style={{ color: '#ef4444', fontSize: 13, padding: '0 28px' }}>
-            ❌ {streaming.error}
           </div>
         )}
       </div>
