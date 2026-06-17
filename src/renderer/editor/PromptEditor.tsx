@@ -1,6 +1,10 @@
 // src/renderer/editor/PromptEditor.tsx
 // TipTap 编辑器封装：装配扩展、onUpdate→onDocChange、降级 textarea。
-import { useEffect } from 'react'
+//
+// 关键：editor 只初始化一次（useEditor 无 deps），allSlashItems / getCwd 的
+// 最新值通过 ref 注入扩展——否则 deps 变化会重建 editor，重建间隙
+// EditorContent 拿到未就绪的 editor 触发 'isEditable of undefined' 崩溃。
+import { useEffect, useRef } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -20,18 +24,26 @@ interface Props {
 }
 
 export function PromptEditor({ doc, placeholder, allSlashItems, getCwd, onDocChange, onPasteFiles }: Props) {
+  // ref 持有最新值，供只建一次的扩展闭包读取
+  const slashItemsRef = useRef(allSlashItems)
+  const getCwdRef = useRef(getCwd)
+  useEffect(() => { slashItemsRef.current = allSlashItems }, [allSlashItems])
+  useEffect(() => { getCwdRef.current = getCwd }, [getCwd])
+
   const editor = useEditor({
     extensions: [
       StarterKit,
       Placeholder.configure({ placeholder }),
       SkillChip,
       FileChip,
-      buildSlashExtension(allSlashItems),
-      buildFileExtension(getCwd),
+      // 扩展通过 getter 读最新值，editor 无需随 props 变化重建
+      buildSlashExtension(() => slashItemsRef.current),
+      buildFileExtension(() => getCwdRef.current()),
     ],
     content: doc ?? '',
-    // Electron 是纯 CSR，同步初始化避免首帧 editor=null 闪烁。
-    immediatelyRender: true,
+    // 不设 immediatelyRender: true——它会与 React 18 StrictMode 的 double-mount 冲突，
+    // 导致 editor 同步创建但 plugin views 未就绪时 EditorContent 读到 undefined.isEditable。
+    // 异步初始化时 editor=null 一帧，由下方降级 textarea 兜底。
     editorProps: {
       handlePaste: (_view, event) => {
         const files = Array.from(event.clipboardData?.files ?? [])
@@ -45,7 +57,7 @@ export function PromptEditor({ doc, placeholder, allSlashItems, getCwd, onDocCha
     onUpdate: ({ editor }) => {
       onDocChange(editor.getJSON() as TipTapDocJSON)
     },
-  }, [allSlashItems, getCwd])   // 菜单/工作区变化时重建扩展
+  })
 
   // 外部 doc 变化（切会话恢复）→ 同步进编辑器，避免 onUpdate 回环
   useEffect(() => {
