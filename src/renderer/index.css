@@ -206,3 +206,34 @@ button {
 /* user 消息右对齐 → 复制钮放左上；assistant 左对齐 → 放右上 */
 .msg-row.is-user .msg-copy { right: 0; }
 .msg-row.is-assistant .msg-copy { left: 0; }
+
+/* ===== TipTap 输入编辑器 ===== */
+.ProseMirror {
+  outline: none;
+  min-height: 20px;
+  font-family: var(--font);
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.5;
+}
+.ProseMirror p {
+  margin: 0;
+}
+/* 占位符 */
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--text-faint);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+/* chip 卡片在 contentEditable 里 inline 显示 */
+.ProseMirror span[data-chip] {
+  display: inline-flex;
+  vertical-align: baseline;
+}
+/* chip 选中态可见 */
+.ProseMirror .ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+  border-radius: 999;
+}
