@@ -26,6 +26,7 @@ function makeInitialState(seedProjects?: Project[]): AppState {
         skills: [], mcpServers: [], plugins: [], commands: [], hooks: [],
       },
       claudeSessionMap: {},
+      pendingDialog: null,
     }
   }
   return {
@@ -47,6 +48,7 @@ function makeInitialState(seedProjects?: Project[]): AppState {
       skills: [], mcpServers: [], plugins: [], commands: [], hooks: [],
     },
     claudeSessionMap: {},
+    pendingDialog: null,
   }
 }
 

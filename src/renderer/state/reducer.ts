@@ -1,5 +1,5 @@
 import type { Action } from './actions'
-import type { AppView, Draft, Project, Session, SettingsSection, Tab, ThemeId, AppSettings } from '../types'
+import type { AppView, ContentBlock, Draft, Project, Session, SettingsSection, SystemNotice, Tab, ThemeId, AppSettings } from '../types'
 
 export interface AppState {
   projects: Project[]
@@ -13,18 +13,18 @@ export interface AppState {
   draft: Draft
   currentView: AppView
   activeSettingsSection: SettingsSection
-  // 流式输出：按会话隔离的流式状态（currentText 为增量拼接的临时文本）
+  // 流式输出：按会话隔离的流式状态（blocks 为流式拼接的内容块）
   streamingBySession: Record<string, {
-    isStreaming: boolean
-    currentText: string
-    thinking?: string        // 思考过程增量（showThinking 控制展示）
-    tools?: { id: string; name: string }[]  // 本轮工具调用（showTodo 控制展示）
+    blocks: ContentBlock[]
+    notices: SystemNotice[]
     error?: string
   }>
   // 应用设置：apiKey / model / cwd / providers / models（与主进程 AppSettings 一致）
   settings: AppSettings
   // 本地会话 ID → Claude SDK 返回的真实 session ID 映射，用于 resume 续接
   claudeSessionMap: Record<string, string>
+  // 待处理的用户对话请求（AskUserQuestion 等），Task 10 使用
+  pendingDialog: { reqId: string; dialogKind: string; payload: any; toolUseId?: string } | null
 }
 
 // TODO: idCounter is module-level mutable state — non-deterministic IDs. Acceptable for prototype; thread through state if persistence/time-travel needed later.
@@ -246,83 +246,109 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         streamingBySession: {
           ...state.streamingBySession,
-          [action.sessionId]: { isStreaming: true, currentText: '', thinking: '', tools: [] }
-        }
+          [action.sessionId]: { blocks: [], notices: [] },
+        },
       }
     }
     case 'STREAM_DELTA': {
-      const prev = state.streamingBySession[action.sessionId]
+      const prev = state.streamingBySession[action.sessionId] || { blocks: [], notices: [] }
+      const blocks = [...prev.blocks]
+      const last = blocks[blocks.length - 1]
+      const blockType = action.kind === 'text' ? 'text' : 'thinking'
+      if (last && last.type === blockType) {
+        blocks[blocks.length - 1] = { ...last, text: (last as any).text + action.delta }
+      } else {
+        blocks.push({ type: blockType, text: action.delta } as ContentBlock)
+      }
       return {
         ...state,
         streamingBySession: {
           ...state.streamingBySession,
-          [action.sessionId]: {
-            ...prev,
-            currentText: (prev?.currentText || '') + action.delta,
-            isStreaming: true,
-          }
-        }
+          [action.sessionId]: { ...prev, blocks },
+        },
       }
     }
-    case 'STREAM_THINKING': {
-      const prev = state.streamingBySession[action.sessionId]
+    case 'STREAM_TOOL_USE_START': {
+      const prev = state.streamingBySession[action.sessionId] || { blocks: [], notices: [] }
       return {
         ...state,
         streamingBySession: {
           ...state.streamingBySession,
-          [action.sessionId]: {
-            ...prev,
-            thinking: (prev?.thinking || '') + action.delta,
-            isStreaming: true,
-          }
-        }
+          [action.sessionId]: { ...prev, blocks: [...prev.blocks, action.block] },
+        },
       }
     }
-    case 'STREAM_TOOL_USE': {
-      const prev = state.streamingBySession[action.sessionId]
+    case 'STREAM_TOOL_RESULT': {
+      const prev = state.streamingBySession[action.sessionId] || { blocks: [], notices: [] }
+      const blocks = prev.blocks.map(b =>
+        b.type === 'tool_use' && b.id === action.toolUseId
+          ? { ...b, result: action.result, status: action.result.isError ? 'error' as const : 'completed' as const }
+          : b
+      )
+      return {
+        ...state,
+        streamingBySession: { ...state.streamingBySession, [action.sessionId]: { ...prev, blocks } },
+      }
+    }
+    case 'STREAM_NOTICE': {
+      const prev = state.streamingBySession[action.sessionId] || { blocks: [], notices: [] }
       return {
         ...state,
         streamingBySession: {
           ...state.streamingBySession,
-          [action.sessionId]: {
-            ...prev,
-            tools: [...(prev?.tools || []), action.tool],
-            isStreaming: true,
-          }
+          [action.sessionId]: { ...prev, notices: [...prev.notices, action.notice] },
+        },
+      }
+    }
+    case 'STREAM_ERROR': {
+      const prev = state.streamingBySession[action.sessionId] || { blocks: [], notices: [] }
+      return {
+        ...state,
+        streamingBySession: { ...state.streamingBySession, [action.sessionId]: { ...prev, error: action.error } },
+      }
+    }
+    case 'STREAM_ASSISTANT_BLOCKS': {
+      const prev = state.streamingBySession[action.sessionId] || { blocks: [], notices: [] }
+      const seen = (prev as any)._seenUuids as string[] | undefined
+      if (seen?.includes(action.uuid)) {
+        return state
+      }
+      const merged = [...prev.blocks]
+      for (const nb of action.blocks) {
+        if (nb.type === 'tool_use') {
+          const idx = merged.findIndex(b => b.type === 'tool_use' && b.id === nb.id)
+          if (idx >= 0) merged[idx] = { ...merged[idx], ...nb } as ContentBlock
+          else merged.push(nb)
+        } else {
+          merged.push(nb)
         }
+      }
+      return {
+        ...state,
+        streamingBySession: {
+          ...state.streamingBySession,
+          [action.sessionId]: { ...prev, blocks: merged, _seenUuids: [...(seen || []), action.uuid] } as any,
+        },
       }
     }
     case 'STREAM_END': {
-      console.log('[cc-stream] [8] reducer STREAM_END', { sessionId: action.sessionId, hasEntry: !!state.streamingBySession[action.sessionId] })
-      const { [action.sessionId]: _, ...rest } = state.streamingBySession
-      const textBlocks = action.content.filter((b: any) => b.type === 'text')
+      const stream = state.streamingBySession[action.sessionId] || { blocks: [], notices: [] }
+      const assistantMsg = {
+        id: `m${Date.now()}`,
+        role: 'assistant' as const,
+        content: stream.blocks.length ? stream.blocks : [{ type: 'text' as const, text: '' }],
+        ...(stream.notices.length ? { notices: stream.notices } : {}),
+        ...(action.costUSD != null ? { costUSD: action.costUSD } : {}),
+        ...(action.durationMs != null ? { durationMs: action.durationMs } : {}),
+        ...(action.turns != null ? { turns: action.turns } : {}),
+        ...(action.isError ? { isError: true } : {}),
+      }
       const projects = state.projects.map(p => ({
         ...p,
-        sessions: p.sessions.map(s =>
-          s.id === action.sessionId
-            ? {
-                ...s,
-                messages: [...s.messages, {
-                  id: `m${Date.now()}`,
-                  role: 'assistant' as const,
-                  content: textBlocks.length > 0
-                    ? textBlocks.map((b: any) => ({ type: 'text' as const, text: b.text }))
-                    : [{ type: 'text' as const, text: '' }],
-                }],
-              }
-            : s
-        )
+        sessions: p.sessions.map(s => s.id === action.sessionId ? { ...s, messages: [...s.messages, assistantMsg] } : s),
       }))
+      const { [action.sessionId]: _, ...rest } = state.streamingBySession
       return { ...state, projects, streamingBySession: rest }
-    }
-    case 'STREAM_ERROR': {
-      return {
-        ...state,
-        streamingBySession: {
-          ...state.streamingBySession,
-          [action.sessionId]: { isStreaming: false, currentText: '', error: action.error }
-        }
-      }
     }
     case 'STREAM_ABORTED': {
       const { [action.sessionId]: _, ...rest } = state.streamingBySession
