@@ -14,6 +14,45 @@ type Cfg = {
 }
 
 const inputStyle: React.CSSProperties = { width: '100%', padding: '7px 10px', background: 'var(--bg-sidebar)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)', fontFamily: 'var(--font-mono)', fontSize: 12 }
+
+// 就地编辑字段：点击文本进入输入框，失焦退出。value/onChange 受控。
+// defaultEditing：挂载时即进入编辑态（用于新增模型后自动聚焦）。
+function EditableField({
+  value, onChange, placeholder, type = 'text', style, defaultEditing = false,
+}: {
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+  type?: 'text' | 'number'
+  style?: React.CSSProperties
+  defaultEditing?: boolean
+}) {
+  const [editing, setEditing] = useState(defaultEditing)
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        type={type}
+        min={type === 'number' ? 0 : undefined}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        onBlur={() => setEditing(false)}
+        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+        placeholder={placeholder}
+        style={{ ...inputStyle, ...style }}
+      />
+    )
+  }
+  return (
+    <span
+      onClick={() => setEditing(true)}
+      style={{ ...style, cursor: 'text', minHeight: 16, display: 'inline-flex', alignItems: 'center' }}
+    >
+      {value || <span style={{ color: 'var(--text-faint)' }}>{placeholder}</span>}
+    </span>
+  )
+}
+
 const fieldLabelStyle: React.CSSProperties = { color: 'var(--text-muted)', fontSize: 11, marginBottom: 4, marginTop: 12 }
 const iconBtn: React.CSSProperties = { padding: '4px 6px', fontSize: 13, cursor: 'pointer', background: 'transparent', border: 'none', color: 'var(--text-muted)', lineHeight: 1 }
 const smallBtn: React.CSSProperties = { padding: '4px 10px', fontSize: 12, cursor: 'pointer', border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--bg)', color: 'var(--text)' }
@@ -25,7 +64,7 @@ export function ModelSettings() {
   const [showKey, setShowKey] = useState(false)
   const [editingName, setEditingName] = useState(false)
   const [confirmingProvider, setConfirmingProvider] = useState<string | null>(null)
-  const [editingModel, setEditingModel] = useState<string | null>(null)
+  const [newModelId, setNewModelId] = useState<string | null>(null)
   const [error, setError] = useState('')
 
   const reload = () => {
@@ -72,13 +111,13 @@ export function ModelSettings() {
     const id = `model-${Date.now()}`
     const m: ModelItem = { id, providerId: activeId, sdkModelId: '', contextLength: '200000', enabled: true }
     persist({ models: [...cfg.models, m] })
-    setEditingModel(id) // 新增后自动展开编辑表单，省去再点编辑图标
+    setNewModelId(id) // 标记新增，让该行模型 ID 字段自动进入编辑态并聚焦
   }
   const updateModel = (id: string, patch: Partial<ModelItem>) =>
     persist({ models: cfg.models.map(m => m.id === id ? { ...m, ...patch } : m) })
   const removeModel = (id: string) => {
     persist({ models: cfg.models.filter(m => m.id !== id) })
-    setEditingModel(null)
+    if (newModelId === id) setNewModelId(null)
   }
 
   return (
@@ -147,19 +186,22 @@ export function ModelSettings() {
               <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
                 {providerModels.length === 0 && <div style={{ padding: 14, color: 'var(--text-muted)', fontSize: 12, textAlign: 'center' }}>{t('model.emptyModels')}</div>}
                 {providerModels.map((m, i) => (
-                  <div key={m.id} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '9px 12px', borderBottom: i < providerModels.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text)', fontSize: 13 }}>
-                      <span style={{ flex: 1 }}>{m.sdkModelId}</span>
-                      <span style={{ padding: '1px 8px', borderRadius: 999, fontSize: 11, border: '1px solid var(--border)', color: 'var(--text-muted)' }}>{m.contextLength}</span>
-                      <button title="编辑" onClick={() => setEditingModel(editingModel === m.id ? null : m.id)} style={iconBtn}><Pencil size={13} /></button>
-                      <button title="删除" onClick={() => removeModel(m.id)} style={{ ...iconBtn, color: 'var(--danger)' }}><Trash2 size={13} /></button>
-                    </div>
-                    {editingModel === m.id && (
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <input autoFocus value={m.sdkModelId} onChange={e => updateModel(m.id, { sdkModelId: e.target.value })} placeholder={t('model.sdkModelId')} style={{ ...inputStyle, flex: 1 }} />
-                        <input type="number" min={0} value={m.contextLength} onChange={e => updateModel(m.id, { contextLength: e.target.value })} placeholder={t('model.contextLength')} style={{ ...inputStyle, width: 100 }} />
-                      </div>
-                    )}
+                  <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: i < providerModels.length - 1 ? '1px solid var(--border)' : 'none', color: 'var(--text)', fontSize: 13 }}>
+                    <EditableField
+                      value={m.sdkModelId}
+                      onChange={v => updateModel(m.id, { sdkModelId: v })}
+                      placeholder={t('model.sdkModelId')}
+                      defaultEditing={m.id === newModelId}
+                      style={{ flex: 1 }}
+                    />
+                    <EditableField
+                      value={m.contextLength}
+                      onChange={v => updateModel(m.id, { contextLength: v })}
+                      placeholder={t('model.contextLength')}
+                      type="number"
+                      style={{ width: 100 }}
+                    />
+                    <button title="删除" onClick={() => removeModel(m.id)} style={{ ...iconBtn, color: 'var(--danger)' }}><Trash2 size={13} /></button>
                   </div>
                 ))}
               </div>
