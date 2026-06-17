@@ -46,6 +46,9 @@ function createWindow() {
   ipcMain.handle('claude:stop', () => {
     claude.abort()
   })
+  ipcMain.handle('claude:dialog-response', (_e, { reqId, result }) => {
+    claude.resolveDialog(reqId, result)
+  })
 
   // Settings
   ipcMain.handle('settings:get', () => getSettings())
