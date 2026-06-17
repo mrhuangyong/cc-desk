@@ -183,3 +183,20 @@ button {
 
 /* ===== KaTeX 数学公式 ===== */
 .md .katex-display { margin: 10px 0; overflow-x: auto; overflow-y: hidden; }
+
+/* ===== 消息行复制按钮（hover 显示）===== */
+.msg-row { position: relative; }
+.msg-copy {
+  position: absolute; top: -4px;
+  opacity: 0; transition: opacity 0.12s;
+  padding: 4px; border-radius: 6px;
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  box-shadow: var(--shadow-float); color: var(--text-muted);
+  cursor: pointer; display: inline-flex; align-items: center;
+  line-height: 0; z-index: 20;
+}
+.msg-row:hover .msg-copy { opacity: 1; }
+.msg-copy:hover { color: var(--text); }
+/* user 消息右对齐 → 复制钮放左上；assistant 左对齐 → 放右上 */
+.msg-row.is-user .msg-copy { right: 0; }
+.msg-row.is-assistant .msg-copy { left: 0; }

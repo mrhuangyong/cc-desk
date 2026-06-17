@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowDown } from 'lucide-react'
+import { ArrowDown, Copy, Check } from 'lucide-react'
 import { useStore } from '../state/store'
 import { useI18n } from '../i18n/useI18n'
 import { AttachmentChip } from './AttachmentChip'
@@ -7,6 +7,37 @@ import { InputBar } from './InputBar'
 import { InputDock } from './InputDock'
 import { BlockRenderer } from './blocks/BlockRenderer'
 import { Notices } from './Notices'
+
+import type { ContentBlock } from '../types'
+
+// 从消息 content blocks 提取可复制的纯文本（text + thinking + 工具摘要）
+function extractText(blocks: ContentBlock[]): string {
+  return blocks.map(b => {
+    if (b.type === 'text') return b.text
+    if (b.type === 'thinking') return `(思考) ${b.text}`
+    if (b.type === 'tool_use') {
+      const r = b.result?.content ? `\n结果：${b.result.content}` : ''
+      return `🔧 ${b.name}(${JSON.stringify(b.input)})${r}`
+    }
+    return ''
+  }).join('\n').trim()
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  const onCopy = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    navigator.clipboard?.writeText(text).then(() => {
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1500)
+    })
+  }
+  return (
+    <button className="msg-copy" onClick={onCopy} title="复制" aria-label="复制">
+      {copied ? <Check size={13} /> : <Copy size={13} />}
+    </button>
+  )
+}
 
 export function ChatArea() {
   const { state, dispatch } = useStore()
@@ -167,12 +198,13 @@ export function ChatArea() {
         {session.messages.map(m => (
           m.role === 'assistant' ? (
             // AI 消息：左对齐，纯文本无背景
-            <div key={m.id} style={{
+            <div key={m.id} className="msg-row is-assistant" style={{
               maxWidth: '80%', alignSelf: 'flex-start',
               color: 'var(--text)',
               display: 'flex', flexDirection: 'column', gap: 6,
               userSelect: 'text', cursor: 'text',
             }}>
+              <CopyButton text={extractText(m.content)} />
               {m.attachment && <AttachmentChip attachment={m.attachment} />}
               <Notices notices={m.notices ?? []} />
               {m.content.map((b, i) => <BlockRenderer key={i} block={b} />)}
@@ -186,13 +218,14 @@ export function ChatArea() {
             </div>
           ) : (
             // 用户消息：右对齐，浅灰块
-            <div key={m.id} style={{
+            <div key={m.id} className="msg-row is-user" style={{
               maxWidth: '80%', alignSelf: 'flex-end',
               background: 'var(--bg-hover)', borderRadius: 10, padding: '9px 13px',
               color: 'var(--text)',
               display: 'flex', flexDirection: 'column', gap: 6,
               userSelect: 'text', cursor: 'text',
             }}>
+              <CopyButton text={extractText(m.content)} />
               {m.attachment && <AttachmentChip attachment={m.attachment} />}
               {m.content.map((b, i) => <BlockRenderer key={i} block={b} />)}
             </div>
