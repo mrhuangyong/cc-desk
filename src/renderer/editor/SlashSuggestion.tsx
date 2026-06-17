@@ -12,7 +12,7 @@ import type { SlashMenuItem } from './types'
 // 否则 ProseMirror 报 "Adding different instances of a keyed plugin (suggestion$)"。
 const slashPluginKey = new PluginKey('slashSuggestion')
 
-export function buildSlashExtension(allItems: SlashMenuItem[]): Extension {
+export function buildSlashExtension(getItems: () => SlashMenuItem[]): Extension {
   return Extension.create({
     name: 'slashSuggestion',
     addOptions() {
@@ -22,8 +22,9 @@ export function buildSlashExtension(allItems: SlashMenuItem[]): Extension {
           char: '/',
           startOfLine: false,
           allowSpaces: false,
-          // v3: items 接收 { query, editor, signal }；我们只用 query
-          items: ({ query }: { query: string }) => filterSlashItems(allItems, query),
+          // v3: items 接收 { query, editor, signal }；我们只用 query。
+          // 通过 getter 读最新列表，避免闭包捕获初始空数组。
+          items: ({ query }: { query: string }) => filterSlashItems(getItems(), query),
           command: ({ editor, range, props }: { editor: any; range: any; props: SlashMenuItem }) => {
             editor.chain().focus().deleteRange(range).run()
             if (props.kind === 'command') {
