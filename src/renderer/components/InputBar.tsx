@@ -66,6 +66,7 @@ export function InputBar() {
     dispatch({ type: 'STREAM_START', sessionId: state.activeSessionId })
     window.api?.claude?.send({
       prompt,
+      localSessionId: state.activeSessionId,
       sessionId: claudeSessionId || undefined,
       cwd,
     })
