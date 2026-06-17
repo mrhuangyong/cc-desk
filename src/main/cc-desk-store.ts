@@ -70,3 +70,25 @@ export function resolveActiveProviderModel(cfg: ModelProvidersConfig): ResolvedP
   }
   return null
 }
+
+// 给定解析出的 provider+model 和 roleMap，构造注入 SDK options.env 的覆盖项。
+// roleMap 无条目的角色回退到选中模型的 sdkModelId。
+export function buildSdkEnv(
+  resolved: ResolvedProviderModel,
+  modelRoleMap: Record<string, string>,
+  allModels: ModelItem[] = [],
+): Record<string, string> {
+  const { provider, model } = resolved
+  const env: Record<string, string> = {}
+  if (provider.apiKey) env.ANTHROPIC_API_KEY = provider.apiKey
+  if (provider.baseUrl) env.ANTHROPIC_BASE_URL = provider.baseUrl
+  const roleId = (role: 'opus' | 'sonnet' | 'haiku'): string => {
+    const mappedModelId = modelRoleMap[`${provider.id}:${role}`]
+    const m = allModels.find(mm => mm.id === mappedModelId)
+    return m?.sdkModelId || model.sdkModelId
+  }
+  env.ANTHROPIC_DEFAULT_OPUS_MODEL = roleId('opus')
+  env.ANTHROPIC_DEFAULT_SONNET_MODEL = roleId('sonnet')
+  env.ANTHROPIC_DEFAULT_HAIKU_MODEL = roleId('haiku')
+  return env
+}

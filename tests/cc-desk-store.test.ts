@@ -76,4 +76,31 @@ describe('cc-desk-store', () => {
     expect(r?.provider.id).toBe('p2')
     expect(r?.model.id).toBe('m2')
   })
+
+  it('buildSdkEnv: 注入 apiKey/baseUrl/选中模型 + roleMap', async () => {
+    const { buildSdkEnv } = await import('../src/main/cc-desk-store')
+    const resolved = {
+      provider: { id: 'p1', name: 'ai', apiKey: 'sk-x', baseUrl: 'http://127.0.0.1:17860', enabled: true },
+      model: { id: 'm1', name: 'glm', providerId: 'p1', sdkModelId: 'glm-5.2', contextLength: '200K', enabled: true },
+    }
+    const modelRoleMap = { 'p1:sonnet': 'm1' }
+    const env = buildSdkEnv(resolved, modelRoleMap, [resolved.model])
+    expect(env.ANTHROPIC_API_KEY).toBe('sk-x')
+    expect(env.ANTHROPIC_BASE_URL).toBe('http://127.0.0.1:17860')
+    expect(env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('glm-5.2')
+    // 无条目的 role 回退到选中模型 sdkModelId
+    expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('glm-5.2')
+    expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('glm-5.2')
+  })
+
+  it('buildSdkEnv: baseUrl 为空时不注入 ANTHROPIC_BASE_URL', async () => {
+    const { buildSdkEnv } = await import('../src/main/cc-desk-store')
+    const resolved = {
+      provider: { id: 'p1', name: 'ai', apiKey: 'sk-x', baseUrl: '', enabled: true },
+      model: { id: 'm1', name: 'glm', providerId: 'p1', sdkModelId: 'glm-5.2', contextLength: '200K', enabled: true },
+    }
+    const env = buildSdkEnv(resolved, {})
+    expect(env.ANTHROPIC_BASE_URL).toBeUndefined()
+    expect(env.ANTHROPIC_API_KEY).toBe('sk-x')
+  })
 })
