@@ -57,4 +57,23 @@ describe('cc-desk-store', () => {
     const { resolveActiveProviderModel } = await import('../src/main/cc-desk-store')
     expect(resolveActiveProviderModel({ providers: [], models: [], modelRoleMap: {}, activeModelId: '' })).toBeNull()
   })
+
+  it('resolveActiveProviderModel: active 模型的 provider 被 disabled 时回退到其它 enabled provider', async () => {
+    const { resolveActiveProviderModel } = await import('../src/main/cc-desk-store')
+    const cfg = {
+      providers: [
+        { id: 'p1', name: 'disabled', apiKey: '', baseUrl: '', enabled: false },
+        { id: 'p2', name: 'active', apiKey: 'sk', baseUrl: 'http://x', enabled: true },
+      ],
+      models: [
+        { id: 'm1', name: 'belong-to-disabled', providerId: 'p1', sdkModelId: 'glm-a', contextLength: '200K', enabled: true },
+        { id: 'm2', name: 'belong-to-active', providerId: 'p2', sdkModelId: 'glm-b', contextLength: '200K', enabled: true },
+      ],
+      modelRoleMap: {}, activeModelId: 'm1',
+    }
+    // m1 虽是 active 但其 provider p1 disabled，应回退到首个 enabled provider(p2) 的首个 enabled 模型(m2)
+    const r = resolveActiveProviderModel(cfg)
+    expect(r?.provider.id).toBe('p2')
+    expect(r?.model.id).toBe('m2')
+  })
 })

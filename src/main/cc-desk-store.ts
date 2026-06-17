@@ -39,7 +39,7 @@ function createStore(): Store<{ config: ModelProvidersConfig }> {
   })
 }
 
-let store = createStore()
+const store = createStore()
 
 export function getModelProvidersConfig(): ModelProvidersConfig {
   return store.get('config', EMPTY)
