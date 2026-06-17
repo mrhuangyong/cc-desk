@@ -7,7 +7,8 @@ const THEMES: { id: ThemeId; label: string; swatch: string }[] = [
   { id: 'codex-light', label: 'Codex 浅色', swatch: '#ffffff' },
   { id: 'codex-warm', label: 'Codex 暖白', swatch: '#fdfcfa' },
   { id: 'codex-cool', label: 'Codex 冷灰', swatch: '#fbfcfd' },
-  { id: 'codex-paper', label: 'Codex 纸感', swatch: '#f8f6f1' }
+  { id: 'codex-paper', label: 'Codex 纸感', swatch: '#f8f6f1' },
+  { id: 'codex-dark', label: 'Codex 深色', swatch: '#1a1b1e' },
 ]
 
 export function ThemeSwitcher() {
