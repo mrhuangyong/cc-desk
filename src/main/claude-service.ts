@@ -4,16 +4,18 @@ import type { WebContents } from 'electron'
 import { getSettings } from './settings-store'
 import { getModelProvidersConfig, resolveActiveProviderModel, buildSdkEnv } from './cc-desk-store'
 import { getGeneralConfig } from './claude-config'
+import { normalizeBetaBlocks, extractToolResults, mkNotice } from './claude-normalize'
 
 /**
  * ClaudeService wraps the Claude Agent SDK `query()` into a renderer-facing
  * streaming interface. Results are pushed to `webContents` via IPC channels:
- *   - 'claude:system'        session init (sessionId / model / tools)
- *   - 'claude:assistant'     a complete assistant message (content blocks)
- *   - 'claude:stream-delta'  incremental text token (streaming)
- *   - 'claude:result'        terminal result (cost / turns / subtype)
- *   - 'claude:aborted'       aborted by user
- *   - 'claude:error'         any other failure
+ *   - 'claude:system'         session init (sessionId / model / tools) + status/notice
+ *   - 'claude:delta'          incremental text/thinking token (streaming)
+ *   - 'claude:blocks'         tool_use_start / assistant_blocks / tool_result
+ *   - 'claude:notice'         system notices (status/permission/compact/task/...)
+ *   - 'claude:result'         terminal result (cost / turns / subtype)
+ *   - 'claude:aborted'        aborted by user
+ *   - 'claude:error'          any other failure
  *
  * Notes on the SDK (v0.3.178):
  *  - The API key is supplied to the spawned CLI subprocess via the `env`
@@ -33,7 +35,6 @@ export class ClaudeService {
   }): Promise<void> {
     const { prompt, sessionId, cwd, webContents } = opts
     const settings = getSettings()
-    console.log('[cc-stream] [2/3] ClaudeService.send start', { promptLen: prompt?.length, sessionId, cwd })
 
     // 从 cc-desk 自有配置（~/.cc-desk/config.json）取激活的供应商+模型。
     // 应用自成一套，不再读 ~/.claude/settings.json 的模型配置。
@@ -72,73 +73,79 @@ export class ClaudeService {
 
       for await (const message of stream) {
         console.log('[cc-stream] [4] message', message.type, (message as any).subtype ?? '')
-        switch (message.type) {
+        const mtype: string = message.type
+        switch (mtype) {
           case 'system': {
             const sys = message as any
-            // The 'init' system message carries session metadata.
             if (sys.subtype === 'init') {
-              webContents.send('claude:system', {
-                sessionId: sys.session_id,
-                model: sys.model,
-                tools: sys.tools,
-              })
+              webContents.send('claude:system', { sessionId: sys.session_id, model: sys.model, tools: sys.tools })
+            } else if (sys.subtype === 'status') {
+              webContents.send('claude:notice', mkNotice('status', `状态：${sys.status}`, 'info'))
+            } else if (sys.subtype === 'permission_denied') {
+              webContents.send('claude:notice', mkNotice('permission_denied', `权限拒绝：${sys.tool_name}`, 'warn'))
+            } else if (sys.subtype && String(sys.subtype).startsWith('compact')) {
+              webContents.send('claude:notice', mkNotice('compact', `压缩：${sys.subtype}`, 'info'))
+            } else {
+              webContents.send('claude:notice', mkNotice('info', `system.${sys.subtype}`, 'info'))
             }
             break
           }
-
-          case 'assistant':
-            webContents.send('claude:assistant', {
-              content: (message as any).message?.content || [],
-              costUSD: (message as any).cost_usd,
-              durationMs: (message as any).duration_ms,
-              sessionId: (message as any).session_id,
-            })
-            break
-
           case 'stream_event': {
-            // SDKPartialAssistantMessage — 转发文本/思考增量与工具调用块。
             const evt = (message as any).event
             if (evt?.type === 'content_block_delta') {
-              if (evt?.delta?.type === 'text_delta') {
-                webContents.send('claude:stream-delta', { delta: evt.delta.text as string })
-              } else if (evt?.delta?.type === 'thinking_delta') {
-                webContents.send('claude:thinking-delta', { delta: evt.delta.thinking as string })
-              }
-            } else if (evt?.type === 'content_block_start' && evt?.content_block?.type === 'tool_use') {
-              // 工具调用开始：转发为待办/工具卡片
+              if (evt.delta?.type === 'text_delta') webContents.send('claude:delta', { kind: 'text', delta: evt.delta.text })
+              else if (evt.delta?.type === 'thinking_delta') webContents.send('claude:delta', { kind: 'thinking', delta: evt.delta.thinking })
+            } else if (evt?.type === 'content_block_start' && evt.content_block?.type === 'tool_use') {
               const tb = evt.content_block
-              webContents.send('claude:tool-use', {
-                id: tb.id, name: tb.name, input: tb.input,
-              })
+              webContents.send('claude:blocks', { op: 'tool_use_start', block: { type: 'tool_use', id: tb.id, name: tb.name, input: tb.input, status: 'running' } })
             }
             break
           }
-
-          case 'result':
-            console.log('[cc-stream] [5] send claude:result', {
-              sessionId: (message as any).session_id,
-              subtype: (message as any).subtype,
-            })
-            webContents.send('claude:result', {
-              sessionId: (message as any).session_id,
-              subtype: (message as any).subtype,
-              costUSD: (message as any).total_cost_usd,
-              durationMs: (message as any).duration_ms,
-              turns: (message as any).num_turns,
-            })
+          case 'assistant': {
+            const blocks = normalizeBetaBlocks((message as any).message?.content || [])
+            webContents.send('claude:blocks', { op: 'assistant_blocks', blocks, uuid: (message as any).uuid })
             break
+          }
+          case 'user': {
+            const results = extractToolResults((message as any).message?.content || [])
+            for (const r of results) {
+              webContents.send('claude:blocks', { op: 'tool_result', toolUseId: r.toolUseId, result: { content: r.content, isError: r.isError } })
+            }
+            break
+          }
+          case 'result': {
+            const r = message as any
+            webContents.send('claude:result', {
+              sessionId: r.session_id, subtype: r.subtype, isError: !!r.is_error,
+              costUSD: r.total_cost_usd, durationMs: r.duration_ms, turns: r.num_turns,
+            })
+            if (r.is_error) webContents.send('claude:notice', mkNotice('error', `任务出错（${r.subtype}）`, 'error'))
+            break
+          }
+          case 'api_retry':
+            webContents.send('claude:notice', mkNotice('api_retry', 'API 重试中', 'warn')); break
+          case 'auth_status':
+            webContents.send('claude:notice', mkNotice('auth', `认证：${(message as any).is_authenticated ? '已认证' : '未认证'}`, 'info')); break
+          case 'task_started':
+          case 'task_updated':
+          case 'task_progress':
+          case 'task_notification':
+            webContents.send('claude:notice', mkNotice('task', `任务事件：${message.type}`, 'info')); break
+          case 'keep_alive':
+          case 'worker_shutting_down':
+          case 'commands_changed':
+            console.log('[cc-stream] protocol event ignored', message.type); break
+          default:
+            webContents.send('claude:notice', mkNotice('info', `未分类事件：${message.type}`, 'info'))
         }
       }
-      console.log('[cc-stream] [6] stream loop ended normally')
     } catch (err) {
-      console.log('[cc-stream] [6] caught', err instanceof AbortError ? 'AbortError' : 'Error', String(err))
       if (err instanceof AbortError) {
         webContents.send('claude:aborted')
       } else {
         webContents.send('claude:error', { error: String(err) })
       }
     } finally {
-      console.log('[cc-stream] [6] finally, abortController cleared')
       this.abortController = null
     }
   }
