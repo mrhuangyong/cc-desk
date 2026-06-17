@@ -7,13 +7,48 @@ export interface PickedElement {
   html: string
 }
 
+// ===== 对话内容 block =====
+export type ContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'thinking'; text: string }
+  | {
+      type: 'tool_use'
+      id: string
+      name: string
+      input: any
+      status: 'running' | 'completed' | 'error'
+      result?: ToolResult
+    }
+  | { type: 'tool_result'; toolUseId: string; content: string; isError: boolean }
+  | { type: 'image'; source: string }
+
+export interface ToolResult {
+  content: string
+  isError: boolean
+}
+
+// 状态型提示（权限拒绝/API重试/status 等），固化进历史消息
+export interface SystemNotice {
+  id: string
+  kind:
+    | 'permission_denied' | 'api_retry' | 'status' | 'hook_progress'
+    | 'task' | 'error' | 'info' | 'compact' | 'auth'
+  text: string
+  level: 'info' | 'warn' | 'error'
+}
+
 // 消息：对话流中的一条
 export interface Message {
   id: string
   role: 'user' | 'assistant'
-  content: string
+  content: ContentBlock[]
   // 可选：拾取的网页元素附件，发送时带入消息
   attachment?: PickedElement
+  notices?: SystemNotice[]
+  costUSD?: number
+  durationMs?: number
+  turns?: number
+  isError?: boolean
 }
 
 // 输入框草稿：文本 + 可选的拾取附件
