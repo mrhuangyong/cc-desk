@@ -1,25 +1,69 @@
 import { useEffect, useState } from 'react'
-import type { LucideIcon } from 'lucide-react'
-import { Paperclip, Check, AtSign, Hash, Slash, ShieldCheck, ChevronDown, ArrowUp, Square } from 'lucide-react'
+import { Paperclip, Check, ShieldCheck, ChevronDown, ArrowUp, Square } from 'lucide-react'
 import { useStore } from '../state/store'
 import { useI18n } from '../i18n/useI18n'
 import { AttachmentChip } from './AttachmentChip'
+import { PromptEditor } from '../editor/PromptEditor'
+import { serializeForPrompt } from '../editor/serialize'
+import type { SlashMenuItem } from '../editor/types'
 
-type MenuId = 'attach' | 'permission' | 'model' | 'thinking'
+type MenuId = 'permission' | 'model' | 'thinking'
 
 const PERMISSIONS = ['变更前确认', '自动编辑', '计划模式', '完全访问']
-const ATTACH_ITEMS: { icon: LucideIcon; label: string }[] = [
-  { icon: Paperclip, label: '添加附件' },
-  { icon: AtSign, label: '插入 @ 提及' },
-  { icon: Hash, label: '插入 # 会话' },
-  { icon: Slash, label: '插入 / 命令' },
-]
 const THINKINGS = ['minimal', 'standard', 'thorough']
 
 export function InputBar() {
   const { state, dispatch } = useStore()
   const { t } = useI18n()
-  const { text, attachment } = state.draft
+
+  // / 菜单全量缓存：组件 mount 时拉命令+技能，转成 SlashMenuItem[]
+  const [allSlashItems, setAllSlashItems] = useState<SlashMenuItem[]>([])
+  useEffect(() => {
+    Promise.all([
+      window.api?.cc?.commands?.get() ?? Promise.resolve([]),
+      window.api?.cc?.skills?.get() ?? Promise.resolve([]),
+    ]).then(([cmds, skills]) => {
+      const cmdItems: SlashMenuItem[] = (cmds ?? []).map((c: any) => ({
+        kind: 'command', id: c.id, name: c.name, desc: c.desc ?? '',
+      }))
+      const skillItems: SlashMenuItem[] = (skills ?? []).map((s: any) => ({
+        kind: 'skill', id: s.id, name: s.name, desc: s.desc ?? '',
+      }))
+      setAllSlashItems([...cmdItems, ...skillItems])
+    })
+  }, [])
+
+  // @ 菜单的 cwd 基点：当前会话所属项目的 path，回退 settings.cwd
+  const project = state.projects.find(p => p.sessions.some(s => s.id === state.activeSessionId))
+  const getCwd = () => project?.path || state.settings?.cwd || ''
+
+  // 粘贴/拖拽的图片/文件 → 走附件通道
+  const onPasteFiles = (files: File[]) => {
+    files.forEach(f => {
+      if (f.type.startsWith('image/')) {
+        const reader = new FileReader()
+        reader.onload = () => {
+          const base64 = (reader.result as string).split(',')[1] ?? ''
+          dispatch({ type: 'ADD_DRAFT_ATTACHMENT', attachment: { type: 'image', name: f.name, base64, mediaType: f.type } })
+        }
+        reader.readAsDataURL(f)
+      } else {
+        dispatch({ type: 'ADD_DRAFT_ATTACHMENT', attachment: { type: 'file', name: f.name, path: f.name } })
+      }
+    })
+  }
+
+  // 系统文件选择器：点击附件按钮触发
+  const pickFiles = () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.multiple = true
+    input.onchange = () => {
+      const files = Array.from(input.files ?? [])
+      onPasteFiles(files)
+    }
+    input.click()
+  }
 
   // 当前会话的流式状态：决定发送/停止三态
   const streaming = state.streamingBySession[state.activeSessionId]
@@ -38,11 +82,14 @@ export function InputBar() {
   const [permission, setPermission] = useState('变更前确认')
   const [thinking, setThinking] = useState('standard')
 
-  const canSend = text.trim().length > 0 || !!attachment
+  // 序列化 doc 得到纯文本预览：canSend 与 doSend 都用它
+  const promptPreview = serializeForPrompt(state.draft.doc)
+  const canSend = promptPreview.trim().length > 0 || state.draft.attachments.length > 0
 
   // 发送：追加用户消息 + 标记会话进入流式 + IPC 调用主进程
   const handleSend = () => {
-    if (!text.trim()) return
+    // 空 prompt 且无附件：不发
+    if (!promptPreview.trim() && state.draft.attachments.length === 0) return
     // 交互行为：流式中，interrupt 模式先中断当前再发送；queue 模式等待（不发送）
     if (isStreaming) {
       if (state.settings.queueMode === 'interrupt') {
@@ -55,12 +102,11 @@ export function InputBar() {
     doSend()
   }
   const doSend = () => {
-    const prompt = text
+    const prompt = serializeForPrompt(state.draft.doc)
+    if (!prompt.trim() && state.draft.attachments.length === 0) return
     // 取当前本地会话映射到的 Claude 真实 sessionId；存在则 resume 续接，否则新建会话
     const claudeSessionId = state.claudeSessionMap?.[state.activeSessionId]
     // 工作目录优先取当前激活会话所属项目的 path，回退到全局设置 cwd。
-    // 若用全局 settings.cwd（默认 HOME），AI 会跑到错误目录。
-    const project = state.projects.find(p => p.sessions.some(s => s.id === state.activeSessionId))
     const cwd = project?.path || state.settings?.cwd || undefined
     dispatch({ type: 'SEND_MESSAGE' })
     dispatch({ type: 'STREAM_START', sessionId: state.activeSessionId })
@@ -84,13 +130,6 @@ export function InputBar() {
     }
     if (!canSend) return
     handleSend()
-  }
-
-  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      if (canSend) handleSend()
-    }
   }
 
   const toggleMenu = (id: MenuId) => setOpenMenu(prev => (prev === id ? null : id))
@@ -129,28 +168,34 @@ export function InputBar() {
       boxShadow: 'var(--shadow-float)',
       // 不用 overflow:hidden——否则向上展开的下拉菜单会被裁掉
     }}>
-      {/* 文本区 */}
-      <div style={{ position: 'relative' }}>
-        {attachment && (
-          <div style={{ padding: '8px 16px 0' }}>
+      {/* 上方 chip 栏：粘贴/拖拽的附件 */}
+      {state.draft.attachments.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '8px 16px 0' }}>
+          {state.draft.attachments.map((att, i) => (
             <AttachmentChip
-              attachment={attachment}
-              onRemove={() => dispatch({ type: 'CLEAR_DRAFT_ATTACHMENT' })}
+              key={i}
+              attachment={att}
+              onRemove={() => dispatch({ type: 'REMOVE_DRAFT_ATTACHMENT', index: i })}
             />
-          </div>
-        )}
-        <textarea
-          value={text}
-          onChange={e => dispatch({ type: 'SET_DRAFT_TEXT', text: e.target.value })}
-          onKeyDown={onKeyDown}
+          ))}
+        </div>
+      )}
+      {/* 编辑区：TipTap */}
+      <div
+        onDrop={(e) => {
+          const files = Array.from(e.dataTransfer?.files ?? [])
+          if (files.length > 0) { e.preventDefault(); onPasteFiles(files) }
+        }}
+        onDragOver={(e) => e.preventDefault()}
+        style={{ position: 'relative', minHeight: 48, padding: '14px 16px 8px' }}
+      >
+        <PromptEditor
+          doc={state.draft.doc}
           placeholder={t('input.placeholder')}
-          rows={1}
-          style={{
-            width: '100%', minHeight: 48, padding: '14px 16px 8px',
-            border: 'none', outline: 'none', background: 'transparent',
-            color: 'var(--text)', fontFamily: 'var(--font)', fontSize: 14,
-            resize: 'none', boxSizing: 'border-box', display: 'block',
-          }}
+          allSlashItems={allSlashItems}
+          getCwd={getCwd}
+          onDocChange={(doc) => dispatch({ type: 'SET_DRAFT_DOC', doc })}
+          onPasteFiles={onPasteFiles}
         />
       </div>
 
@@ -166,32 +211,10 @@ export function InputBar() {
 
         {/* 左下组 */}
         <div style={{ display: 'flex', gap: 6, position: 'relative' }}>
-          {/* 附件按钮 */}
-          <div style={{ position: 'relative' }}>
-            <button
-              onClick={() => toggleMenu('attach')}
-              style={{ ...btnBase, background: openMenu === 'attach' ? 'var(--bg-hover)' : undefined, color: openMenu === 'attach' ? 'var(--text)' : undefined }}
-            >
-              <Paperclip size={13} /><span>附件</span><ChevronDown size={10} />
-            </button>
-            {openMenu === 'attach' && (
-              <div style={menuStyle}>
-                {ATTACH_ITEMS.map(it => (
-                  <div
-                    key={it.label}
-                    style={itemStyle}
-                    onClick={() => setOpenMenu(null)}
-                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                  >
-                    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-                      <it.icon size={13} />{it.label}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          {/* 附件按钮：触发系统文件选择 */}
+          <button onClick={pickFiles} style={{ ...btnBase }} title="添加附件">
+            <Paperclip size={13} /><span>附件</span>
+          </button>
 
           {/* 权限按钮 */}
           <div style={{ position: 'relative' }}>
