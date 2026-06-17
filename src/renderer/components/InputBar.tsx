@@ -62,15 +62,13 @@ export function InputBar() {
     // 若用全局 settings.cwd（默认 HOME），AI 会跑到错误目录。
     const project = state.projects.find(p => p.sessions.some(s => s.id === state.activeSessionId))
     const cwd = project?.path || state.settings?.cwd || undefined
-    console.log('[cc-stream] [1] renderer doSend → ipc send', { activeSessionId: state.activeSessionId, claudeSessionId, hasPrompt: !!prompt, cwd })
     dispatch({ type: 'SEND_MESSAGE' })
     dispatch({ type: 'STREAM_START', sessionId: state.activeSessionId })
     window.api?.claude?.send({
       prompt,
       sessionId: claudeSessionId || undefined,
       cwd,
-    }).then(() => console.log('[cc-stream] [1] ipc invoke resolved'))
-      .catch(e => console.log('[cc-stream] [1] ipc invoke rejected', String(e)))
+    })
   }
 
   // 停止：IPC 中断主进程的 Claude 调用
