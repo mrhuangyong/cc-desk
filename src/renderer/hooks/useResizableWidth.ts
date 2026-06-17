@@ -55,6 +55,12 @@ export function useResizableWidth({ initial, min, max, storageKey, side }: Optio
     if (!dragging) return
 
     const onMove = (e: MouseEvent) => {
+      // 鼠标快速划出窗口 / 切到其他应用时 mouseup 可能漏掉，
+      // 此时 buttons===0（无按键）。主动结束拖动，避免卡在 dragging 态跟着鼠标跑、停不掉。
+      if (e.buttons === 0) {
+        onUp()
+        return
+      }
       const delta = e.clientX - startXRef.current
       const next = side === 'left'
         ? startWidthRef.current - delta
@@ -80,12 +86,17 @@ export function useResizableWidth({ initial, min, max, storageKey, side }: Optio
 
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
+    // 鼠标划出整个窗口后 mousemove/mouseup 都不再触发，拖动会卡死。
+    // 离开文档时主动结束。
+    const onLeave = () => onUp()
+    document.addEventListener('mouseleave', onLeave)
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
     return () => {
       cancelAnimationFrame(rafRef.current)
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
+      document.removeEventListener('mouseleave', onLeave)
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
     }

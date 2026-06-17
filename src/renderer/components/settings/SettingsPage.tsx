@@ -16,6 +16,9 @@ const drag: DragStyle = { WebkitAppRegion: 'drag' }
 
 export function SettingsPage() {
   const { state } = useStore()
+  // 缩放只作用于内容，不含顶部 36px 拖动条（与红绿灯区对齐，不可缩放）
+  const z = state.settings.zoom
+  const zoomFactor = z === 'small' ? 0.85 : z === 'large' ? 1.2 : 1
   const section = state.activeSettingsSection
 
   const renderSection = () => {
@@ -37,7 +40,7 @@ export function SettingsPage() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         {/* 顶部拖动条：让设置页可拖动窗口（高度覆盖红绿灯区，透明） */}
         <div style={{ height: 36, flexShrink: 0, ...drag }} />
-        <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: 24, zoom: zoomFactor }}>
           {renderSection()}
         </div>
       </div>

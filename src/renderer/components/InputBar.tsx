@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { Paperclip, Check, AtSign, Hash, Slash, ShieldCheck, ChevronDown, ArrowUp, Square } from 'lucide-react'
 import { useStore } from '../state/store'
-import { mockModels } from '../state/mockData'
+import { useI18n } from '../i18n/useI18n'
 import { AttachmentChip } from './AttachmentChip'
 
 type MenuId = 'attach' | 'permission' | 'model' | 'thinking'
@@ -18,38 +18,56 @@ const THINKINGS = ['minimal', 'standard', 'thorough']
 
 export function InputBar() {
   const { state, dispatch } = useStore()
+  const { t } = useI18n()
   const { text, attachment } = state.draft
 
   // 当前会话的流式状态：决定发送/停止三态
   const streaming = state.streamingBySession[state.activeSessionId]
-  const isStreaming = !!streaming?.isStreaming
+  const isStreaming = !!streaming
+
+  // 模型列表来自 cc-desk 多供应商配置（仅 enabled 模型），本地 state 持有
+  const [modelCfg, setModelCfg] = useState<{ models: { id: string; name: string }[]; activeModelId: string } | null>(null)
+  useEffect(() => {
+    window.api?.ccDesk.model.get().then(c => setModelCfg({
+      models: c.models.filter(m => m.enabled).map(m => ({ id: m.id, name: m.sdkModelId })),
+      activeModelId: c.activeModelId,
+    }))
+  }, [])
 
   const [openMenu, setOpenMenu] = useState<MenuId | null>(null)
   const [permission, setPermission] = useState('变更前确认')
-  const [modelId, setModelId] = useState(mockModels[0]?.id ?? '')
   const [thinking, setThinking] = useState('standard')
-
-  // 卸载时清理 IPC 监听器（仅本组件注册的 claude 事件）
-  useEffect(() => {
-    return () => {
-      window.api?.claude?.removeAllListeners()
-    }
-  }, [])
 
   const canSend = text.trim().length > 0 || !!attachment
 
   // 发送：追加用户消息 + 标记会话进入流式 + IPC 调用主进程
   const handleSend = () => {
-    if (!text.trim() || isStreaming) return
+    if (!text.trim()) return
+    // 交互行为：流式中，interrupt 模式先中断当前再发送；queue 模式等待（不发送）
+    if (isStreaming) {
+      if (state.settings.queueMode === 'interrupt') {
+        window.api?.claude?.stop()
+        // 中断后稍候重发（让 STREAM_ABORTED 清理完成）
+        setTimeout(() => doSend(), 200)
+      }
+      return
+    }
+    doSend()
+  }
+  const doSend = () => {
     const prompt = text
     // 取当前本地会话映射到的 Claude 真实 sessionId；存在则 resume 续接，否则新建会话
     const claudeSessionId = state.claudeSessionMap?.[state.activeSessionId]
+    // 工作目录优先取当前激活会话所属项目的 path，回退到全局设置 cwd。
+    // 若用全局 settings.cwd（默认 HOME），AI 会跑到错误目录。
+    const project = state.projects.find(p => p.sessions.some(s => s.id === state.activeSessionId))
+    const cwd = project?.path || state.settings?.cwd || undefined
     dispatch({ type: 'SEND_MESSAGE' })
     dispatch({ type: 'STREAM_START', sessionId: state.activeSessionId })
     window.api?.claude?.send({
       prompt,
       sessionId: claudeSessionId || undefined,
-      cwd: state.settings?.cwd || undefined,
+      cwd,
     })
   }
 
@@ -68,7 +86,7 @@ export function InputBar() {
   }
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey && !isStreaming) {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       if (canSend) handleSend()
     }
@@ -76,7 +94,15 @@ export function InputBar() {
 
   const toggleMenu = (id: MenuId) => setOpenMenu(prev => (prev === id ? null : id))
 
-  const modelName = mockModels.find(m => m.id === modelId)?.name ?? '模型'
+  // 模型列表来自 cc-desk 多供应商配置（仅 enabled）；当前模型即 activeModelId
+  const enabledModels = modelCfg?.models ?? []
+  const activeModel = enabledModels.find(m => m.id === (modelCfg?.activeModelId ?? ''))
+  const modelName = activeModel?.name ?? t('input.model')
+  const selectModel = (id: string) => {
+    setModelCfg(prev => prev ? { ...prev, activeModelId: id } : prev)
+    window.api?.ccDesk.model.save({ activeModelId: id })
+    setOpenMenu(null)
+  }
 
   // 通用下拉菜单容器
   const menuStyle: React.CSSProperties = {
@@ -116,7 +142,7 @@ export function InputBar() {
           value={text}
           onChange={e => dispatch({ type: 'SET_DRAFT_TEXT', text: e.target.value })}
           onKeyDown={onKeyDown}
-          placeholder="给 AI 发消息…"
+          placeholder={t('input.placeholder')}
           rows={1}
           style={{
             width: '100%', minHeight: 48, padding: '14px 16px 8px',
@@ -208,21 +234,24 @@ export function InputBar() {
             </button>
             {openMenu === 'model' && (
               <div style={{ ...menuStyle, minWidth: 200 }}>
-                {mockModels.map(m => (
+                {enabledModels.map(m => (
                   <div
                     key={m.id}
                     style={{
                       ...itemStyle,
-                      background: m.id === modelId ? 'var(--bg-hover)' : 'transparent',
+                      background: m.id === (modelCfg?.activeModelId ?? '') ? 'var(--bg-hover)' : 'transparent',
                     }}
-                    onClick={() => { setModelId(m.id); setOpenMenu(null) }}
-                    onMouseEnter={e => { if (m.id !== modelId) e.currentTarget.style.background = 'var(--bg-hover)' }}
-                    onMouseLeave={e => { if (m.id !== modelId) e.currentTarget.style.background = 'transparent' }}
+                    onClick={() => selectModel(m.id)}
+                    onMouseEnter={e => { if (m.id !== (modelCfg?.activeModelId ?? '')) e.currentTarget.style.background = 'var(--bg-hover)' }}
+                    onMouseLeave={e => { if (m.id !== (modelCfg?.activeModelId ?? '')) e.currentTarget.style.background = 'transparent' }}
                   >
                     <span>{m.name}</span>
-                    {m.id === modelId && <Check size={13} />}
+                    {m.id === (modelCfg?.activeModelId ?? '') && <Check size={13} />}
                   </div>
                 ))}
+                {enabledModels.length === 0 && (
+                  <div style={{ ...itemStyle, color: 'var(--text-muted)' }}>无可用模型</div>
+                )}
               </div>
             )}
           </div>
@@ -259,7 +288,7 @@ export function InputBar() {
           {/* 发送钮三态 */}
           <button
             onClick={onSendClick}
-            aria-label={isStreaming ? '停止' : '发送'}
+            aria-label={isStreaming ? t('input.stop') : t('input.send')}
             style={{
               width: 28, height: 28, borderRadius: '50%',
               background: isStreaming || canSend ? 'var(--accent)' : 'var(--bg-hover)',

@@ -1,6 +1,8 @@
 // src/main/pty-manager.ts
 import * as pty from 'node-pty'
 import type { WebContents } from 'electron'
+import { getSettings } from './settings-store'
+import { getGeneralConfig } from './claude-config'
 
 export class PtyManager {
   private processes = new Map<string, pty.IPty>()
@@ -8,12 +10,25 @@ export class PtyManager {
 
   setWebContents(wc: WebContents) { this.webContents = wc }
 
-  create(tabId: string, cols: number, rows: number, cwd?: string): void {
+  async create(tabId: string, cols: number, rows: number, cwd?: string): Promise<void> {
+    const settings = getSettings()
+    const general = await getGeneralConfig()
     const shell = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || 'bash')
-    const p = pty.spawn(shell, [], {
+    // 继承系统终端 Profile：true 时以登录 shell 启动（-l），加载完整 profile / 代理 / 环境变量
+    const loginArgs = settings.inheritTerminal && process.platform !== 'win32' ? ['-l'] : []
+    // 构建子进程环境：继承当前进程 env，并注入 HTTP 代理（来自常规设置 proxy）
+    const env: Record<string, string> = { ...process.env } as Record<string, string>
+    if (general.proxy) {
+      env.HTTP_PROXY = general.proxy
+      env.HTTPS_PROXY = general.proxy
+      env.http_proxy = general.proxy
+      env.https_proxy = general.proxy
+    }
+    const p = pty.spawn(shell, loginArgs, {
       name: 'xterm-256color',
       cols, rows,
       cwd: cwd || process.env.HOME || '/',
+      env,
     })
     p.onData((data: string) => {
       this.webContents?.send('pty:output', { tabId, data })
