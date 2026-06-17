@@ -107,7 +107,7 @@ export function BrowserTab() {
     try {
       const info = JSON.parse(detail.slice(PICK_MARKER.length)) as PickedInfo
       // 拾取结果作为附件填入草稿（chip 形态），用户可继续编辑文本后发送
-      dispatch({ type: 'SET_DRAFT_ATTACHMENT', attachment: info })
+      dispatch({ type: 'ADD_DRAFT_ATTACHMENT', attachment: { type: 'pickedElement', el: info } })
       setPicking(false)
     } catch {
       // 解析失败忽略

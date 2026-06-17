@@ -1,5 +1,6 @@
 import type { Action } from './actions'
 import type { AppView, ContentBlock, Draft, Project, Session, SettingsSection, SystemNotice, Tab, ThemeId, AppSettings } from '../types'
+import { serializeForPrompt } from '../editor/serialize'
 
 export interface AppState {
   projects: Project[]
@@ -202,28 +203,31 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'SET_THEME': {
       return { ...state, theme: action.theme }
     }
-    case 'SET_DRAFT_TEXT': {
-      return { ...state, draft: { ...state.draft, text: action.text } }
+    case 'SET_DRAFT_DOC': {
+      return { ...state, draft: { ...state.draft, doc: action.doc } }
     }
-    case 'SET_DRAFT_ATTACHMENT': {
-      return { ...state, draft: { ...state.draft, attachment: action.attachment } }
+    case 'ADD_DRAFT_ATTACHMENT': {
+      return { ...state, draft: { ...state.draft, attachments: [...state.draft.attachments, action.attachment] } }
     }
-    case 'CLEAR_DRAFT_ATTACHMENT': {
-      const { attachment: _attachment, ...rest } = state.draft
-      return { ...state, draft: rest }
+    case 'REMOVE_DRAFT_ATTACHMENT': {
+      return { ...state, draft: { ...state.draft, attachments: state.draft.attachments.filter((_, i) => i !== action.index) } }
+    }
+    case 'CLEAR_DRAFT': {
+      return { ...state, draft: { doc: null, attachments: [] } }
     }
     case 'SEND_MESSAGE': {
-      const { text, attachment } = state.draft
+      const { doc, attachments } = state.draft
+      const prompt = serializeForPrompt(doc)
       // 文本和附件都为空则不发送
-      if (!text.trim() && !attachment) return state
+      if (!prompt.trim() && attachments.length === 0) return state
       const sessionId = state.activeSessionId
       const newMessage = {
         id: nextId('m'),
         role: 'user' as const,
-        content: [{ type: 'text' as const, text }],
-        ...(attachment ? { attachment } : {})
+        content: [{ type: 'text' as const, text: prompt }],
+        ...(attachments.length ? { attachments } : {}),
       }
-      // 首条消息：用消息文本生成会话标题（截断到 30 字，换行折叠为空格）
+      // 首条消息标题：用 prompt 文本生成
       const makeTitle = (raw: string) => {
         const clean = raw.replace(/\s+/g, ' ').trim()
         return clean.length > 30 ? clean.slice(0, 30) + '…' : clean
@@ -236,13 +240,11 @@ export function reducer(state: AppState, action: Action): AppState {
           return {
             ...s,
             messages: [...s.messages, newMessage],
-            // 仅首条且标题仍是默认占位时改名，避免覆盖用户手改的标题
-            ...(isFirst && s.title === '新会话' && text.trim() ? { title: makeTitle(text) } : {}),
+            ...(isFirst && s.title === '新会话' && prompt.trim() ? { title: makeTitle(prompt) } : {}),
           }
-        })
+        }),
       }))
-      // 发送后清空草稿
-      return { ...state, projects, draft: { text: '' } }
+      return { ...state, projects, draft: { doc: null, attachments: [] } }
     }
     case 'SET_VIEW': {
       return { ...state, currentView: action.view }

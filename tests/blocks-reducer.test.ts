@@ -10,7 +10,7 @@ function initialState(): AppState {
     tabsBySession: { s1: [] },
     activeTabIdBySession: { s1: null },
     theme: 'codex-light',
-    draft: { text: '' },
+    draft: { doc: null, attachments: [] },
     currentView: 'workspace',
     activeSettingsSection: 'general',
     streamingBySession: {},
