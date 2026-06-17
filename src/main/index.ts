@@ -4,6 +4,9 @@ import { ClaudeService } from './claude-service'
 import { PtyManager } from './pty-manager'
 import { readDirTree, readFileContent } from './file-service'
 import { getSettings, saveSettings } from './settings-store'
+import { getModelProvidersConfig, saveModelProvidersConfig } from './cc-desk-store'
+import { getProjectsSnapshot, saveProjectsSnapshot } from './projects-store'
+import * as cc from './claude-config'
 
 const isDev = !app.isPackaged
 
@@ -46,6 +49,28 @@ function createWindow() {
   // Settings
   ipcMain.handle('settings:get', () => getSettings())
   ipcMain.handle('settings:save', (_e, partial) => saveSettings(partial))
+
+  // cc-desk 自有配置（模型供应商，存 ~/.cc-desk/config.json）
+  ipcMain.handle('cc-desk:model:get', () => getModelProvidersConfig())
+  ipcMain.handle('cc-desk:model:save', (_e, patch) => saveModelProvidersConfig(patch))
+
+  // 工作区快照（projects 含会话/消息，独立于 settings 存储）
+  ipcMain.handle('projects:get', () => getProjectsSnapshot())
+  ipcMain.handle('projects:save', (_e, snap) => saveProjectsSnapshot(snap))
+
+  // Claude 配置（真实读写 ~/.claude/ 配置文件）
+  ipcMain.handle('cc:mcp:get', () => cc.getMcpServers())
+  ipcMain.handle('cc:mcp:save', (_e, servers) => cc.saveMcpServers(servers))
+  ipcMain.handle('cc:plugins:get', () => cc.getPlugins())
+  ipcMain.handle('cc:plugin:set-enabled', (_e, id, enabled) => cc.setPluginEnabled(id, enabled))
+  ipcMain.handle('cc:skills:get', () => cc.getSkills())
+  ipcMain.handle('cc:commands:get', () => cc.getCommands())
+  ipcMain.handle('cc:hooks:get', () => cc.getHooks())
+  ipcMain.handle('cc:hook:set-enabled', (_e, name, enabled) => cc.setHookEnabled(name, enabled))
+  ipcMain.handle('cc:model:get', () => cc.getModelConfig())
+  ipcMain.handle('cc:model:save', (_e, cfg) => cc.saveModelConfig(cfg))
+  ipcMain.handle('cc:general:get', () => cc.getGeneralConfig())
+  ipcMain.handle('cc:general:save', (_e, cfg) => cc.saveGeneralConfig(cfg))
 
   // File System
   ipcMain.handle('fs:read-tree', async (_e, dirPath: string) => readDirTree(dirPath))
@@ -91,7 +116,27 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+  startArchiveTimer()
 })
+
+// 自动归档定时器：autoArchive 开启时，每 30 分钟向渲染端发一次归档信号，
+// 携带 archiveDays 对应的时间阈值。渲染端据此清理陈旧空会话。
+let archiveTimer: NodeJS.Timeout | null = null
+function startArchiveTimer() {
+  if (archiveTimer) clearInterval(archiveTimer)
+  const tick = () => {
+    const s = getSettings()
+    if (!s.autoArchive) return
+    const win = BrowserWindow.getAllWindows()[0]
+    if (!win) return
+    const days = Number(s.archiveDays) > 0 ? Number(s.archiveDays) : 7
+    const beforeTs = Date.now() - days * 24 * 60 * 60 * 1000
+    win.webContents.send('archive:tick', { beforeTs })
+  }
+  // 启动后立即跑一次（清理历史空会话），之后每 30 分钟
+  setTimeout(tick, 10_000)
+  archiveTimer = setInterval(tick, 30 * 60 * 1000)
+}
 
 app.on('window-all-closed', () => {
   ptyManager.killAll()
