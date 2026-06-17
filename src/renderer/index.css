@@ -102,3 +102,78 @@ button {
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: var(--bg-hover); border-radius: var(--radius); }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* ===== Codex 深色主题 ===== */
+[data-theme='codex-dark'] {
+  --bg: #1a1b1e;
+  --bg-elevated: #232428;
+  --bg-sidebar: #161719;
+  --bg-hover: #2c2e33;
+  --border: #34363c;
+  --text: #e6e6e8;
+  --text-muted: #9a9ca3;
+  --text-faint: #6b6d74;
+  --accent: #e6e6e8;
+  --accent-text: #1a1b1e;
+  --danger: #e57575;
+  --font: -apple-system, 'Segoe UI', 'PingFang SC', sans-serif;
+  --font-mono: 'SF Mono', 'Menlo', monospace;
+  --radius: 8px;
+  --radius-lg: 14px;
+  --shadow-float: 0 2px 12px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.04);
+}
+
+/* ===== Markdown 渲染样式（对话区 AI 文本，所有主题通用，用 CSS 变量） ===== */
+.md { font-size: 14px; line-height: 1.65; word-break: break-word; }
+.md > *:first-child { margin-top: 0; }
+.md > *:last-child { margin-bottom: 0; }
+.md p { margin: 8px 0; }
+.md h1, .md h2, .md h3, .md h4, .md h5, .md h6 {
+  margin: 16px 0 8px; font-weight: 600; line-height: 1.3;
+}
+.md h1 { font-size: 1.5em; }
+.md h2 { font-size: 1.3em; }
+.md h3 { font-size: 1.15em; }
+.md h4, .md h5, .md h6 { font-size: 1em; }
+.md ul, .md ol { margin: 8px 0; padding-left: 24px; }
+.md li { margin: 3px 0; }
+.md li > ul, .md li > ol { margin: 3px 0; }
+.md a { color: #3b82f6; text-decoration: none; }
+.md a:hover { text-decoration: underline; }
+.md blockquote {
+  margin: 8px 0; padding: 4px 12px; border-left: 3px solid var(--border);
+  color: var(--text-muted);
+}
+.md hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+/* 行内代码 */
+.md code:not(pre code) {
+  font-family: var(--font-mono); font-size: 0.88em;
+  background: var(--bg-hover); padding: 1px 5px; border-radius: 4px;
+}
+/* 表格 */
+.md table { border-collapse: collapse; margin: 8px 0; font-size: 0.95em; }
+.md th, .md td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
+.md th { background: var(--bg-hover); font-weight: 600; }
+/* 任务列表 */
+.md input[type='checkbox'] { margin-right: 6px; }
+/* 图片 */
+.md img { max-width: 100%; border-radius: 8px; }
+
+/* ===== shiki 代码块明暗切换（dual-themes）=====
+   shiki codeToHtml 输出两个 <pre>：.shiki-light / .shiki-dark。
+   浅色主题显 light、藏 dark；codex-dark 显 dark、藏 light。 */
+.md .shiki-block { margin: 8px 0; }
+.md .shiki-block pre { margin: 0; border-radius: 8px; overflow-x: auto; font-family: var(--font-mono); }
+[data-theme='codex-dark'] .md .shiki-light { display: none; }
+[data-theme='codex-light'] .md .shiki-dark,
+[data-theme='codex-warm'] .md .shiki-dark,
+[data-theme='codex-cool'] .md .shiki-dark,
+[data-theme='codex-paper'] .md .shiki-dark { display: none; }
+
+/* ===== Mermaid 图表 ===== */
+.md .mermaid-block { margin: 8px 0; text-align: center; background: var(--bg-elevated); border-radius: 8px; padding: 12px; }
+.md .mermaid-block svg { max-width: 100%; height: auto; }
+.md .mermaid-error { color: var(--danger); font-size: 12px; font-family: var(--font-mono); white-space: pre-wrap; text-align: left; }
+
+/* ===== KaTeX 数学公式 ===== */
+.md .katex-display { margin: 10px 0; overflow-x: auto; overflow-y: hidden; }
