@@ -187,7 +187,7 @@ button {
 /* ===== 消息行复制按钮（hover 显示）===== */
 .msg-row { position: relative; }
 .msg-copy {
-  position: absolute; top: -4px;
+  position: absolute; bottom: -6px;
   opacity: 0; transition: opacity 0.12s;
   padding: 4px; border-radius: 6px;
   background: var(--bg-elevated); border: 1px solid var(--border);
