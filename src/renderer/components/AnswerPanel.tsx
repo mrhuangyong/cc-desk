@@ -10,7 +10,12 @@ export function AnswerPanel() {
   if (!dialog) return null
 
   const submit = (results: Record<number, any>) => {
-    const userAnswers = Object.entries(results).map(([qi, v]) => ({ questionIndex: Number(qi), ...(typeof v === 'string' ? { other: v } : { selected: v }) }))
+    const userAnswers = Object.entries(results).map(([qi, v]) => {
+      const questionIndex = Number(qi)
+      // Other 自定义回答：{ other: true, text } → { other: text }；其余选项 → { selected: v }
+      if (v?.other) return { questionIndex, other: v.text ?? '' }
+      return { questionIndex, selected: v }
+    })
     window.api?.claude?.dialogResponse({ reqId: dialog.reqId, result: { behavior: 'completed', result: { answers: userAnswers } } })
     dispatch({ type: 'ANSWER_DIALOG' })
   }
