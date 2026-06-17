@@ -1,0 +1,9 @@
+diff --git a/dist/index.js b/dist/index.js
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -208,6 +208,8 @@
+      */
+     apply(transaction, prev, _oldState, state) {
++      // Patched: viewport plugin dispatches during editor init when `editor` is undefined.
++      if (!editor) return prev;
+       const { isEditable } = editor;
