@@ -9,7 +9,7 @@ import type {
 } from '../main/claude-config'
 
 interface ClaudeAPI {
-  send(opts: { prompt: string; sessionId?: string; cwd?: string }): Promise<void>
+  send(opts: { prompt: string; localSessionId?: string; sessionId?: string; cwd?: string }): Promise<void>
   stop(): Promise<void>
   onSystem(cb: (data: { sessionId: string; model: string; tools: string[] }) => void): void
   onDelta(cb: (data: { kind: 'text' | 'thinking'; delta: string }) => void): void
@@ -17,7 +17,7 @@ interface ClaudeAPI {
   onNotice(cb: (data: any) => void): void
   onResult(cb: (data: { sessionId: string; subtype: string; isError: boolean; costUSD: number; durationMs: number; turns: number }) => void): void
   onError(cb: (data: { error: string }) => void): void
-  onAborted(cb: () => void): void
+  onAborted(cb: (data: any) => void): void
   onDialogRequest(cb: (data: any) => void): void
   dialogResponse(payload: { reqId: string; result: any }): Promise<void>
   removeAllListeners(): void
