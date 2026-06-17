@@ -2,6 +2,8 @@
 import { query, AbortError } from '@anthropic-ai/claude-agent-sdk'
 import type { WebContents } from 'electron'
 import { getSettings } from './settings-store'
+import { getModelProvidersConfig, resolveActiveProviderModel, buildSdkEnv } from './cc-desk-store'
+import { getGeneralConfig } from './claude-config'
 
 /**
  * ClaudeService wraps the Claude Agent SDK `query()` into a renderer-facing
@@ -32,21 +34,31 @@ export class ClaudeService {
     const { prompt, sessionId, cwd, webContents } = opts
     const settings = getSettings()
 
-    if (!settings.apiKey) {
-      webContents.send('claude:error', { error: '请先在设置中配置 API Key' })
+    // 从 cc-desk 自有配置（~/.cc-desk/config.json）取激活的供应商+模型。
+    // 应用自成一套，不再读 ~/.claude/settings.json 的模型配置。
+    const cfg = getModelProvidersConfig()
+    const resolved = resolveActiveProviderModel(cfg)
+    if (!resolved) {
+      webContents.send('claude:error', { error: '请先在「设置 → 模型设置」中添加并启用供应商与模型' })
       return
     }
+    const general = await getGeneralConfig()
 
     this.abortController = new AbortController()
+
+    // 代理环境变量（来自常规设置 proxy）
+    const proxyEnv: Record<string, string> = general.proxy
+      ? { HTTP_PROXY: general.proxy, HTTPS_PROXY: general.proxy, http_proxy: general.proxy, https_proxy: general.proxy }
+      : {}
 
     try {
       const stream = query({
         prompt,
         options: {
-          // The SDK spawns a CLI subprocess that reads ANTHROPIC_API_KEY from
-          // its environment. `env` REPLACES process.env, so spread it through.
-          env: { ...process.env, ANTHROPIC_API_KEY: settings.apiKey },
-          model: settings.model,
+          // env REPLACES process.env，故先铺底再覆盖。注入激活供应商的 apiKey/baseUrl
+          // 与各角色模型映射（来自 ~/.cc-desk/config.json）。
+          env: { ...process.env, ...proxyEnv, ...buildSdkEnv(resolved, cfg.modelRoleMap, cfg.models) },
+          model: resolved.model.sdkModelId,
           cwd: cwd || settings.cwd || process.cwd(),
           resume: sessionId,
           permissionMode: 'auto',
@@ -82,14 +94,19 @@ export class ClaudeService {
             break
 
           case 'stream_event': {
-            // SDKPartialAssistantMessage — forward text deltas for live typing.
+            // SDKPartialAssistantMessage — 转发文本/思考增量与工具调用块。
             const evt = (message as any).event
-            if (
-              evt?.type === 'content_block_delta' &&
-              evt?.delta?.type === 'text_delta'
-            ) {
-              webContents.send('claude:stream-delta', {
-                delta: evt.delta.text as string,
+            if (evt?.type === 'content_block_delta') {
+              if (evt?.delta?.type === 'text_delta') {
+                webContents.send('claude:stream-delta', { delta: evt.delta.text as string })
+              } else if (evt?.delta?.type === 'thinking_delta') {
+                webContents.send('claude:thinking-delta', { delta: evt.delta.thinking as string })
+              }
+            } else if (evt?.type === 'content_block_start' && evt?.content_block?.type === 'tool_use') {
+              // 工具调用开始：转发为待办/工具卡片
+              const tb = evt.content_block
+              webContents.send('claude:tool-use', {
+                id: tb.id, name: tb.name, input: tb.input,
               })
             }
             break
