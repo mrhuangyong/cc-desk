@@ -2,12 +2,13 @@ import { useState } from 'react'
 import { useStore } from '../state/store'
 
 // AskUserQuestion 形态：payload.questions = [{ question, header, options:[{label,description,preview?}], multiSelect? }]
+// InputDock 保证仅在 pendingDialog 非空时挂载本组件，故此处不做空值早返回
+// （早返回会破坏 hooks 调用顺序）。
 export function AnswerPanel() {
   const { state, dispatch } = useStore()
-  const dialog = state.pendingDialog
-  const questions: any[] = dialog?.payload?.questions ?? []
+  const dialog = state.pendingDialog!
+  const questions: any[] = dialog.payload?.questions ?? []
   const [answers, setAnswers] = useState<Record<number, any>>({})
-  if (!dialog) return null
 
   const submit = (results: Record<number, any>) => {
     const userAnswers = Object.entries(results).map(([qi, v]) => {

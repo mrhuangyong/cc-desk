@@ -180,8 +180,12 @@ export class ClaudeService {
           }
           case 'api_retry':
             webContents.send('claude:notice', mkNotice('api_retry', 'API 重试中', 'warn')); break
-          case 'auth_status':
-            webContents.send('claude:notice', mkNotice('auth', `认证：${(message as any).is_authenticated ? '已认证' : '未认证'}`, 'info')); break
+          case 'auth_status': {
+            const am = message as any
+            const text = am.error ? `认证错误：${am.error}` : ((Array.isArray(am.output) ? am.output.join(' ') : '') || (am.isAuthenticating ? '认证中…' : '认证就绪'))
+            webContents.send('claude:notice', mkNotice('auth', text, am.error ? 'warn' : 'info'))
+            break
+          }
           case 'task_started':
           case 'task_updated':
           case 'task_progress':

@@ -332,7 +332,11 @@ export function reducer(state: AppState, action: Action): AppState {
       }
     }
     case 'STREAM_END': {
-      const stream = state.streamingBySession[action.sessionId] || { blocks: [], notices: [] }
+      // 若该 session 没有进行中的流（竞态：未 STREAM_START 就收到 result，
+      // 或已被 STREAM_ABORTED 清理），不追加幽灵空消息，仅原样返回。
+      const existing = state.streamingBySession[action.sessionId]
+      if (!existing) return state
+      const stream = existing
       const assistantMsg = {
         id: `m${Date.now()}`,
         role: 'assistant' as const,
