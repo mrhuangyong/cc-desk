@@ -33,6 +33,7 @@ export class ClaudeService {
   }): Promise<void> {
     const { prompt, sessionId, cwd, webContents } = opts
     const settings = getSettings()
+    console.log('[cc-stream] [2/3] ClaudeService.send start', { promptLen: prompt?.length, sessionId, cwd })
 
     // 从 cc-desk 自有配置（~/.cc-desk/config.json）取激活的供应商+模型。
     // 应用自成一套，不再读 ~/.claude/settings.json 的模型配置。
@@ -70,6 +71,7 @@ export class ClaudeService {
       })
 
       for await (const message of stream) {
+        console.log('[cc-stream] [4] message', message.type, (message as any).subtype ?? '')
         switch (message.type) {
           case 'system': {
             const sys = message as any
@@ -113,6 +115,10 @@ export class ClaudeService {
           }
 
           case 'result':
+            console.log('[cc-stream] [5] send claude:result', {
+              sessionId: (message as any).session_id,
+              subtype: (message as any).subtype,
+            })
             webContents.send('claude:result', {
               sessionId: (message as any).session_id,
               subtype: (message as any).subtype,
@@ -123,13 +129,16 @@ export class ClaudeService {
             break
         }
       }
+      console.log('[cc-stream] [6] stream loop ended normally')
     } catch (err) {
+      console.log('[cc-stream] [6] caught', err instanceof AbortError ? 'AbortError' : 'Error', String(err))
       if (err instanceof AbortError) {
         webContents.send('claude:aborted')
       } else {
         webContents.send('claude:error', { error: String(err) })
       }
     } finally {
+      console.log('[cc-stream] [6] finally, abortController cleared')
       this.abortController = null
     }
   }

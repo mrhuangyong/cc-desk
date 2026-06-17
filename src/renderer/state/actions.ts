@@ -1,4 +1,4 @@
-import type { AppView, Message, PickedElement, Project, SettingsSection, TabType, ThemeId } from '../types'
+import type { AppView, AppSettings, Message, PickedElement, Project, SettingsSection, Tab, TabType, ThemeId } from '../types'
 
 export type Action =
   | { type: 'ADD_PROJECT'; name: string; path: string }
@@ -22,12 +22,28 @@ export type Action =
   // 流式输出：Claude 流式响应的状态机
   | { type: 'STREAM_START'; sessionId: string }
   | { type: 'STREAM_DELTA'; sessionId: string; delta: string }
+  | { type: 'STREAM_THINKING'; sessionId: string; delta: string }
+  | { type: 'STREAM_TOOL_USE'; sessionId: string; tool: { id: string; name: string } }
   | { type: 'STREAM_END'; sessionId: string; content: any[]; costUSD: number; durationMs: number }
   | { type: 'STREAM_ERROR'; sessionId: string; error: string }
   | { type: 'STREAM_ABORTED'; sessionId: string }
-  // 应用设置：apiKey / model / cwd 的部分更新
-  | { type: 'SET_SETTINGS'; settings: Partial<{ apiKey: string; model: string; cwd: string }> }
+  // 应用设置：AppSettings 的部分更新（apiKey / model / cwd / providers / models）
+  | { type: 'SET_SETTINGS'; settings: Partial<AppSettings> }
   // 初始化：从主进程拉取的 projects 列表
   | { type: 'INIT_SESSIONS'; projects: Project[] }
+  // 启动时从主进程注入持久化的工作区快照（含 tabs/sessionMap/idCounter）
+  | {
+      type: 'HYDRATE'
+      snapshot: {
+        projects: Project[]
+        activeSessionId: string
+        tabsBySession: Record<string, Tab[]>
+        activeTabIdBySession: Record<string, string | null>
+        claudeSessionMap: Record<string, string>
+        lastSeq: number
+      }
+    }
   // 捕获 Claude 返回的真实 sessionId，建立 localSessionId → claudeSessionId 映射
   | { type: 'SET_CLAUDE_SESSION_ID'; localSessionId: string; claudeSessionId: string }
+  // 自动归档：删除超过阈值无活动且无消息的空会话
+  | { type: 'ARCHIVE_STALE'; beforeTs: number }

@@ -1,6 +1,5 @@
-import { useState } from 'react'
-import { mockPlugins } from '../../state/mockData'
-import type { Plugin } from '../../types'
+import { useEffect, useState } from 'react'
+import type { ClaudePlugin } from '../../../main/claude-config'
 import { Toggle } from './Toggle'
 import { RefreshCw, Plug } from 'lucide-react'
 
@@ -10,22 +9,37 @@ const topIconBtn: React.CSSProperties = {
 }
 
 export function PluginSettings() {
+  const [plugins, setPlugins] = useState<ClaudePlugin[]>([])
   const [q, setQ] = useState('')
-  const [plugins, setPlugins] = useState<Plugin[]>(() => mockPlugins.map(p => ({ ...p })))
+  const [loading, setLoading] = useState(true)
+
+  const reload = () => {
+    setLoading(true)
+    window.api?.cc?.plugins.get().then(list => { setPlugins(list); setLoading(false) })
+  }
+  useEffect(() => { reload() }, [])
+
   const filtered = plugins.filter(p =>
     p.name.toLowerCase().includes(q.toLowerCase()) || p.desc.toLowerCase().includes(q.toLowerCase())
   )
-  const toggle = (id: string) => setPlugins(prev => prev.map(p => p.id === id ? { ...p, enabled: !p.enabled } : p))
+
+  // 切换启用：写回 settings.json 的 enabledPlugins，再重新读取（确保与真实状态一致）
+  const toggle = async (id: string) => {
+    const p = plugins.find(x => x.id === id)
+    if (!p) return
+    await window.api?.cc?.plugins.setEnabled(id, !p.enabled)
+    reload()
+  }
 
   return (
     <div style={{ maxWidth: 760, margin: '0 auto' }}>
       {/* 标题 + 刷新 */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
         <h2 style={{ color: 'var(--text)', fontSize: 18, margin: 0 }}>插件管理</h2>
-        <button title="刷新" style={topIconBtn}><RefreshCw size={14} /></button>
+        <button title="刷新" onClick={reload} style={topIconBtn}><RefreshCw size={14} /></button>
       </div>
       <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 14 }}>
-        启用或停用已安装的插件。插件可打包技能、命令和 MCP 服务器。
+        来自 ~/.claude/plugins/installed_plugins.json + 各插件 manifest，启用状态读写 settings.json 的 enabledPlugins。
       </div>
 
       {/* 搜索框 */}
@@ -37,7 +51,10 @@ export function PluginSettings() {
 
       {/* 插件卡片列表 */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {filtered.length === 0 && (
+        {loading && (
+          <div style={{ padding: 20, color: 'var(--text-muted)', textAlign: 'center', fontSize: 13 }}>加载中…</div>
+        )}
+        {!loading && filtered.length === 0 && (
           <div style={{ padding: 20, color: 'var(--text-muted)', textAlign: 'center', fontSize: 13 }}>无匹配插件</div>
         )}
         {filtered.map(p => (

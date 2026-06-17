@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
+import { useStore } from '../state/store'
 
 interface Props {
   tabId: string
@@ -9,6 +10,8 @@ interface Props {
 }
 
 export function TerminalTab({ tabId, cwd }: Props) {
+  const { state } = useStore()
+  const terminalFont = state.settings.terminalFont || '"Cascadia Code", "Fira Code", monospace'
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
@@ -20,7 +23,7 @@ export function TerminalTab({ tabId, cwd }: Props) {
 
     const term = new Terminal({
       fontSize: 13,
-      fontFamily: '"Cascadia Code", "Fira Code", monospace',
+      fontFamily: terminalFont,
       theme: {
         background: '#1e1e1e',
         foreground: '#d4d4d4',
@@ -73,7 +76,7 @@ export function TerminalTab({ tabId, cwd }: Props) {
       term.dispose()
       window.api?.pty.kill(tabId)
     }
-  }, [tabId, cwd])
+  }, [tabId, cwd, terminalFont])
 
   return <div ref={containerRef} style={{ width: '100%', height: '100%', padding: 4 }} />
 }
