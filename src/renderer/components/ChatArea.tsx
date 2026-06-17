@@ -206,7 +206,7 @@ export function ChatArea() {
               display: 'flex', flexDirection: 'column', gap: 6,
               userSelect: 'text', cursor: 'text',
             }}>
-              {m.attachment && <AttachmentChip attachment={m.attachment} />}
+              {m.attachment && <AttachmentChip attachment={{ type: 'pickedElement', el: m.attachment }} />}
               <Notices notices={m.notices ?? []} />
               {m.content.map((b, i) => <BlockRenderer key={i} block={b} />)}
               {/* 底部行：cost 元数据 + 复制钮，同一水平线，距上方 md 内容 10px */}
@@ -231,7 +231,7 @@ export function ChatArea() {
               userSelect: 'text', cursor: 'text',
             }}>
               <CopyButton text={extractText(m.content)} />
-              {m.attachment && <AttachmentChip attachment={m.attachment} />}
+              {m.attachment && <AttachmentChip attachment={{ type: 'pickedElement', el: m.attachment }} />}
               {m.content.map((b, i) => <BlockRenderer key={i} block={b} />)}
             </div>
           )
