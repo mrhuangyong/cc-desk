@@ -115,7 +115,7 @@ export function ChatArea() {
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: 'var(--bg)' }}>
       {/* 闪烁光标动画 */}
       <style>{`@keyframes blink { 50% { opacity: 0 } }`}</style>
-      <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 14, width: '100%', maxWidth: 'var(--chat-max-width)', margin: '0 auto' }}>
         {session.messages.length === 0 && !streaming && (
           <div style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: 60 }}>{t('chat.empty')}</div>
         )}
@@ -163,7 +163,7 @@ export function ChatArea() {
           </div>
         )}
       </div>
-      <div style={{ padding: '0 28px 20px' }}>
+      <div style={{ padding: '0 28px 20px', width: '100%', maxWidth: 'var(--chat-max-width)', margin: '0 auto' }}>
         <InputDock />
       </div>
     </div>
