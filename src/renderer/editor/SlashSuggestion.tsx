@@ -2,10 +2,15 @@
 // / 触发：命令（插纯文本）+ 技能（插 skillChip）混合菜单。
 import { Extension } from '@tiptap/core'
 import Suggestion from '@tiptap/suggestion'
+import { PluginKey } from '@tiptap/pm/state'
 import { filterSlashItems } from './slashFilter'
 import { makeSuggestionController } from './suggestionController'
 import { Command as CommandIcon, Sparkles } from 'lucide-react'
 import type { SlashMenuItem } from './types'
+
+// 独立 pluginKey：多个 Suggestion 扩展（/ 和 @）必须各有独立 key，
+// 否则 ProseMirror 报 "Adding different instances of a keyed plugin (suggestion$)"。
+const slashPluginKey = new PluginKey('slashSuggestion')
 
 export function buildSlashExtension(allItems: SlashMenuItem[]): Extension {
   return Extension.create({
@@ -13,6 +18,7 @@ export function buildSlashExtension(allItems: SlashMenuItem[]): Extension {
     addOptions() {
       return {
         suggestion: {
+          pluginKey: slashPluginKey,
           char: '/',
           startOfLine: false,
           allowSpaces: false,
