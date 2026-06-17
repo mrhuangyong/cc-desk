@@ -6,42 +6,19 @@ contextBridge.exposeInMainWorld('api', {
   claude: {
     send: (opts: any) => ipcRenderer.invoke('claude:send', opts),
     stop: () => ipcRenderer.invoke('claude:stop'),
-    onStreamDelta: (cb: (data: any) => void) => {
-      ipcRenderer.on('claude:stream-delta', (_, data) => cb(data))
-    },
-    onThinkingDelta: (cb: (data: any) => void) => {
-      ipcRenderer.on('claude:thinking-delta', (_, data) => cb(data))
-    },
-    onToolUse: (cb: (data: any) => void) => {
-      ipcRenderer.on('claude:tool-use', (_, data) => cb(data))
-    },
-    onSystem: (cb: (data: any) => void) => {
-      ipcRenderer.on('claude:system', (_, data) => cb(data))
-    },
-    onAssistant: (cb: (data: any) => void) => {
-      ipcRenderer.on('claude:assistant', (_, data) => cb(data))
-    },
-    onResult: (cb: (data: any) => void) => {
-      ipcRenderer.on('claude:result', (_, data) => cb(data))
-    },
-    onError: (cb: (data: any) => void) => {
-      ipcRenderer.on('claude:error', (_, data) => cb(data))
-    },
-    onAborted: (cb: () => void) => {
-      ipcRenderer.on('claude:aborted', () => cb())
-    },
+    onSystem: (cb: (data: any) => void) => { ipcRenderer.on('claude:system', (_, data) => cb(data)) },
+    onDelta: (cb: (data: { kind: 'text' | 'thinking'; delta: string }) => void) => { ipcRenderer.on('claude:delta', (_, data) => cb(data)) },
+    onBlocks: (cb: (data: any) => void) => { ipcRenderer.on('claude:blocks', (_, data) => cb(data)) },
+    onNotice: (cb: (data: any) => void) => { ipcRenderer.on('claude:notice', (_, data) => cb(data)) },
+    onResult: (cb: (data: any) => void) => { ipcRenderer.on('claude:result', (_, data) => cb(data)) },
+    onError: (cb: (data: { error: string }) => void) => { ipcRenderer.on('claude:error', (_, data) => cb(data)) },
+    onAborted: (cb: () => void) => { ipcRenderer.on('claude:aborted', () => cb()) },
+    onDialogRequest: (cb: (data: any) => void) => { ipcRenderer.on('claude:dialog-request', (_, data) => cb(data)) },
+    dialogResponse: (payload: { reqId: string; result: any }) => ipcRenderer.invoke('claude:dialog-response', payload),
     removeAllListeners: () => {
-      ;[
-        'claude:stream-delta',
-        'claude:thinking-delta',
-        'claude:tool-use',
-        'claude:system',
-        'claude:assistant',
-        'claude:result',
-        'claude:error',
-        'claude:aborted'
-      ].forEach((ch) => ipcRenderer.removeAllListeners(ch))
-    }
+      ['claude:system', 'claude:delta', 'claude:blocks', 'claude:notice', 'claude:result', 'claude:error', 'claude:aborted', 'claude:dialog-request']
+        .forEach(ch => ipcRenderer.removeAllListeners(ch))
+    },
   },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),

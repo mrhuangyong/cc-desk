@@ -24,30 +24,13 @@ export function ChatArea() {
   useEffect(() => { activeSessionIdRef.current = state.activeSessionId }, [state.activeSessionId])
   useEffect(() => { settingsRef.current = state.settings }, [state.settings])
 
-  // 注册 IPC 监听器：流式增量 / 结束 / 错误 / 中止
+  // 注册 IPC 监听器：归一化后的新通道（delta/blocks/notice/result/error/aborted）
   useEffect(() => {
     const api = window.api?.claude
     if (!api) return
 
-    api.onStreamDelta(({ delta }) => {
-      console.log('[cc-stream] onStreamDelta')
-      dispatch({ type: 'STREAM_DELTA', sessionId: activeSessionIdRef.current, kind: 'text', delta })
-    })
-    api.onThinkingDelta(({ delta }) => {
-      console.log('[cc-stream] onThinkingDelta')
-      dispatch({ type: 'STREAM_DELTA', sessionId: activeSessionIdRef.current, kind: 'thinking', delta })
-    })
-    api.onToolUse((tool) => {
-      console.log('[cc-stream] onToolUse', tool?.name)
-      dispatch({
-        type: 'STREAM_TOOL_USE_START',
-        sessionId: activeSessionIdRef.current,
-        block: { type: 'tool_use', id: tool.id, name: tool.name, input: {}, status: 'running' },
-      })
-    })
     // 捕获 Claude 返回的真实 sessionId，建立 localSessionId → claudeSessionId 映射，供后续消息 resume 续接
-    api.onSystem((data) => {
-      console.log('[cc-stream] onSystem', (data as any)?.subtype, data?.sessionId)
+    api.onSystem((data: any) => {
       if (data?.sessionId) {
         dispatch({
           type: 'SET_CLAUDE_SESSION_ID',
@@ -56,15 +39,47 @@ export function ChatArea() {
         })
       }
     })
-    api.onResult((data) => {
-      console.log('[cc-stream] [7] onResult received', data)
+    // 增量文本/思考
+    api.onDelta(({ kind, delta }) => {
+      dispatch({ type: 'STREAM_DELTA', sessionId: activeSessionIdRef.current, kind, delta })
+    })
+    // 归一化 blocks：工具开始 / assistant 整块 / 工具结果
+    api.onBlocks((data: any) => {
+      if (data?.op === 'tool_use_start') {
+        dispatch({
+          type: 'STREAM_TOOL_USE_START',
+          sessionId: activeSessionIdRef.current,
+          block: data.block,
+        })
+      } else if (data?.op === 'assistant_blocks') {
+        dispatch({
+          type: 'STREAM_ASSISTANT_BLOCKS',
+          sessionId: activeSessionIdRef.current,
+          blocks: data.blocks,
+          uuid: data.uuid,
+        })
+      } else if (data?.op === 'tool_result') {
+        dispatch({
+          type: 'STREAM_TOOL_RESULT',
+          sessionId: activeSessionIdRef.current,
+          toolUseId: data.toolUseId,
+          result: data.result,
+        })
+      }
+    })
+    // 系统通知（状态/权限/压缩/重试/任务/错误等）
+    api.onNotice((notice: any) => {
+      dispatch({ type: 'STREAM_NOTICE', sessionId: activeSessionIdRef.current, notice })
+    })
+    api.onResult((data: any) => {
       dispatch({
         type: 'STREAM_END',
         // 始终用本地 activeSessionId：streamingBySession 的 key 是本地 id。
-        // 新 STREAM_END 不再接收 content——文本已通过 STREAM_DELTA 累积进 streaming.blocks。
         sessionId: activeSessionIdRef.current,
         costUSD: data.costUSD,
         durationMs: data.durationMs,
+        turns: data.turns,
+        isError: data.isError,
       })
       // 任务通知：任务完成时发桌面通知（受常规设置 taskNotify 控制）
       const s = settingsRef.current
@@ -74,11 +89,9 @@ export function ChatArea() {
       }
     })
     api.onError(({ error }) => {
-      console.log('[cc-stream] onError', error)
       dispatch({ type: 'STREAM_ERROR', sessionId: activeSessionIdRef.current, error })
     })
     api.onAborted(() => {
-      console.log('[cc-stream] onAborted')
       dispatch({ type: 'STREAM_ABORTED', sessionId: activeSessionIdRef.current })
     })
 

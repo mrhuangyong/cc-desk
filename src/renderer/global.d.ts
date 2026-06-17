@@ -11,16 +11,15 @@ import type {
 interface ClaudeAPI {
   send(opts: { prompt: string; sessionId?: string; cwd?: string }): Promise<void>
   stop(): Promise<void>
-  onStreamDelta(cb: (data: { delta: string }) => void): void
-  onThinkingDelta(cb: (data: { delta: string }) => void): void
-  onToolUse(cb: (data: { id: string; name: string; input?: any }) => void): void
   onSystem(cb: (data: { sessionId: string; model: string; tools: string[] }) => void): void
-  onAssistant(cb: (data: { content: any[]; costUSD: number; durationMs: number }) => void): void
-  onResult(
-    cb: (data: { sessionId: string; subtype: string; costUSD: number; durationMs: number; turns: number }) => void
-  ): void
+  onDelta(cb: (data: { kind: 'text' | 'thinking'; delta: string }) => void): void
+  onBlocks(cb: (data: any) => void): void
+  onNotice(cb: (data: any) => void): void
+  onResult(cb: (data: { sessionId: string; subtype: string; isError: boolean; costUSD: number; durationMs: number; turns: number }) => void): void
   onError(cb: (data: { error: string }) => void): void
   onAborted(cb: () => void): void
+  onDialogRequest(cb: (data: any) => void): void
+  dialogResponse(payload: { reqId: string; result: any }): Promise<void>
   removeAllListeners(): void
 }
 
