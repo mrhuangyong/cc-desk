@@ -215,7 +215,7 @@ export function ChatArea() {
           aria-label="回到底部"
           title="回到底部"
           style={{
-            position: 'absolute', left: '50%', transform: 'translateX(-50%)', bottom: 92,
+            position: 'absolute', left: '50%', transform: 'translateX(-50%)', bottom: 110,
             width: 34, height: 34, borderRadius: '50%',
             background: 'var(--bg-elevated)', border: '1px solid var(--border)',
             boxShadow: 'var(--shadow-float)', color: 'var(--text)',
