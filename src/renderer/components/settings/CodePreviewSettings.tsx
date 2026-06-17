@@ -1,8 +1,8 @@
-import { useState } from 'react'
 import { SettingsLayout } from './SettingsLayout'
 import { SettingsCard } from './SettingsCard'
 import { SettingsRow } from './SettingsRow'
 import { Toggle } from './Toggle'
+import { useStore } from '../../state/store'
 
 const selectStyle: React.CSSProperties = { padding: '5px 10px', background: 'var(--bg-sidebar)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)' }
 
@@ -48,39 +48,42 @@ function PreviewBox({ title, badge, isDark, themeName }: { title: string; badge:
 }
 
 export function CodePreviewSettings() {
-  const [lightTheme, setLightTheme] = useState('GitHub Light')
-  const [darkTheme, setDarkTheme] = useState('GitHub Dark')
-  const [showLineNumbers, setShowLineNumbers] = useState(true)
-  const [wordWrap, setWordWrap] = useState(false)
-  const [fontSize, setFontSize] = useState(12)
+  const { state, dispatch } = useStore()
+  const cp = state.settings.codePreview
+  // 持久化代码预览子对象
+  const persist = (patch: Partial<typeof cp>) => {
+    const next = { ...cp, ...patch }
+    dispatch({ type: 'SET_SETTINGS', settings: { codePreview: next } })
+    window.api?.settings.save({ codePreview: next })
+  }
 
   return (
     <SettingsLayout title="代码预览">
       <SettingsCard>
         <SettingsRow title="浅色代码主题" desc="浅色模式下代码块使用的高亮主题。">
-          <select value={lightTheme} onChange={e => setLightTheme(e.target.value)} style={selectStyle}>
+          <select value={cp.lightTheme} onChange={e => persist({ lightTheme: e.target.value })} style={selectStyle}>
             {LIGHT_THEMES.map(t => <option key={t}>{t}</option>)}
           </select>
         </SettingsRow>
         <SettingsRow title="深色代码主题" desc="深色模式下代码块使用的高亮主题。">
-          <select value={darkTheme} onChange={e => setDarkTheme(e.target.value)} style={selectStyle}>
+          <select value={cp.darkTheme} onChange={e => persist({ darkTheme: e.target.value })} style={selectStyle}>
             {DARK_THEMES.map(t => <option key={t}>{t}</option>)}
           </select>
         </SettingsRow>
         <SettingsRow title="显示行号" desc="在代码预览中显示每一行的行号。">
-          <Toggle on={showLineNumbers} onChange={setShowLineNumbers} aria-label="显示行号" />
+          <Toggle on={cp.showLineNumbers} onChange={v => persist({ showLineNumbers: v })} aria-label="显示行号" />
         </SettingsRow>
         <SettingsRow title="长行自动换行" desc="内容过长时在预览区域内自动换行。">
-          <Toggle on={wordWrap} onChange={setWordWrap} aria-label="长行自动换行" />
+          <Toggle on={cp.wordWrap} onChange={v => persist({ wordWrap: v })} aria-label="长行自动换行" />
         </SettingsRow>
         <SettingsRow title="代码字号" desc="调整代码预览的默认字号。" noBorder>
           <span style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', fontSize: 12 }}>
             <input
-              type="range" min={10} max={20} value={fontSize}
-              onChange={e => setFontSize(Number(e.target.value))}
+              type="range" min={10} max={20} value={cp.fontSize}
+              onChange={e => persist({ fontSize: Number(e.target.value) })}
               style={{ accentColor: 'var(--accent)' }}
             />
-            <span style={{ minWidth: 20, textAlign: 'right' }}>{fontSize}</span>
+            <span style={{ minWidth: 20, textAlign: 'right' }}>{cp.fontSize}</span>
           </span>
         </SettingsRow>
       </SettingsCard>
@@ -92,8 +95,8 @@ export function CodePreviewSettings() {
           右侧代码预览会按当前界面主题自动切换对应配色。
         </div>
         <div style={{ display: 'flex', gap: 12 }}>
-          <PreviewBox title="浅色预览" badge="当前生效" isDark={false} themeName={lightTheme} />
-          <PreviewBox title="深色预览" badge="深色" isDark={true} themeName={darkTheme} />
+          <PreviewBox title="浅色预览" badge="当前生效" isDark={false} themeName={cp.lightTheme} />
+          <PreviewBox title="深色预览" badge="深色" isDark={true} themeName={cp.darkTheme} />
         </div>
       </div>
     </SettingsLayout>

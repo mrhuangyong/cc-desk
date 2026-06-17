@@ -1,9 +1,8 @@
-import { useState } from 'react'
-import { mockMcpServers } from '../../state/mockData'
-import type { McpServer } from '../../types'
+import { useEffect, useState } from 'react'
+import type { ClaudeMcpServer } from '../../../main/claude-config'
 import { Toggle } from './Toggle'
 import { McpEditDialog } from './McpEditDialog'
-import { Plus, ChevronDown, Plug, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Plug, Pencil, Trash2 } from 'lucide-react'
 
 const iconBtn: React.CSSProperties = {
   padding: '4px 6px', fontSize: 13, cursor: 'pointer',
@@ -12,22 +11,39 @@ const iconBtn: React.CSSProperties = {
 const topIconBtn: React.CSSProperties = { ...iconBtn, fontSize: 14, padding: '4px 8px' }
 
 export function McpSettings() {
+  const [servers, setServers] = useState<ClaudeMcpServer[]>([])
   const [q, setQ] = useState('')
-  const [servers, setServers] = useState(() => mockMcpServers.map(s => ({ ...s })))
   const [editingId, setEditingId] = useState<string | null>(null)
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  // 挂载与刷新：从 ~/.claude.json 的 mcpServers 读取真实配置
+  const reload = () => {
+    setLoading(true)
+    window.api?.cc?.mcp.get().then(list => { setServers(list); setLoading(false) })
+  }
+  useEffect(() => { reload() }, [])
+
+  // 保存：整体写回 ~/.claude.json 的 mcpServers（append-only 不动其它 key）
+  const persist = (next: ClaudeMcpServer[]) => {
+    setServers(next)
+    window.api?.cc?.mcp.save(next)
+  }
 
   const filtered = servers.filter(s => s.name.toLowerCase().includes(q.toLowerCase()))
-  const update = (id: string, patch: Partial<McpServer>) =>
-    setServers(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s))
-  const toggle = (id: string) => update(id, { enabled: !servers.find(s => s.id === id)!.enabled })
+  const update = (id: string, patch: Partial<ClaudeMcpServer>) =>
+    persist(servers.map(s => s.id === id ? { ...s, ...patch } : s))
+  const toggle = (id: string) => {
+    const s = servers.find(x => x.id === id)
+    if (s) update(id, { enabled: !s.enabled })
+  }
   const remove = (id: string) => {
-    setServers(prev => prev.filter(s => s.id !== id))
+    persist(servers.filter(s => s.id !== id))
     setConfirmingId(null)
   }
   const addNew = () => {
     const id = `mcp-${Date.now()}`
-    setServers(prev => [...prev, { id, name: '新 MCP', transport: 'stdio', command: '', args: '', env: '', enabled: true, scope: '用户' }])
+    persist([...servers, { id, name: `new-mcp-${servers.length + 1}`, transport: 'stdio', command: '', args: '', env: '', enabled: true, scope: '用户' }])
     setEditingId(id)
   }
 
@@ -40,11 +56,10 @@ export function McpSettings() {
         <h2 style={{ color: 'var(--text)', fontSize: 18, margin: 0 }}>MCP 服务器</h2>
         <div style={{ display: 'flex', gap: 4 }}>
           <button title="添加" onClick={addNew} style={topIconBtn}><Plus size={14} /></button>
-          <button title="排序/展开" style={topIconBtn}><ChevronDown size={14} /></button>
         </div>
       </div>
       <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 14 }}>
-        管理 ZCode Agent 使用的 MCP 服务器配置。
+        读写 ~/.claude.json 的 mcpServers（全局配置）。管理 Agent 使用的 MCP 服务器。
       </div>
 
       {/* 搜索框 */}
@@ -61,7 +76,10 @@ export function McpSettings() {
 
       {/* 列表 */}
       <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--bg)', boxShadow: 'var(--shadow-float)' }}>
-        {filtered.length === 0 && (
+        {loading && (
+          <div style={{ padding: 20, color: 'var(--text-muted)', textAlign: 'center', fontSize: 13 }}>加载中…</div>
+        )}
+        {!loading && filtered.length === 0 && (
           <div style={{ padding: 20, color: 'var(--text-muted)', textAlign: 'center', fontSize: 13 }}>无匹配 MCP</div>
         )}
         {filtered.map((s, i) => (
@@ -70,7 +88,7 @@ export function McpSettings() {
               <span style={{ color: 'var(--accent)', fontSize: 16, flexShrink: 0, display: 'inline-flex' }}><Plug size={16} /></span>
               <span style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: s.enabled ? 'var(--accent)' : 'var(--text-muted)' }} />
               <span style={{ color: 'var(--text)', fontSize: 13, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
-              <span style={{ padding: '1px 7px', borderRadius: 999, fontSize: 10, border: '1px solid var(--border)', color: 'var(--text-muted)' }}>{s.scope}</span>
+              <span style={{ padding: '1px 7px', borderRadius: 999, fontSize: 10, border: '1px solid var(--border)', color: 'var(--text-muted)' }}>{s.transport}</span>
               <Toggle on={s.enabled} onChange={() => toggle(s.id)} aria-label={`${s.enabled ? '禁用' : '启用'} ${s.name}`} />
               <button title="编辑" onClick={() => setEditingId(s.id)} style={iconBtn}><Pencil size={13} /></button>
               {confirmingId === s.id ? (

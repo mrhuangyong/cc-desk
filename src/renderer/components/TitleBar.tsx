@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react'
 import { Settings, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from 'lucide-react'
 import { ThemeSwitcher } from './ThemeSwitcher'
 import { useStore } from '../state/store'
+import { useI18n } from '../i18n/useI18n'
 
 // WebkitAppRegion is an Electron/WebKit CSS property not present in React's
 // CSSProperties. Define a local superset so the drag regions type-check.
@@ -20,6 +21,7 @@ interface Props {
 
 export function TitleBar({ projectName, leftCollapsed, rightCollapsed, onToggleLeft, onToggleRight }: Props) {
   const { dispatch } = useStore()
+  const { t } = useI18n()
   return (
     <div style={{
       display: 'flex', alignItems: 'center', height: 36, padding: '0 8px',
@@ -44,7 +46,7 @@ export function TitleBar({ projectName, leftCollapsed, rightCollapsed, onToggleL
       </span>
 
       <div style={{ display: 'flex', gap: 8, marginRight: 8, ...noDrag }}>
-        <button title="设置" onClick={() => dispatch({ type: 'SET_SETTINGS_SECTION', section: 'general' })} style={{ padding: '4px 8px', lineHeight: 1, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center' }}><Settings size={17} /></button>
+        <button title={t('title.settings')} onClick={() => dispatch({ type: 'SET_SETTINGS_SECTION', section: 'general' })} style={{ padding: '4px 8px', lineHeight: 1, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center' }}><Settings size={17} /></button>
         <ThemeSwitcher />
       </div>
       {/* 右栏折叠按钮 */}

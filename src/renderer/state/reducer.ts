@@ -1,5 +1,5 @@
 import type { Action } from './actions'
-import type { AppView, Draft, Project, Session, SettingsSection, Tab, ThemeId } from '../types'
+import type { AppView, Draft, Project, Session, SettingsSection, Tab, ThemeId, AppSettings } from '../types'
 
 export interface AppState {
   projects: Project[]
@@ -17,10 +17,12 @@ export interface AppState {
   streamingBySession: Record<string, {
     isStreaming: boolean
     currentText: string
+    thinking?: string        // 思考过程增量（showThinking 控制展示）
+    tools?: { id: string; name: string }[]  // 本轮工具调用（showTodo 控制展示）
     error?: string
   }>
-  // 应用设置：apiKey / model / cwd
-  settings: { apiKey: string; model: string; cwd: string }
+  // 应用设置：apiKey / model / cwd / providers / models（与主进程 AppSettings 一致）
+  settings: AppSettings
   // 本地会话 ID → Claude SDK 返回的真实 session ID 映射，用于 resume 续接
   claudeSessionMap: Record<string, string>
 }
@@ -30,6 +32,12 @@ let idCounter = 0
 function nextId(prefix: string): string {
   idCounter += 1
   return `${prefix}${idCounter}`
+}
+
+// 持久化恢复（HYDRATE）时，把 idCounter 重置为已恢复数据中的最大序号，
+// 避免新增 ID 与已恢复的 p1/p2/s1... 冲突。
+export function setIdCounter(n: number): void {
+  idCounter = n
 }
 
 // 读取当前会话激活的 Tab id
@@ -103,7 +111,7 @@ export function reducer(state: AppState, action: Action): AppState {
         }
         return { ...state, activeSessionId: existingEmpty.id, tabsBySession, activeTabIdBySession }
       }
-      const newSession: Session = { id: nextId('s'), title: '新会话', messages: [] }
+      const newSession: Session = { id: nextId('s'), title: '新会话', messages: [], updatedAt: Date.now() }
       const projects = state.projects.map(p =>
         p.id === action.projectId
           ? { ...p, sessions: [...p.sessions, newSession] }
@@ -127,7 +135,7 @@ export function reducer(state: AppState, action: Action): AppState {
         ...p,
         sessions: p.sessions.map(s =>
           s.id === action.sessionId
-            ? { ...s, messages: [...s.messages, action.message] }
+            ? { ...s, messages: [...s.messages, action.message], updatedAt: Date.now() }
             : s
         )
       }))
@@ -238,7 +246,7 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         streamingBySession: {
           ...state.streamingBySession,
-          [action.sessionId]: { isStreaming: true, currentText: '' }
+          [action.sessionId]: { isStreaming: true, currentText: '', thinking: '', tools: [] }
         }
       }
     }
@@ -256,7 +264,36 @@ export function reducer(state: AppState, action: Action): AppState {
         }
       }
     }
+    case 'STREAM_THINKING': {
+      const prev = state.streamingBySession[action.sessionId]
+      return {
+        ...state,
+        streamingBySession: {
+          ...state.streamingBySession,
+          [action.sessionId]: {
+            ...prev,
+            thinking: (prev?.thinking || '') + action.delta,
+            isStreaming: true,
+          }
+        }
+      }
+    }
+    case 'STREAM_TOOL_USE': {
+      const prev = state.streamingBySession[action.sessionId]
+      return {
+        ...state,
+        streamingBySession: {
+          ...state.streamingBySession,
+          [action.sessionId]: {
+            ...prev,
+            tools: [...(prev?.tools || []), action.tool],
+            isStreaming: true,
+          }
+        }
+      }
+    }
     case 'STREAM_END': {
+      console.log('[cc-stream] [8] reducer STREAM_END', { sessionId: action.sessionId, hasEntry: !!state.streamingBySession[action.sessionId] })
       const { [action.sessionId]: _, ...rest } = state.streamingBySession
       const projects = state.projects.map(p => ({
         ...p,
@@ -297,6 +334,31 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'INIT_SESSIONS': {
       return { ...state, projects: action.projects }
     }
+    case 'HYDRATE': {
+      const s = action.snapshot
+      // 重置 ID 计数器到已恢复的最大序号，避免后续新增 ID 冲突
+      setIdCounter(s.lastSeq)
+      // 收集所有存活 session id，用于清理孤儿 tab（指向已不存在 session）
+      const aliveSessionIds = new Set(s.projects.flatMap(p => p.sessions.map(sess => sess.id)))
+      const tabsBySession = Object.fromEntries(
+        Object.entries(s.tabsBySession).filter(([k]) => aliveSessionIds.has(k))
+      )
+      const activeTabIdBySession = Object.fromEntries(
+        Object.entries(s.activeTabIdBySession).filter(([k]) => aliveSessionIds.has(k))
+      )
+      const fallbackActive = s.activeSessionId && aliveSessionIds.has(s.activeSessionId)
+        ? s.activeSessionId
+        : (s.projects[0]?.sessions[0]?.id ?? '')
+      return {
+        ...state,
+        projects: s.projects,
+        activeSessionId: fallbackActive,
+        tabsBySession,
+        activeTabIdBySession,
+        claudeSessionMap: s.claudeSessionMap,
+        // 保留 theme/currentView/settings/draft/streaming 等其余字段
+      }
+    }
     case 'SET_CLAUDE_SESSION_ID': {
       return {
         ...state,
@@ -305,6 +367,21 @@ export function reducer(state: AppState, action: Action): AppState {
           [action.localSessionId]: action.claudeSessionId,
         }
       }
+    }
+    case 'ARCHIVE_STALE': {
+      // 归档：删除最后活动早于 beforeTs 且无消息的空会话（保留激活会话，避免清空）
+      const active = state.activeSessionId
+      const projects = state.projects.map(p => ({
+        ...p,
+        sessions: p.sessions.filter(s => {
+          if (s.id === active) return true            // 永不归档当前激活会话
+          if (s.messages.length > 0) return true       // 有消息的会话保留
+          const ts = s.updatedAt ?? 0
+          if (!ts) return true                          // 无时间戳的不动
+          return ts >= action.beforeTs                  // 早于阈值且空 → 归档(删除)
+        }),
+      }))
+      return { ...state, projects }
     }
     default:
       return state

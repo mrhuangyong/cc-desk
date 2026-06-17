@@ -5,6 +5,7 @@ import { ProjectTree } from './ProjectTree'
 import { FileTree } from './FileTree'
 import { SearchDialog } from './SearchDialog'
 import { useStore } from '../state/store'
+import { useI18n } from '../i18n/useI18n'
 import { useResizableWidth } from '../hooks/useResizableWidth'
 import { usePanelAnimation } from '../hooks/usePanelAnimation'
 
@@ -14,6 +15,7 @@ interface Props {
 
 export function LeftPanel({ collapsed }: Props) {
   const { state, dispatch } = useStore()
+  const { t } = useI18n()
   const [fileViewProjectId, setFileViewProjectId] = useState<string | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const [hovered, setHovered] = useState<string | null>(null)
@@ -123,9 +125,9 @@ export function LeftPanel({ collapsed }: Props) {
         }}>
           {/* 顶部功能区 */}
           <div style={{ display: 'flex', flexDirection: 'column', borderBottom: '1px solid var(--border)' }}>
-            <button onMouseEnter={() => setHovered('new')} onMouseLeave={() => setHovered(null)} onClick={handleNewSession} title="新建会话" style={topBtn('new')}><Plus size={14} /> 新建会话</button>
+            <button onMouseEnter={() => setHovered('new')} onMouseLeave={() => setHovered(null)} onClick={handleNewSession} title={t('left.newSession')} style={topBtn('new')}><Plus size={14} /> {t('left.newSession')}</button>
             <button onMouseEnter={() => setHovered('search')} onMouseLeave={() => setHovered(null)} onClick={() => setSearchOpen(true)} title="搜索" style={topBtn('search')}><Search size={14} /> 搜索</button>
-            <button onMouseEnter={() => setHovered('skills')} onMouseLeave={() => setHovered(null)} onClick={() => dispatch({ type: 'SET_SETTINGS_SECTION', section: 'skills' })} title="技能" style={topBtn('skills')}><Zap size={14} /> 技能</button>
+            <button onMouseEnter={() => setHovered('skills')} onMouseLeave={() => setHovered(null)} onClick={() => dispatch({ type: 'SET_SETTINGS_SECTION', section: 'skills' })} title={t('left.skills')} style={topBtn('skills')}><Zap size={14} /> {t('left.skills')}</button>
           </div>
 
           {/* 工作区行 */}
@@ -134,7 +136,7 @@ export function LeftPanel({ collapsed }: Props) {
             borderBottom: '1px solid var(--border)'
           }}>
             <span style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginRight: 'auto' }}>工作区</span>
-            <button onMouseEnter={() => setHovered('addProject')} onMouseLeave={() => setHovered(null)} onClick={handleAddProject} title="添加项目" aria-label="添加项目" style={toolBtn('addProject')}><FolderPlus size={13} /></button>
+            <button onMouseEnter={() => setHovered('addProject')} onMouseLeave={() => setHovered(null)} onClick={handleAddProject} title={t('left.addProject')} aria-label={t('left.addProject')} style={toolBtn('addProject')}><FolderPlus size={13} /></button>
             <button onMouseEnter={() => setHovered('toggleAll')} onMouseLeave={() => setHovered(null)} onClick={toggleAll} title="展开/折叠" aria-label="展开/折叠" style={toolBtn('toggleAll')}><ChevronsUpDown size={13} /></button>
             <button onMouseEnter={() => setHovered('sort')} onMouseLeave={() => setHovered(null)} title="排序/筛选" aria-label="排序/筛选" style={toolBtn('sort')}><ArrowUpDown size={13} /></button>
             <button onMouseEnter={() => setHovered('search2')} onMouseLeave={() => setHovered(null)} onClick={() => setSearchOpen(true)} title="搜索" aria-label="搜索" style={toolBtn('search2')}><Search size={13} /></button>

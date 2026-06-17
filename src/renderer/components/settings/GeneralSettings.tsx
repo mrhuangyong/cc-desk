@@ -1,5 +1,4 @@
-import { useState } from 'react'
-import { Eye, EyeOff } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { useStore } from '../../state/store'
 import { SettingsLayout } from './SettingsLayout'
 import { SettingsCard } from './SettingsCard'
@@ -27,106 +26,75 @@ function Segmented({ value, options, onChange }: { value: string; options: { id:
 
 const selectStyle: React.CSSProperties = { padding: '5px 10px', background: 'var(--bg-sidebar)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)' }
 const inputStyle: React.CSSProperties = { padding: '6px 10px', background: 'var(--bg-sidebar)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)', fontFamily: 'var(--font-mono)', fontSize: 12, minWidth: 280 }
-const saveBtnStyle: React.CSSProperties = { padding: '5px 12px', fontSize: 12, cursor: 'pointer', border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--bg)', color: 'var(--text)' }
 
 export function GeneralSettings() {
   const { state, dispatch } = useStore()
+  const s = state.settings
 
-  // 本地状态（原型不持久化）
-  const [showKey, setShowKey] = useState(false)
-  const [theme, setTheme] = useState(state.theme)
-  const [lang, setLang] = useState('zh-CN')
-  const [zoom, setZoom] = useState('normal')
-  const [inheritTerminal, setInheritTerminal] = useState(true)
-  const [terminalFont, setTerminalFont] = useState('MesloLGS NF, monospace')
-  const [proxy, setProxy] = useState('http://127.0.0.1:7890')
-  const [taskNotify, setTaskNotify] = useState(true)
-  const [notifySound, setNotifySound] = useState(true)
-  const [queueMode, setQueueMode] = useState('queue')
-  const [showThinking, setShowThinking] = useState(false)
-  const [showTodo, setShowTodo] = useState(false)
-  const [autoArchive, setAutoArchive] = useState(true)
-  const [archiveDays, setArchiveDays] = useState('7')
-  const [dataPath] = useState('/Users/mrhua')
+  // Claude 配置（proxy，来自 ~/.claude/settings.json）
+  const [ccProxy, setCcProxy] = useState('')
+
+  useEffect(() => {
+    window.api?.cc?.general.get().then(c => { setCcProxy(c.proxy) })
+  }, [])
+
+  // 桌面应用偏好持久化（electron-store，真实生效）
+  const persist = (patch: Partial<typeof s>) => {
+    dispatch({ type: 'SET_SETTINGS', settings: patch })
+    window.api?.settings.save(patch)
+  }
+
+  // Claude 配置持久化（~/.claude/settings.json）
+  const saveCc = (patch: { proxy?: string }) => {
+    window.api?.cc?.general.save(patch)
+    if (patch.proxy !== undefined) setCcProxy(patch.proxy)
+  }
 
   const applyTheme = (t: string) => {
-    setTheme(t as never)
     dispatch({ type: 'SET_THEME', theme: t as never })
+    persist({ theme: t })
+  }
+
+  const pickDataPath = async () => {
+    const dir = await window.api?.dialog?.openDirectory()
+    if (dir) persist({ dataPath: dir })
   }
 
   return (
     <SettingsLayout title="常规">
-      {/* 账户 */}
+      {/* 工作目录 */}
       <SettingsCard>
-        <SettingsRow title="API Key" desc="Anthropic API 密钥，用于调用 Claude。">
-          <span style={{ display: 'flex', gap: 6 }}>
-            <input
-              type={showKey ? 'text' : 'password'}
-              value={state.settings.apiKey}
-              onChange={e => {
-                dispatch({ type: 'SET_SETTINGS', settings: { apiKey: e.target.value } })
-                window.api?.settings.save({ apiKey: e.target.value })
-              }}
-              placeholder="sk-ant-..."
-              style={{ ...inputStyle, minWidth: 320 }}
-            />
-            <button
-              onClick={() => setShowKey(!showKey)}
-              style={saveBtnStyle}
-              aria-label={showKey ? '隐藏密钥' : '显示密钥'}
-            >
-              {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
-            </button>
-          </span>
-        </SettingsRow>
-        <SettingsRow title="模型" desc="Claude Code 会话使用的默认模型。">
-          <select
-            value={state.settings.model}
-            onChange={e => {
-              dispatch({ type: 'SET_SETTINGS', settings: { model: e.target.value } })
-              window.api?.settings.save({ model: e.target.value })
-            }}
-            style={selectStyle}
-          >
-            <option value="sonnet">Sonnet</option>
-            <option value="opus">Opus</option>
-            <option value="haiku">Haiku</option>
-          </select>
-        </SettingsRow>
         <SettingsRow title="工作目录" desc="新会话默认的工作目录路径。" noBorder>
           <input
             type="text"
-            value={state.settings.cwd}
-            onChange={e => {
-              dispatch({ type: 'SET_SETTINGS', settings: { cwd: e.target.value } })
-              window.api?.settings.save({ cwd: e.target.value })
-            }}
+            value={s.cwd}
+            onChange={e => persist({ cwd: e.target.value })}
             placeholder="/path/to/project"
             style={{ ...inputStyle, minWidth: 320 }}
           />
         </SettingsRow>
       </SettingsCard>
 
-      {/* 外观 */}
+      {/* 外观（桌面应用主题，localStorage 持久化） */}
       <SettingsCard>
-        <SettingsRow title="界面主题" desc="切换应用界面使用的主题外观。">
-          <select value={theme} onChange={e => applyTheme(e.target.value)} style={selectStyle}>
+        <SettingsRow title="界面主题" desc="切换桌面应用界面使用的主题外观。">
+          <select value={s.theme} onChange={e => applyTheme(e.target.value)} style={selectStyle}>
             <option value="codex-light">Codex 浅色</option>
             <option value="codex-warm">Codex 暖白</option>
             <option value="codex-cool">Codex 冷灰</option>
             <option value="codex-paper">Codex 纸感</option>
           </select>
         </SettingsRow>
-        <SettingsRow title="界面语言" desc="选择应用 UI 的显示语言。">
-          <select value={lang} onChange={e => setLang(e.target.value)} style={selectStyle}>
+        <SettingsRow title="界面语言" desc="切换桌面应用界面的显示语言（中/英）。">
+          <select value={s.lang} onChange={e => persist({ lang: e.target.value })} style={selectStyle}>
             <option value="zh-CN">简体中文</option>
             <option value="en">English</option>
           </select>
         </SettingsRow>
         <SettingsRow title="界面缩放" desc="调整当前窗口中文本和控件的整体显示大小。" noBorder>
           <Segmented
-            value={zoom}
-            onChange={setZoom}
+            value={s.zoom}
+            onChange={v => persist({ zoom: v })}
             options={[
               { id: 'small', label: '缩小' },
               { id: 'normal', label: '正常' },
@@ -139,59 +107,53 @@ export function GeneralSettings() {
       {/* 终端 */}
       <SettingsCard>
         <SettingsRow title="继承系统终端 Profile" desc="启动内置终端时尽量继承登录 shell 环境、代理、Kube 变量等。">
-          <Toggle on={inheritTerminal} onChange={setInheritTerminal} />
+          <Toggle on={s.inheritTerminal} onChange={v => persist({ inheritTerminal: v })} />
         </SettingsRow>
-        <SettingsRow title="终端字体" desc="配置自定义终端系统终端配置，填写后作为字体覆盖。" noBorder>
-          <span style={{ display: 'flex', gap: 6 }}>
-            <input value={terminalFont} onChange={e => setTerminalFont(e.target.value)} style={inputStyle} />
-            <button style={saveBtnStyle}>保存</button>
-          </span>
+        <SettingsRow title="终端字体" desc="配置自定义终端字体，填写后作为字体覆盖。" noBorder>
+          <input value={s.terminalFont} onChange={e => persist({ terminalFont: e.target.value })} style={inputStyle} />
         </SettingsRow>
       </SettingsCard>
 
-      {/* HTTP 代理 */}
+      {/* HTTP 代理（读写 ~/.claude/settings.json 的 env.HTTPS_PROXY/HTTP_PROXY） */}
       <SettingsCard>
-        <SettingsRow title="HTTP 代理" desc="模型、MCP 与命令工具的出口流量将经此代理。" noBorder>
-          <span style={{ display: 'flex', gap: 6 }}>
-            <input value={proxy} onChange={e => setProxy(e.target.value)} style={inputStyle} />
-            <button style={saveBtnStyle}>保存</button>
-          </span>
+        <SettingsRow title="HTTP 代理" desc="模型、MCP 与命令工具的出口流量将经此代理（env.HTTPS_PROXY）。" noBorder>
+          <input value={ccProxy} onChange={e => saveCc({ proxy: e.target.value })} placeholder="http://127.0.0.1:7890" style={inputStyle} />
         </SettingsRow>
       </SettingsCard>
 
       {/* 通知 */}
       <SettingsCard>
         <SettingsRow title="任务通知" desc="任务完成、失败或需要确认时发送桌面通知。">
-          <Toggle on={taskNotify} onChange={setTaskNotify} />
+          <Toggle on={s.taskNotify} onChange={v => persist({ taskNotify: v })} />
         </SettingsRow>
         <SettingsRow title="通知声音" desc="通知开启后，可单独关闭任务通知提示音。" noBorder>
-          <Toggle on={notifySound} onChange={setNotifySound} />
+          <Toggle on={s.notifySound} onChange={v => persist({ notifySound: v })} />
         </SettingsRow>
       </SettingsCard>
 
       {/* 交互行为 */}
       <SettingsCard>
-        <SettingsRow title="交互行为" desc="在 ZCode 运行时将后续操作加入队列。">
-          <select value={queueMode} onChange={e => setQueueMode(e.target.value)} style={selectStyle}>
+        <SettingsRow title="交互行为" desc="在 Agent 运行时将后续操作加入队列。">
+          <select value={s.queueMode} onChange={e => persist({ queueMode: e.target.value })} style={selectStyle}>
             <option value="queue">队列</option>
             <option value="interrupt">中断</option>
           </select>
         </SettingsRow>
         <SettingsRow title="显示思考过程" desc="在消息流中展示模型思考内容。">
-          <Toggle on={showThinking} onChange={setShowThinking} />
+          <Toggle on={s.showThinking} onChange={v => persist({ showThinking: v })} />
         </SettingsRow>
         <SettingsRow title="显示待办" desc="在消息流中展示 Todo 工具卡片。" noBorder>
-          <Toggle on={showTodo} onChange={setShowTodo} />
+          <Toggle on={s.showTodo} onChange={v => persist({ showTodo: v })} />
         </SettingsRow>
       </SettingsCard>
 
       {/* 自动归档 */}
       <SettingsCard>
         <SettingsRow title="自动归档旧任务" desc="定时扫描已打开工作区，将已完成、无未读、未置顶任务归档。">
-          <Toggle on={autoArchive} onChange={setAutoArchive} />
+          <Toggle on={s.autoArchive} onChange={v => persist({ autoArchive: v })} />
         </SettingsRow>
         <SettingsRow title="归档保留时长" desc="任务最后更新时间早于该时长后进入自动归档候选。" noBorder>
-          <select value={archiveDays} onChange={e => setArchiveDays(e.target.value)} style={selectStyle}>
+          <select value={s.archiveDays} onChange={e => persist({ archiveDays: e.target.value })} style={selectStyle}>
             <option value="1">1天后归档</option>
             <option value="7">7天后归档</option>
             <option value="30">30天后归档</option>
@@ -203,17 +165,9 @@ export function GeneralSettings() {
       <SettingsCard>
         <SettingsRow title="数据存储路径" desc="应用数据根目录（默认用户主目录）。" noBorder>
           <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <input value={dataPath} readOnly style={{ ...inputStyle, fontFamily: 'var(--font-mono)' }} />
-            <button style={saveBtnStyle}>选择文件夹</button>
-            <button style={saveBtnStyle}>保存</button>
+            <input value={s.dataPath} onChange={e => persist({ dataPath: e.target.value })} style={{ ...inputStyle, fontFamily: 'var(--font-mono)' }} />
+            <button onClick={pickDataPath} style={{ padding: '5px 12px', fontSize: 12, cursor: 'pointer', border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--bg)', color: 'var(--text)' }}>选择文件夹</button>
           </span>
-        </SettingsRow>
-      </SettingsCard>
-
-      {/* 引导 */}
-      <SettingsCard>
-        <SettingsRow title="引导" desc="重新打开引导弹窗，查看迁移选项并导入设置。" noBorder>
-          <button style={saveBtnStyle}>打开引导</button>
         </SettingsRow>
       </SettingsCard>
     </SettingsLayout>

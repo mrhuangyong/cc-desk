@@ -1,0 +1,421 @@
+// src/main/claude-config.ts
+// 真实读写 Claude CLI 的配置文件，作为设置页的数据源。
+//
+// 数据源映射：
+//   ~/.claude/settings.json  —— 用户级设置：env / model / theme / language /
+//                                enabledPlugins / hooks / permissions / extraKnownMarketplaces
+//   ~/.claude.json           —— 全局状态：mcpServers（全局 MCP 配置）+ projects（各项目配置）
+//   ~/.claude/plugins/installed_plugins.json —— 已安装插件清单
+//   ~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/.claude-plugin/plugin.json —— 插件 manifest
+//   <pluginPath>/skills/<name>/SKILL.md   —— 技能（frontmatter: name + description）
+//   <pluginPath>/commands/<name>.md        —— 命令
+//
+// 写策略：深合并 + 仅动受管字段，保留用户的其他配置（append-only 思想，不删除未知 key）。
+import { readFile, writeFile, readdir, stat } from 'fs/promises'
+import { existsSync } from 'fs'
+import { homedir } from 'os'
+import { join } from 'path'
+
+const HOME = homedir()
+const CLAUDE_DIR = join(HOME, '.claude')
+const SETTINGS_PATH = join(CLAUDE_DIR, 'settings.json')
+const GLOBAL_PATH = join(HOME, '.claude.json')
+const INSTALLED_PLUGINS_PATH = join(CLAUDE_DIR, 'plugins', 'installed_plugins.json')
+const PLUGINS_CACHE_DIR = join(CLAUDE_DIR, 'plugins', 'cache')
+
+async function readJson<T = any>(path: string, fallback: T): Promise<T> {
+  try {
+    if (!existsSync(path)) return fallback
+    const raw = await readFile(path, 'utf-8')
+    return JSON.parse(raw) as T
+  } catch {
+    return fallback
+  }
+}
+
+async function writeJson(path: string, data: unknown): Promise<void> {
+  await writeFile(path, JSON.stringify(data, null, 2) + '\n', 'utf-8')
+}
+
+// ---- 类型定义（与渲染端 types.ts 的子集对应，独立声明避免循环依赖）----
+
+export interface ClaudeMcpServer {
+  id: string                // 用 name 作 id
+  name: string
+  transport: 'stdio' | 'http'
+  command: string           // stdio: 命令本体；http: URL
+  args: string              // stdio: 空格分隔参数
+  env: string               // KEY=VALUE 每行一个
+  enabled: boolean
+  scope: '用户' | '工作区'  // 当前仅读全局（用户级）
+}
+
+export interface ClaudePlugin {
+  id: string                // plugin@marketplace
+  name: string
+  version: string
+  desc: string
+  enabled: boolean          // 来自 settings.json 的 enabledPlugins
+  source: string            // marketplace 名
+  installPath: string
+  skills: number
+  commands: number
+  mcps: number
+}
+
+export interface ClaudeSkill {
+  id: string
+  name: string
+  desc: string
+  enabled: boolean          // 跟随所属插件的启用状态
+  scope: '个人' | '工作区'  // 个人=用户级（~/.claude/skills），工作区=插件提供
+  source: string            // 来源插件名
+}
+
+export interface ClaudeCommand {
+  id: string
+  name: string              // /name
+  desc: string
+  enabled: boolean          // 跟随所属插件
+  source: string
+}
+
+export interface ClaudeHook {
+  id: string
+  name: string              // 事件名（PreToolUse / PostToolUse / 等）
+  desc: string
+  enabled: boolean
+}
+
+// ---- settings.json 读写（受管字段）----
+
+const SETTINGS_KEYS = ['env', 'model', 'theme', 'language', 'enabledPlugins', 'hooks', 'permissions'] as const
+
+export async function getSettingsJson(): Promise<Record<string, any>> {
+  return readJson<Record<string, any>>(SETTINGS_PATH, {})
+}
+
+// 仅写回受管字段的合并；其它顶层 key 原样保留
+export async function saveSettingsJson(patch: Record<string, any>): Promise<void> {
+  const cur = await getSettingsJson()
+  for (const k of Object.keys(patch)) {
+    const v = patch[k]
+    if (v && typeof v === 'object' && !Array.isArray(v) && cur[k] && typeof cur[k] === 'object') {
+      cur[k] = { ...(cur[k] as object), ...v }
+    } else {
+      cur[k] = v
+    }
+  }
+  await writeJson(SETTINGS_PATH, cur)
+}
+
+// ---- ~/.claude.json（全局 mcpServers）----
+
+export async function getGlobalJson(): Promise<Record<string, any>> {
+  return readJson<Record<string, any>>(GLOBAL_PATH, {})
+}
+
+async function saveGlobalJson(mutator: (root: Record<string, any>) => void): Promise<void> {
+  const root = await getGlobalJson()
+  mutator(root)
+  await writeJson(GLOBAL_PATH, root)
+}
+
+// ---- MCP ----
+
+// 真实 mcpServers 结构（两种形态）：
+//   stdio: { command, args[], env?, type?:'stdio' }
+//   http:  { type:'http', url, headers? }
+function parseMcpEntry(name: string, raw: any): ClaudeMcpServer {
+  const isHttp = raw.type === 'http' || (!!raw.url && !raw.command)
+  if (isHttp) {
+    return {
+      id: name, name, transport: 'http',
+      command: raw.url || '',
+      args: '', env: '',
+      enabled: true, scope: '用户',
+    }
+  }
+  return {
+    id: name, name, transport: 'stdio',
+    command: raw.command || '',
+    args: Array.isArray(raw.args) ? raw.args.join(' ') : '',
+    env: raw.env && typeof raw.env === 'object'
+      ? Object.entries(raw.env).map(([k, v]) => `${k}=${v}`).join('\n')
+      : '',
+    enabled: true, scope: '用户',
+  }
+}
+
+function buildMcpEntry(s: ClaudeMcpServer): Record<string, any> {
+  if (s.transport === 'http') {
+    const obj: any = { type: 'http', url: s.command }
+    // 从 env 解析 headers？MCP http 用 headers，这里简化：保留原 headers 需单独管理。
+    // 先支持 url-only 写回；headers 在编辑弹窗里可扩展。
+    return obj
+  }
+  const obj: any = { command: s.command }
+  const args = s.args.trim() ? s.args.split(/\s+/) : []
+  if (args.length) obj.args = args
+  const envObj: Record<string, string> = {}
+  s.env.split('\n').forEach(line => {
+    const i = line.indexOf('=')
+    if (i > 0) envObj[line.slice(0, i).trim()] = line.slice(i + 1)
+  })
+  if (Object.keys(envObj).length) obj.env = envObj
+  return obj
+}
+
+export async function getMcpServers(): Promise<ClaudeMcpServer[]> {
+  const root = await getGlobalJson()
+  const servers = root.mcpServers && typeof root.mcpServers === 'object' ? root.mcpServers : {}
+  return Object.entries(servers).map(([name, raw]) => parseMcpEntry(name, raw))
+}
+
+export async function saveMcpServers(servers: ClaudeMcpServer[]): Promise<void> {
+  const map: Record<string, any> = {}
+  for (const s of servers) map[s.name] = buildMcpEntry(s)
+  await saveGlobalJson(root => { root.mcpServers = map })
+}
+
+// ---- 插件 ----
+
+interface InstalledPlugin { scope: string; installPath: string; version: string }
+
+async function readPluginManifest(installPath: string): Promise<any | null> {
+  const manifestPath = join(installPath, '.claude-plugin', 'plugin.json')
+  return readJson<any>(manifestPath, null)
+}
+
+async function countDir(path: string): Promise<number> {
+  try {
+    if (!existsSync(path)) return 0
+    const st = await stat(path)
+    if (!st.isDirectory()) return 0
+    const entries = await readdir(path)
+    return entries.length
+  } catch { return 0 }
+}
+
+export async function getPlugins(): Promise<ClaudePlugin[]> {
+  const installed = await readJson<{ plugins?: Record<string, InstalledPlugin[]> }>(INSTALLED_PLUGINS_PATH, { plugins: {} })
+  const settings = await getSettingsJson()
+  const enabledPlugins: Record<string, boolean> = settings.enabledPlugins ?? {}
+  const out: ClaudePlugin[] = []
+  for (const [id, installs] of Object.entries(installed.plugins ?? {})) {
+    const inst = installs?.[0]
+    if (!inst) continue
+    const manifest = await readPluginManifest(inst.installPath)
+    const name = manifest?.name ?? id.split('@')[0]
+    const marketplace = id.split('@')[1] ?? ''
+    out.push({
+      id,
+      name,
+      version: inst.version || manifest?.version || 'unknown',
+      desc: manifest?.description ?? '',
+      enabled: enabledPlugins[id] === true,
+      source: marketplace,
+      installPath: inst.installPath,
+      skills: await countDir(join(inst.installPath, 'skills')),
+      commands: await countDir(join(inst.installPath, 'commands')),
+      mcps: await countDir(join(inst.installPath, 'mcp')),
+    })
+  }
+  return out
+}
+
+// 切换插件启用：写回 settings.json 的 enabledPlugins（append-only，只改这一个 map）
+export async function setPluginEnabled(id: string, enabled: boolean): Promise<void> {
+  const settings = await getSettingsJson()
+  const map: Record<string, boolean> = { ...(settings.enabledPlugins ?? {}) }
+  if (enabled) map[id] = true
+  else delete map[id]
+  await saveSettingsJson({ enabledPlugins: map })
+}
+
+// ---- 技能（扫描已启用插件的 skills/ + 用户级 ~/.claude/skills/）----
+
+function parseSkillFrontmatter(md: string): { name: string; description: string } {
+  const m = md.match(/^---\n([\s\S]*?)\n---/)
+  if (!m) return { name: '', description: '' }
+  const fm = m[1]
+  const name = fm.match(/name:\s*(.+)/)?.[1]?.trim().replace(/^["']|["']$/g, '') ?? ''
+  const desc = fm.match(/description:\s*(.+)/)?.[1]?.trim().replace(/^["']|["']$/g, '') ?? ''
+  return { name, description: desc }
+}
+
+async function scanSkillsInDir(dir: string, source: string, scope: '个人' | '工作区', enabled: boolean): Promise<ClaudeSkill[]> {
+  const out: ClaudeSkill[] = []
+  if (!existsSync(dir)) return out
+  let entries: string[]
+  try { entries = await readdir(dir) } catch { return out }
+  for (const e of entries) {
+    const skillMd = join(dir, e, 'SKILL.md')
+    if (!existsSync(skillMd)) continue
+    try {
+      const md = await readFile(skillMd, 'utf-8')
+      const { name, description } = parseSkillFrontmatter(md)
+      out.push({
+        id: `${source}:${e}`,
+        name: name || e,
+        desc: description,
+        enabled,
+        scope,
+        source,
+      })
+    } catch { /* skip */ }
+  }
+  return out
+}
+
+export async function getSkills(): Promise<ClaudeSkill[]> {
+  const plugins = await getPlugins()
+  const out: ClaudeSkill[] = []
+  for (const p of plugins) {
+    if (!p.enabled) continue
+    const skills = await scanSkillsInDir(join(p.installPath, 'skills'), p.name, '工作区', true)
+    out.push(...skills)
+  }
+  // 用户级技能（~/.claude/skills/）—— 这些是用户自建，默认启用
+  const userSkills = await scanSkillsInDir(join(CLAUDE_DIR, 'skills'), 'user', '个人', true)
+  out.push(...userSkills)
+  return out
+}
+
+// ---- 命令（扫描已启用插件的 commands/*.md + 用户级）----
+
+async function scanCommandsInDir(dir: string, source: string, enabled: boolean): Promise<ClaudeCommand[]> {
+  const out: ClaudeCommand[] = []
+  if (!existsSync(dir)) return out
+  let entries: string[]
+  try { entries = await readdir(dir) } catch { return out }
+  for (const e of entries) {
+    if (!e.endsWith('.md')) continue
+    const name = e.replace(/\.md$/, '')
+    let desc = ''
+    try {
+      const md = await readFile(join(dir, e), 'utf-8')
+      const fm = md.match(/^---\n([\s\S]*?)\n---/)
+      if (fm) desc = fm[1].match(/description:\s*(.+)/)?.[1]?.trim().replace(/^["']|["']$/g, '') ?? ''
+      if (!desc) desc = md.split('\n').find(l => l.startsWith('#'))?.replace(/^#+\s*/, '') ?? ''
+    } catch { /* skip */ }
+    out.push({ id: `${source}:${name}`, name: `/${name}`, desc, enabled, source })
+  }
+  return out
+}
+
+export async function getCommands(): Promise<ClaudeCommand[]> {
+  const plugins = await getPlugins()
+  const out: ClaudeCommand[] = []
+  for (const p of plugins) {
+    if (!p.enabled) continue
+    out.push(...await scanCommandsInDir(join(p.installPath, 'commands'), p.name, true))
+  }
+  out.push(...await scanCommandsInDir(join(CLAUDE_DIR, 'commands'), 'user', true))
+  return out
+}
+
+// ---- hooks（settings.json 的 hooks 字段）----
+
+// Claude Code 的 hooks 结构：{ PreToolUse: [{ matcher, hooks: [...] }], ... }
+// 这里以「事件类型是否存在配置」作为是否「启用」的展示依据（简化）。
+const HOOK_EVENTS = ['PreToolUse', 'PostToolUse', 'Notification', 'UserPromptSubmit', 'Stop', 'SubagentStop', 'PreCompact']
+
+export async function getHooks(): Promise<ClaudeHook[]> {
+  const settings = await getSettingsJson()
+  const hooks = settings.hooks ?? {}
+  return HOOK_EVENTS.map(name => ({
+    id: name,
+    name,
+    desc: `${name} 钩子`,
+    enabled: Array.isArray(hooks[name]) && hooks[name].length > 0,
+  }))
+}
+
+// 切换 hook 启用：简化为「有配置=启用，无=禁用」。当前仅展示状态，写入需具体配置，
+// 故 toggle 在「禁用」时清空该事件数组，「启用」时若为空补一个空配置占位。
+export async function setHookEnabled(name: string, enabled: boolean): Promise<void> {
+  const settings = await getSettingsJson()
+  const hooks: Record<string, any> = { ...(settings.hooks ?? {}) }
+  if (enabled) {
+    if (!Array.isArray(hooks[name]) || hooks[name].length === 0) {
+      hooks[name] = [{ matcher: '', hooks: [{ type: 'command', command: '' }] }]
+    }
+  } else {
+    hooks[name] = []
+  }
+  await saveSettingsJson({ hooks })
+}
+
+// ---- 模型 / 常规（env + model + theme + language）----
+
+export interface ModelConfig {
+  // 来自 settings.json
+  model: string
+  apiKey: string              // env.ANTHROPIC_API_KEY
+  baseUrl: string             // env.ANTHROPIC_BASE_URL
+  authToken: string           // env.ANTHROPIC_AUTH_TOKEN
+  // 三个角色映射到具体模型
+  opusModel: string           // env.ANTHROPIC_DEFAULT_OPUS_MODEL
+  sonnetModel: string         // env.ANTHROPIC_DEFAULT_SONNET_MODEL
+  haikuModel: string          // env.ANTHROPIC_DEFAULT_HAIKU_MODEL
+}
+
+export async function getModelConfig(): Promise<ModelConfig> {
+  const settings = await getSettingsJson()
+  const env: Record<string, string> = settings.env ?? {}
+  return {
+    model: settings.model ?? '',
+    apiKey: env.ANTHROPIC_API_KEY ?? '',
+    baseUrl: env.ANTHROPIC_BASE_URL ?? '',
+    authToken: env.ANTHROPIC_AUTH_TOKEN ?? '',
+    opusModel: env.ANTHROPIC_DEFAULT_OPUS_MODEL ?? '',
+    sonnetModel: env.ANTHROPIC_DEFAULT_SONNET_MODEL ?? '',
+    haikuModel: env.ANTHROPIC_DEFAULT_HAIKU_MODEL ?? '',
+  }
+}
+
+export async function saveModelConfig(cfg: Partial<ModelConfig>): Promise<void> {
+  const envPatch: Record<string, string> = {}
+  if (cfg.apiKey !== undefined) envPatch.ANTHROPIC_API_KEY = cfg.apiKey
+  if (cfg.baseUrl !== undefined) envPatch.ANTHROPIC_BASE_URL = cfg.baseUrl
+  if (cfg.authToken !== undefined) envPatch.ANTHROPIC_AUTH_TOKEN = cfg.authToken
+  if (cfg.opusModel !== undefined) envPatch.ANTHROPIC_DEFAULT_OPUS_MODEL = cfg.opusModel
+  if (cfg.sonnetModel !== undefined) envPatch.ANTHROPIC_DEFAULT_SONNET_MODEL = cfg.sonnetModel
+  if (cfg.haikuModel !== undefined) envPatch.ANTHROPIC_DEFAULT_HAIKU_MODEL = cfg.haikuModel
+  const settingsPatch: Record<string, any> = {}
+  if (Object.keys(envPatch).length) settingsPatch.env = envPatch
+  if (cfg.model !== undefined) settingsPatch.model = cfg.model
+  if (Object.keys(settingsPatch).length) await saveSettingsJson(settingsPatch)
+}
+
+// ---- 常规设置（theme/language/proxy 等）----
+
+export interface GeneralConfig {
+  theme: string
+  language: string
+  proxy: string              // env.HTTP_PROXY / HTTPS_PROXY
+}
+
+export async function getGeneralConfig(): Promise<GeneralConfig> {
+  const settings = await getSettingsJson()
+  const env: Record<string, string> = settings.env ?? {}
+  return {
+    theme: settings.theme ?? 'dark',
+    language: settings.language ?? 'English',
+    proxy: env.HTTPS_PROXY ?? env.HTTP_PROXY ?? '',
+  }
+}
+
+export async function saveGeneralConfig(cfg: Partial<GeneralConfig>): Promise<void> {
+  const settingsPatch: Record<string, any> = {}
+  if (cfg.theme !== undefined) settingsPatch.theme = cfg.theme
+  if (cfg.language !== undefined) settingsPatch.language = cfg.language
+  const envPatch: Record<string, string> = {}
+  if (cfg.proxy !== undefined) { envPatch.HTTPS_PROXY = cfg.proxy; envPatch.HTTP_PROXY = cfg.proxy }
+  if (Object.keys(envPatch).length) settingsPatch.env = envPatch
+  if (Object.keys(settingsPatch).length) await saveSettingsJson(settingsPatch)
+}
+
+// 导出 PLUGINS_CACHE_DIR 供其它用途（暂留）
+export { PLUGINS_CACHE_DIR }

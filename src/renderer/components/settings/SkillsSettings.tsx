@@ -1,20 +1,24 @@
-import { useState } from 'react'
-import { mockSkills } from '../../state/mockData'
+import { useEffect, useState } from 'react'
+import type { ClaudeSkill } from '../../../main/claude-config'
 import { Toggle } from './Toggle'
-import { Plus, ChevronDown, RefreshCw, Hexagon } from 'lucide-react'
+import { Hexagon } from 'lucide-react'
 
 export function SkillsSettings() {
+  const [skills, setSkills] = useState<ClaudeSkill[]>([])
   const [q, setQ] = useState('')
-  const [skills, setSkills] = useState(() => mockSkills.map(s => ({ ...s })))
+  const [loading, setLoading] = useState(true)
+
+  // 技能来自已启用插件 + 用户级 ~/.claude/skills/，只读展示
+  const reload = () => {
+    setLoading(true)
+    window.api?.cc?.skills.get().then(list => { setSkills(list); setLoading(false) })
+  }
+  useEffect(() => { reload() }, [])
+
   const filtered = skills.filter(s =>
     s.name.toLowerCase().includes(q.toLowerCase()) || s.desc.toLowerCase().includes(q.toLowerCase())
   )
-  const toggle = (id: string) => setSkills(prev => prev.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s))
 
-  const iconBtn: React.CSSProperties = {
-    padding: '4px 8px', fontSize: 14, cursor: 'pointer',
-    background: 'transparent', border: 'none', color: 'var(--text-muted)', lineHeight: 1
-  }
   const inputStyle: React.CSSProperties = {
     width: '100%', padding: '8px 12px', background: 'var(--bg-sidebar)',
     border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)',
@@ -23,17 +27,12 @@ export function SkillsSettings() {
 
   return (
     <div style={{ maxWidth: 760, margin: '0 auto' }}>
-      {/* 标题 + 操作图标 */}
+      {/* 标题 */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
         <h2 style={{ color: 'var(--text)', fontSize: 18, margin: 0 }}>技能</h2>
-        <div style={{ display: 'flex', gap: 4 }}>
-          <button title="添加技能" style={iconBtn}><Plus size={14} /></button>
-          <button title="排序/展开" style={iconBtn}><ChevronDown size={14} /></button>
-          <button title="刷新" style={iconBtn}><RefreshCw size={14} /></button>
-        </div>
       </div>
       <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 14 }}>
-        管理项目级与用户级技能。启用后可在聊天里通过 $skill-name 使用。
+        来自已启用插件的 skills/ 目录 + 用户级 ~/.claude/skills/。启用/停用请在「插件」页切换对应插件。
       </div>
 
       {/* 搜索框 */}
@@ -41,12 +40,15 @@ export function SkillsSettings() {
 
       {/* 计数标题 */}
       <div style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
-        工作区与个人技能 {skills.length}
+        可用技能 {skills.length}
       </div>
 
       {/* 技能列表卡片 */}
       <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--bg)', boxShadow: 'var(--shadow-float)' }}>
-        {filtered.length === 0 && (
+        {loading && (
+          <div style={{ padding: 20, color: 'var(--text-muted)', textAlign: 'center', fontSize: 13 }}>加载中…</div>
+        )}
+        {!loading && filtered.length === 0 && (
           <div style={{ padding: 20, color: 'var(--text-muted)', textAlign: 'center', fontSize: 13 }}>无匹配技能</div>
         )}
         {filtered.map((s, i) => (
@@ -62,13 +64,17 @@ export function SkillsSettings() {
                   padding: '1px 7px', borderRadius: 999, fontSize: 10,
                   border: '1px solid var(--border)', color: 'var(--text-muted)'
                 }}>{s.scope}</span>
+                <span style={{
+                  padding: '1px 7px', borderRadius: 999, fontSize: 10,
+                  border: '1px solid var(--border)', color: 'var(--text-muted)'
+                }}>{s.source}</span>
               </div>
               <div style={{
                 color: 'var(--text-muted)', fontSize: 12, marginTop: 3,
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
               }}>{s.desc}</div>
             </div>
-            <Toggle on={s.enabled} onChange={() => toggle(s.id)} aria-label={`${s.enabled ? '禁用' : '启用'} ${s.name}`} />
+            <Toggle on={s.enabled} onChange={reload} aria-label={`${s.name} 状态`} />
           </div>
         ))}
       </div>

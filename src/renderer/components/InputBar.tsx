@@ -38,13 +38,6 @@ export function InputBar() {
   const [permission, setPermission] = useState('变更前确认')
   const [thinking, setThinking] = useState('standard')
 
-  // 卸载时清理 IPC 监听器（仅本组件注册的 claude 事件）
-  useEffect(() => {
-    return () => {
-      window.api?.claude?.removeAllListeners()
-    }
-  }, [])
-
   const canSend = text.trim().length > 0 || !!attachment
 
   // 发送：追加用户消息 + 标记会话进入流式 + IPC 调用主进程
@@ -65,13 +58,19 @@ export function InputBar() {
     const prompt = text
     // 取当前本地会话映射到的 Claude 真实 sessionId；存在则 resume 续接，否则新建会话
     const claudeSessionId = state.claudeSessionMap?.[state.activeSessionId]
+    // 工作目录优先取当前激活会话所属项目的 path，回退到全局设置 cwd。
+    // 若用全局 settings.cwd（默认 HOME），AI 会跑到错误目录。
+    const project = state.projects.find(p => p.sessions.some(s => s.id === state.activeSessionId))
+    const cwd = project?.path || state.settings?.cwd || undefined
+    console.log('[cc-stream] [1] renderer doSend → ipc send', { activeSessionId: state.activeSessionId, claudeSessionId, hasPrompt: !!prompt, cwd })
     dispatch({ type: 'SEND_MESSAGE' })
     dispatch({ type: 'STREAM_START', sessionId: state.activeSessionId })
     window.api?.claude?.send({
       prompt,
       sessionId: claudeSessionId || undefined,
-      cwd: state.settings?.cwd || undefined,
-    })
+      cwd,
+    }).then(() => console.log('[cc-stream] [1] ipc invoke resolved'))
+      .catch(e => console.log('[cc-stream] [1] ipc invoke rejected', String(e)))
   }
 
   // 停止：IPC 中断主进程的 Claude 调用

@@ -1,22 +1,24 @@
 import { useStore } from '../../state/store'
+import { useI18n } from '../../i18n/useI18n'
 import type { SettingsSection } from '../../types'
 
-interface MenuItem { id: SettingsSection | 'back'; label: string }
+interface MenuItem { id: SettingsSection | 'back'; labelKey: string }
 
 const ITEMS: MenuItem[] = [
-  { id: 'back', label: '← 返回工作区' },
-  { id: 'general', label: '常规' },
-  { id: 'code-preview', label: '代码预览' },
-  { id: 'model', label: '模型设置' },
-  { id: 'skills', label: '技能' },
-  { id: 'mcp', label: 'MCP 服务器' },
-  { id: 'plugins', label: '插件' },
-  { id: 'commands', label: '命令' },
-  { id: 'hooks', label: 'hooks' }
+  { id: 'back', labelKey: 'settings.back' },
+  { id: 'general', labelKey: 'settings.general' },
+  { id: 'code-preview', labelKey: 'settings.codePreview' },
+  { id: 'model', labelKey: 'settings.model' },
+  { id: 'skills', labelKey: 'settings.skills' },
+  { id: 'mcp', labelKey: 'settings.mcp' },
+  { id: 'plugins', labelKey: 'settings.plugins' },
+  { id: 'commands', labelKey: 'settings.commands' },
+  { id: 'hooks', labelKey: 'settings.hooks' }
 ]
 
 export function SettingsMenu() {
   const { state, dispatch } = useStore()
+  const { t } = useI18n()
   const active = state.activeSettingsSection
 
   const onClick = (id: MenuItem['id']) => {
@@ -44,7 +46,7 @@ export function SettingsMenu() {
               boxShadow: isActive ? 'var(--shadow-float)' : 'none',
               fontFamily: 'var(--font)', fontSize: 13
             }}
-          >{item.label}</button>
+          >{t(item.labelKey)}</button>
         )
       })}
     </div>

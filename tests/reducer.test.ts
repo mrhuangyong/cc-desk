@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { reducer } from '../src/renderer/state/reducer'
+import { describe, it, expect, beforeEach } from 'vitest'
+import { reducer, setIdCounter } from '../src/renderer/state/reducer'
 import { seedProjects } from './fixtures'
 import type { AppState } from '../src/renderer/state/reducer'
 
@@ -16,7 +16,14 @@ function initialState(): AppState {
     currentView: 'workspace',
     activeSettingsSection: 'general',
     streamingBySession: {},
-    settings: { apiKey: '', model: 'sonnet', cwd: '' },
+    settings: {
+      apiKey: '', model: 'model-sonnet', cwd: '', providers: [], models: [], modelRoleMap: {},
+      theme: 'codex-light', lang: 'zh-CN', zoom: 'normal', proxy: '', inheritTerminal: true,
+      terminalFont: 'MesloLGS NF, monospace', taskNotify: true, notifySound: true, queueMode: 'queue',
+      showThinking: false, showTodo: false, autoArchive: true, archiveDays: '7', dataPath: '',
+      codePreview: { lightTheme: 'GitHub Light', darkTheme: 'GitHub Dark', showLineNumbers: true, wordWrap: false, fontSize: 12 },
+      skills: [], mcpServers: [], plugins: [], commands: [], hooks: [],
+    },
     claudeSessionMap: {},
   }
 }
@@ -274,7 +281,7 @@ describe('reducer', () => {
   it('STREAM_START 标记会话进入流式状态', () => {
     const state = initialState()
     const next = reducer(state, { type: 'STREAM_START', sessionId: 's1' })
-    expect(next.streamingBySession['s1']).toEqual({ isStreaming: true, currentText: '' })
+    expect(next.streamingBySession['s1']).toEqual({ isStreaming: true, currentText: '', thinking: '', tools: [] })
   })
 
   it('STREAM_DELTA 增量拼接文本', () => {
@@ -326,7 +333,7 @@ describe('reducer', () => {
     const next = reducer(state, { type: 'SET_SETTINGS', settings: { apiKey: 'sk-xxx', cwd: '/tmp' } })
     expect(next.settings.apiKey).toBe('sk-xxx')
     expect(next.settings.cwd).toBe('/tmp')
-    expect(next.settings.model).toBe('sonnet') // 未传字段保留
+    expect(next.settings.model).toBe('model-sonnet') // 未传字段保留
   })
 
   it('INIT_SESSIONS 用新 projects 列表替换', () => {
@@ -346,5 +353,121 @@ describe('reducer', () => {
     expect(next.claudeSessionMap.s1).toBe('abc-123')
     // 不可变：原 state 未变
     expect(state.claudeSessionMap.s1).toBeUndefined()
+  })
+})
+
+// HYDRATE：启动时从主进程注入持久化快照。单独 describe，因 setIdCounter 改模块级状态，
+// 用例前后重置以隔离对其他测试的影响。
+describe('reducer HYDRATE 持久化恢复', () => {
+  beforeEach(() => {
+    // HYDRATE 会改模块级 idCounter；每个用例开始时重置以隔离影响
+    setIdCounter(0)
+  })
+
+  it('HYDRATE 注入 projects/activeSessionId/tabs/sessionMap，且保留 theme/draft/streaming', () => {
+    const base = initialState()
+    // 先制造一些临时态，验证 HYDRATE 不覆盖它们
+    const withDraft = reducer(base, { type: 'SET_DRAFT_TEXT', text: '草稿保留?' })
+    const withStream = reducer(withDraft, { type: 'STREAM_START', sessionId: 's1' })
+
+    const next = reducer(withStream, {
+      type: 'HYDRATE',
+      snapshot: {
+        projects: structuredClone(seedProjects),
+        activeSessionId: 's3',
+        tabsBySession: { s3: [{ id: 't1', type: 'file', title: 'a.ts', filePath: 'a.ts' }] },
+        activeTabIdBySession: { s3: 't1' },
+        claudeSessionMap: { s3: 'claude-xyz' },
+        lastSeq: 10,
+      },
+    })
+    expect(next.activeSessionId).toBe('s3')
+    expect(next.tabsBySession['s3'].length).toBe(1)
+    expect(next.activeTabIdBySession['s3']).toBe('t1')
+    expect(next.claudeSessionMap.s3).toBe('claude-xyz')
+    // 临时态保留
+    expect(next.draft.text).toBe('草稿保留?')
+    expect(next.streamingBySession['s1']).toBeDefined()
+    // settings/theme 保留
+    expect(next.theme).toBe('codex-light')
+  })
+
+  it('HYDRATE 重置 idCounter，后续新增 ID 不与已恢复数据冲突', () => {
+    const state = initialState()
+    const hydrated = reducer(state, {
+      type: 'HYDRATE',
+      snapshot: {
+        projects: structuredClone(seedProjects), // 含 p1/p2（序号最大 2）
+        activeSessionId: 's1',
+        tabsBySession: {},
+        activeTabIdBySession: {},
+        claudeSessionMap: {},
+        lastSeq: 5,
+      },
+    })
+    // lastSeq=5 后，ADD_PROJECT 应生成 p6（而非 p1）
+    const next = reducer(hydrated, { type: 'ADD_PROJECT', name: '新项目', path: '/new' })
+    const added = next.projects.find(p => p.path === '/new')!
+    expect(added).toBeDefined()
+    expect(added.id).toBe('p6')
+    expect(next.projects.filter(p => p.id === 'p1').length).toBe(1) // 原 p1 仍在，无重复
+  })
+
+  it('HYDRATE 的 activeSessionId 指向已删 session 时回退到首个存活会话', () => {
+    const state = initialState()
+    const next = reducer(state, {
+      type: 'HYDRATE',
+      snapshot: {
+        projects: structuredClone(seedProjects), // 首个会话 s1
+        activeSessionId: 'gone', // 不存在
+        tabsBySession: {},
+        activeTabIdBySession: {},
+        claudeSessionMap: {},
+        lastSeq: 0,
+      },
+    })
+    expect(next.activeSessionId).toBe('s1')
+  })
+
+  it('HYDRATE 清理指向已不存在 session 的孤儿 tab 条目', () => {
+    const state = initialState()
+    const next = reducer(state, {
+      type: 'HYDRATE',
+      snapshot: {
+        projects: structuredClone(seedProjects), // 含 s1/s2/s3
+        activeSessionId: 's1',
+        // 含一个孤儿 key（ghost 不在任何 project 中）
+        tabsBySession: { s1: [], ghost: [{ id: 't1', type: 'file', title: 'x' }] },
+        activeTabIdBySession: { s1: null, ghost: 't1' },
+        claudeSessionMap: {},
+        lastSeq: 0,
+      },
+    })
+    expect(Object.keys(next.tabsBySession)).toEqual(['s1'])
+    expect(Object.keys(next.activeTabIdBySession)).toEqual(['s1'])
+  })
+})
+
+// 自动归档：验证 ARCHIVE_STALE 清理陈旧空会话，保留有消息/当前激活的
+describe('reducer ARCHIVE_STALE 自动归档', () => {
+  it('删除陈旧空会话，保留有消息和当前激活的', () => {
+    const base: AppState = {
+      ...initialState(),
+      projects: [{
+        id: 'p1', name: 'p', path: '/p',
+        sessions: [
+          { id: 'old-empty', title: '旧空会话', messages: [], updatedAt: 1000 },           // 古早空 → 归档
+          { id: 'old-msg', title: '旧有消息', messages: [{ id: 'm', role: 'user', content: 'hi' }], updatedAt: 1000 }, // 有消息 → 保留
+          { id: 'new-empty', title: '新空会话', messages: [], updatedAt: Date.now() },       // 新空 → 保留
+        ],
+      }],
+      activeSessionId: 'new-empty',
+    }
+    const now = Date.now()
+    const next = reducer(base, { type: 'ARCHIVE_STALE', beforeTs: now - 7 * 86400000 })
+    const ids = next.projects[0].sessions.map(s => s.id)
+    expect(ids).toContain('old-msg')
+    expect(ids).toContain('new-empty')
+    expect(ids).not.toContain('old-empty')
   })
 })
