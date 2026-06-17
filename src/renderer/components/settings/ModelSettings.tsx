@@ -69,9 +69,11 @@ export function ModelSettings() {
   }
 
   const addModel = () => {
+    const id = `model-${Date.now()}`
     const name = t('model.newModel')
-    const m: ModelItem = { id: `model-${Date.now()}`, name, providerId: activeId, sdkModelId: name, contextLength: '8万', enabled: true }
+    const m: ModelItem = { id, name, providerId: activeId, sdkModelId: name, contextLength: '8万', enabled: true }
     persist({ models: [...cfg.models, m] })
+    setEditingModel(id) // 新增后自动展开编辑表单，省去再点编辑图标
   }
   const updateModel = (id: string, patch: Partial<ModelItem>) =>
     persist({ models: cfg.models.map(m => m.id === id ? { ...m, ...patch } : m) })
