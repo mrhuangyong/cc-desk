@@ -29,7 +29,7 @@ export function InputBar() {
   const [modelCfg, setModelCfg] = useState<{ models: { id: string; name: string }[]; activeModelId: string } | null>(null)
   useEffect(() => {
     window.api?.ccDesk.model.get().then(c => setModelCfg({
-      models: c.models.filter(m => m.enabled).map(m => ({ id: m.id, name: m.name })),
+      models: c.models.filter(m => m.enabled).map(m => ({ id: m.id, name: m.sdkModelId })),
       activeModelId: c.activeModelId,
     }))
   }, [])

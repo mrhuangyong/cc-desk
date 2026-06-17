@@ -25,7 +25,7 @@ describe('cc-desk-store', () => {
     const { getModelProvidersConfig, saveModelProvidersConfig } = await import('../src/main/cc-desk-store')
     saveModelProvidersConfig({ providers: [{ id: 'p1', name: 'ai', apiKey: 'sk', baseUrl: 'http://x', enabled: true }] })
     expect(getModelProvidersConfig().providers.length).toBe(1)
-    saveModelProvidersConfig({ models: [{ id: 'm1', name: 'glm', providerId: 'p1', sdkModelId: 'glm-5.2', contextLength: '200K', enabled: true }] })
+    saveModelProvidersConfig({ models: [{ id: 'm1', providerId: 'p1', sdkModelId: 'glm-5.2', contextLength: '200K', enabled: true }] })
     const cfg = getModelProvidersConfig()
     expect(cfg.providers.length).toBe(1)
     expect(cfg.models.length).toBe(1)
@@ -35,7 +35,7 @@ describe('cc-desk-store', () => {
     const { resolveActiveProviderModel } = await import('../src/main/cc-desk-store')
     const cfg = {
       providers: [{ id: 'p1', name: 'ai', apiKey: 'sk', baseUrl: 'http://x', enabled: true }],
-      models: [{ id: 'm1', name: 'glm', providerId: 'p1', sdkModelId: 'glm-5.2', contextLength: '200K', enabled: true }],
+      models: [{ id: 'm1', providerId: 'p1', sdkModelId: 'glm-5.2', contextLength: '200K', enabled: true }],
       modelRoleMap: {}, activeModelId: 'm1',
     }
     const r = resolveActiveProviderModel(cfg)
@@ -47,7 +47,7 @@ describe('cc-desk-store', () => {
     const { resolveActiveProviderModel } = await import('../src/main/cc-desk-store')
     const cfg = {
       providers: [{ id: 'p1', name: 'ai', apiKey: 'sk', baseUrl: 'http://x', enabled: true }],
-      models: [{ id: 'm1', name: 'glm', providerId: 'p1', sdkModelId: 'glm-5.2', contextLength: '200K', enabled: true }],
+      models: [{ id: 'm1', providerId: 'p1', sdkModelId: 'glm-5.2', contextLength: '200K', enabled: true }],
       modelRoleMap: {}, activeModelId: '',
     }
     expect(resolveActiveProviderModel(cfg)?.model.id).toBe('m1')
@@ -66,8 +66,8 @@ describe('cc-desk-store', () => {
         { id: 'p2', name: 'active', apiKey: 'sk', baseUrl: 'http://x', enabled: true },
       ],
       models: [
-        { id: 'm1', name: 'belong-to-disabled', providerId: 'p1', sdkModelId: 'glm-a', contextLength: '200K', enabled: true },
-        { id: 'm2', name: 'belong-to-active', providerId: 'p2', sdkModelId: 'glm-b', contextLength: '200K', enabled: true },
+        { id: 'm1', providerId: 'p1', sdkModelId: 'glm-a', contextLength: '200K', enabled: true },
+        { id: 'm2', providerId: 'p2', sdkModelId: 'glm-b', contextLength: '200K', enabled: true },
       ],
       modelRoleMap: {}, activeModelId: 'm1',
     }
@@ -81,7 +81,7 @@ describe('cc-desk-store', () => {
     const { buildSdkEnv } = await import('../src/main/cc-desk-store')
     const resolved = {
       provider: { id: 'p1', name: 'ai', apiKey: 'sk-x', baseUrl: 'http://127.0.0.1:17860', enabled: true },
-      model: { id: 'm1', name: 'glm', providerId: 'p1', sdkModelId: 'glm-5.2', contextLength: '200K', enabled: true },
+      model: { id: 'm1', providerId: 'p1', sdkModelId: 'glm-5.2', contextLength: '200K', enabled: true },
     }
     const modelRoleMap = { 'p1:sonnet': 'm1' }
     const env = buildSdkEnv(resolved, modelRoleMap, [resolved.model])
@@ -97,7 +97,7 @@ describe('cc-desk-store', () => {
     const { buildSdkEnv } = await import('../src/main/cc-desk-store')
     const resolved = {
       provider: { id: 'p1', name: 'ai', apiKey: 'sk-x', baseUrl: '', enabled: true },
-      model: { id: 'm1', name: 'glm', providerId: 'p1', sdkModelId: 'glm-5.2', contextLength: '200K', enabled: true },
+      model: { id: 'm1', providerId: 'p1', sdkModelId: 'glm-5.2', contextLength: '200K', enabled: true },
     }
     const env = buildSdkEnv(resolved, {})
     expect(env.ANTHROPIC_BASE_URL).toBeUndefined()

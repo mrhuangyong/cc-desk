@@ -85,10 +85,9 @@ export interface ModelProvider {
 // 模型（模型设置 - 右下列表项）
 export interface ModelItem {
   id: string
-  name: string             // 模型名（如 glm-5.2）
   providerId: string
-  sdkModelId: string       // 传给 SDK query() options.model 的真实模型名
-  contextLength: string    // 上下文窗口标签（展示用，如 '20万'）
+  sdkModelId: string       // 模型 ID，传给 SDK query() options.model 的真实模型名，也用作展示名
+  contextLength: string    // 上下文窗口 token 数（如 200000）
   enabled: boolean
 }
 

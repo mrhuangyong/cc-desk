@@ -6,7 +6,7 @@ type ModelProvider = {
   id: string; name: string; apiKey: string; baseUrl: string; enabled: boolean
 }
 type ModelItem = {
-  id: string; name: string; providerId: string; sdkModelId: string; contextLength: string; enabled: boolean
+  id: string; providerId: string; sdkModelId: string; contextLength: string; enabled: boolean
 }
 type Cfg = {
   providers: ModelProvider[]; models: ModelItem[]
@@ -70,8 +70,7 @@ export function ModelSettings() {
 
   const addModel = () => {
     const id = `model-${Date.now()}`
-    const name = t('model.newModel')
-    const m: ModelItem = { id, name, providerId: activeId, sdkModelId: name, contextLength: '200000', enabled: true }
+    const m: ModelItem = { id, providerId: activeId, sdkModelId: '', contextLength: '200000', enabled: true }
     persist({ models: [...cfg.models, m] })
     setEditingModel(id) // 新增后自动展开编辑表单，省去再点编辑图标
   }
@@ -150,16 +149,15 @@ export function ModelSettings() {
                 {providerModels.map((m, i) => (
                   <div key={m.id} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '9px 12px', borderBottom: i < providerModels.length - 1 ? '1px solid var(--border)' : 'none' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text)', fontSize: 13 }}>
-                      <span style={{ flex: 1 }}>{m.name}</span>
+                      <span style={{ flex: 1 }}>{m.sdkModelId}</span>
                       <span style={{ padding: '1px 8px', borderRadius: 999, fontSize: 11, border: '1px solid var(--border)', color: 'var(--text-muted)' }}>{m.contextLength}</span>
                       <button title="编辑" onClick={() => setEditingModel(editingModel === m.id ? null : m.id)} style={iconBtn}><Pencil size={13} /></button>
                       <button title="删除" onClick={() => removeModel(m.id)} style={{ ...iconBtn, color: 'var(--danger)' }}><Trash2 size={13} /></button>
                     </div>
                     {editingModel === m.id && (
                       <div style={{ display: 'flex', gap: 8 }}>
-                        <input value={m.name} onChange={e => updateModel(m.id, { name: e.target.value })} placeholder="名称" style={{ ...inputStyle, flex: 1 }} />
-                        <input value={m.sdkModelId} onChange={e => updateModel(m.id, { sdkModelId: e.target.value })} placeholder={t('model.sdkModelId')} style={{ ...inputStyle, flex: 1 }} />
-                        <input type="number" min={0} value={m.contextLength} onChange={e => updateModel(m.id, { contextLength: e.target.value })} placeholder={t('model.contextLength')} style={{ ...inputStyle, width: 80 }} />
+                        <input autoFocus value={m.sdkModelId} onChange={e => updateModel(m.id, { sdkModelId: e.target.value })} placeholder={t('model.sdkModelId')} style={{ ...inputStyle, flex: 1 }} />
+                        <input type="number" min={0} value={m.contextLength} onChange={e => updateModel(m.id, { contextLength: e.target.value })} placeholder={t('model.contextLength')} style={{ ...inputStyle, width: 100 }} />
                       </div>
                     )}
                   </div>
