@@ -26,6 +26,52 @@ import { normalizeBetaBlocks, extractToolResults, mkNotice } from './claude-norm
  */
 export class ClaudeService {
   private abortController: AbortController | null = null
+  // Pending onUserDialog resolvers keyed by reqId. The renderer answers via
+  // the `claude:dialog-response` IPC handler -> resolveDialog().
+  private dialogResolvers = new Map<string, (r: { behavior: 'completed'; result: unknown } | { behavior: 'cancelled' }) => void>()
+
+  /**
+   * Bridge the SDK's blocking `onUserDialog` callback to a renderer-side dialog
+   * via request/response IPC. Emits `claude:dialog-request` and parks a Promise
+   * until the renderer replies through `claude:dialog-response` (resolveDialog)
+   * or the query's AbortSignal fires (cancelled).
+   */
+  async askUserDialog(
+    webContents: WebContents,
+    request: { dialogKind: string; payload: unknown; toolUseID?: string },
+    signal: AbortSignal,
+  ): Promise<{ behavior: 'completed'; result: unknown } | { behavior: 'cancelled' }> {
+    const reqId = `dlg${Date.now()}_${Math.floor(performance.now())}`
+    console.log('[cc-stream] onUserDialog', request.dialogKind, JSON.stringify(request.payload)?.slice(0, 200))
+    webContents.send('claude:dialog-request', {
+      reqId,
+      dialogKind: request.dialogKind,
+      payload: request.payload,
+      toolUseId: request.toolUseID,
+    })
+    return new Promise<{ behavior: 'completed'; result: unknown } | { behavior: 'cancelled' }>((resolve) => {
+      this.dialogResolvers.set(reqId, resolve)
+      signal.addEventListener(
+        'abort',
+        () => {
+          if (this.dialogResolvers.has(reqId)) {
+            this.dialogResolvers.delete(reqId)
+            resolve({ behavior: 'cancelled' })
+          }
+        },
+        { once: true },
+      )
+    })
+  }
+
+  /** Called from the `claude:dialog-response` IPC handler to settle a dialog. */
+  resolveDialog(reqId: string, result: { behavior: 'completed'; result: unknown } | { behavior: 'cancelled' }): void {
+    const fn = this.dialogResolvers.get(reqId)
+    if (fn) {
+      this.dialogResolvers.delete(reqId)
+      fn(result)
+    }
+  }
 
   async send(opts: {
     prompt: string
@@ -68,6 +114,16 @@ export class ClaudeService {
           // Required to receive incremental stream_event deltas.
           includePartialMessages: true,
           abortController: this.abortController,
+          // Bridge the SDK's blocking `onUserDialog` (request_user_dialog control
+          // requests, e.g. AskUserQuestion) to a renderer-side dialog UI.
+          supportedDialogKinds: ['refusal_fallback_prompt'],
+          onUserDialog: async (request: any, { signal }: { signal: AbortSignal }) => {
+            return this.askUserDialog(
+              webContents,
+              { dialogKind: request.dialogKind, payload: request.payload, toolUseID: request.toolUseID },
+              signal,
+            )
+          },
         },
       })
 
