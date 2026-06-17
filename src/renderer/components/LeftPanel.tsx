@@ -102,6 +102,9 @@ export function LeftPanel({ collapsed }: Props) {
           width, flexShrink: 0, position: 'relative', background: 'var(--bg-sidebar)',
           borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column',
           ...animStyles,
+          // 拖动时禁用 width 过渡（animStyles 的 expanded 态带 .25s 缓动，会拖住实时拖拽导致不跟手）；
+          // 展开折叠动画不受影响
+          transition: dragging ? 'none' : animStyles.transition,
         }}
       >
         {/* 拖拽手柄：右边缘竖条（动画期间禁用） */}
