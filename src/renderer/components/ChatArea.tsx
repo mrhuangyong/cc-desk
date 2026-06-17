@@ -13,15 +13,8 @@ export function ChatArea() {
     .flatMap(p => p.sessions)
     .find(s => s.id === state.activeSessionId)
 
-  // 当前会话的流式状态（增量拼接的临时文本）
+  // 当前会话的流式状态（增量拼接的 blocks/notices）
   const streaming = state.streamingBySession[state.activeSessionId]
-
-  // 流式文本的 ref：STREAM_END 时主进程只回传元数据（cost/duration），
-  // 真正的文本已通过 delta 累积在这里，用 ref 在 effect 闭包里读取最新值。
-  const streamingRef = useRef('')
-  useEffect(() => {
-    streamingRef.current = streaming?.currentText || ''
-  }, [streaming?.currentText])
 
   // 监听器只在挂载时注册一次，回调内需要的"会变值"通过 ref 取最新值，
   // 避免因依赖数组变化而 removeAllListeners→重注册，造成 claude:result 事件丢失、
@@ -38,15 +31,19 @@ export function ChatArea() {
 
     api.onStreamDelta(({ delta }) => {
       console.log('[cc-stream] onStreamDelta')
-      dispatch({ type: 'STREAM_DELTA', sessionId: activeSessionIdRef.current, delta })
+      dispatch({ type: 'STREAM_DELTA', sessionId: activeSessionIdRef.current, kind: 'text', delta })
     })
     api.onThinkingDelta(({ delta }) => {
       console.log('[cc-stream] onThinkingDelta')
-      dispatch({ type: 'STREAM_THINKING', sessionId: activeSessionIdRef.current, delta })
+      dispatch({ type: 'STREAM_DELTA', sessionId: activeSessionIdRef.current, kind: 'thinking', delta })
     })
     api.onToolUse((tool) => {
       console.log('[cc-stream] onToolUse', tool?.name)
-      dispatch({ type: 'STREAM_TOOL_USE', sessionId: activeSessionIdRef.current, tool: { id: tool.id, name: tool.name } })
+      dispatch({
+        type: 'STREAM_TOOL_USE_START',
+        sessionId: activeSessionIdRef.current,
+        block: { type: 'tool_use', id: tool.id, name: tool.name, input: {}, status: 'running' },
+      })
     })
     // 捕获 Claude 返回的真实 sessionId，建立 localSessionId → claudeSessionId 映射，供后续消息 resume 续接
     api.onSystem((data) => {
@@ -63,10 +60,9 @@ export function ChatArea() {
       console.log('[cc-stream] [7] onResult received', data)
       dispatch({
         type: 'STREAM_END',
-        // 始终用本地 activeSessionId：streamingBySession 的 key 是本地 id，
-        // data.sessionId 是 Claude 真实 session_id（非空），用它会导致 delete 时 key 不匹配、状态卡死。
+        // 始终用本地 activeSessionId：streamingBySession 的 key 是本地 id。
+        // 新 STREAM_END 不再接收 content——文本已通过 STREAM_DELTA 累积进 streaming.blocks。
         sessionId: activeSessionIdRef.current,
-        content: [{ type: 'text', text: streamingRef.current || '' }],
         costUSD: data.costUSD,
         durationMs: data.durationMs,
       })
@@ -100,7 +96,7 @@ export function ChatArea() {
       {/* 闪烁光标动画 */}
       <style>{`@keyframes blink { 50% { opacity: 0 } }`}</style>
       <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-        {session.messages.length === 0 && !streaming?.isStreaming && (
+        {session.messages.length === 0 && !streaming && (
           <div style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: 60 }}>{t('chat.empty')}</div>
         )}
         {session.messages.map(m => (
@@ -136,29 +132,35 @@ export function ChatArea() {
           )
         ))}
         {/* 流式消息：思考过程 + 工具卡片 + 增量文本 + 闪烁光标 */}
-        {streaming?.isStreaming && (
+        {streaming && (() => {
+          const blocks = streaming.blocks || []
+          const thinking = (blocks.filter(b => b.type === 'thinking').map((b: any) => b.text).join('')) as string
+          const currentText = (blocks.filter(b => b.type === 'text').map((b: any) => b.text).join('')) as string
+          const tools = blocks.filter(b => b.type === 'tool_use') as { id: string; name: string }[]
+          return (
           <div style={{ color: 'var(--text)', fontSize: 14, lineHeight: 1.6, padding: '0 28px', display: 'flex', flexDirection: 'column', gap: 8, userSelect: 'text' }}>
             {/* 显示思考过程（受常规设置 showThinking 控制） */}
-            {state.settings.showThinking && streaming.thinking && (
+            {state.settings.showThinking && thinking && (
               <details style={{ color: 'var(--text-muted)', fontSize: 12, borderLeft: '2px solid var(--border)', paddingLeft: 10 }}>
                 <summary style={{ cursor: 'pointer' }}>{t('chat.thinking')}</summary>
-                <div style={{ whiteSpace: 'pre-wrap', marginTop: 4 }}>{streaming.thinking}</div>
+                <div style={{ whiteSpace: 'pre-wrap', marginTop: 4 }}>{thinking}</div>
               </details>
             )}
             {/* 显示待办/工具卡片（受常规设置 showTodo 控制） */}
-            {state.settings.showTodo && streaming.tools && streaming.tools.length > 0 && (
+            {state.settings.showTodo && tools.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {streaming.tools.map((t, i) => (
-                  <span key={`${t.id}-${i}`} style={{ padding: '2px 8px', borderRadius: 6, fontSize: 11, background: 'var(--bg-hover)', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                    🔧 {t.name}
+                {tools.map((tl, i) => (
+                  <span key={`${tl.id}-${i}`} style={{ padding: '2px 8px', borderRadius: 6, fontSize: 11, background: 'var(--bg-hover)', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                    🔧 {tl.name}
                   </span>
                 ))}
               </div>
             )}
-            {streaming.currentText}
+            {currentText}
             <span style={{ animation: 'blink 1s step-end infinite' }}>▌</span>
           </div>
-        )}
+          )
+        })()}
         {/* 错误提示 */}
         {streaming?.error && (
           <div style={{ color: '#ef4444', fontSize: 13, padding: '0 28px' }}>

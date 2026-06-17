@@ -23,7 +23,7 @@ export function InputBar() {
 
   // 当前会话的流式状态：决定发送/停止三态
   const streaming = state.streamingBySession[state.activeSessionId]
-  const isStreaming = !!streaming?.isStreaming
+  const isStreaming = !!streaming
 
   // 模型列表来自 cc-desk 多供应商配置（仅 enabled 模型），本地 state 持有
   const [modelCfg, setModelCfg] = useState<{ models: { id: string; name: string }[]; activeModelId: string } | null>(null)

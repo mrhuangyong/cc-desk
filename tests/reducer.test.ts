@@ -25,6 +25,7 @@ function initialState(): AppState {
       skills: [], mcpServers: [], plugins: [], commands: [], hooks: [],
     },
     claudeSessionMap: {},
+    pendingDialog: null,
   }
 }
 
@@ -278,30 +279,28 @@ describe('reducer', () => {
     expect(next.activeSettingsSection).toBe('skills')
   })
 
-  it('STREAM_START 标记会话进入流式状态', () => {
+  it('STREAM_START 初始化空 blocks/notices', () => {
     const state = initialState()
     const next = reducer(state, { type: 'STREAM_START', sessionId: 's1' })
-    expect(next.streamingBySession['s1']).toEqual({ isStreaming: true, currentText: '', thinking: '', tools: [] })
+    expect(next.streamingBySession['s1']).toEqual({ blocks: [], notices: [] })
   })
 
-  it('STREAM_DELTA 增量拼接文本', () => {
+  it('STREAM_DELTA 增量拼接文本 (新 kind 签名)', () => {
     const state = initialState()
     const s1 = reducer(state, { type: 'STREAM_START', sessionId: 's1' })
-    const s2 = reducer(s1, { type: 'STREAM_DELTA', sessionId: 's1', delta: 'Hello' })
-    const s3 = reducer(s2, { type: 'STREAM_DELTA', sessionId: 's1', delta: ', World' })
-    expect(s3.streamingBySession['s1'].currentText).toBe('Hello, World')
-    expect(s3.streamingBySession['s1'].isStreaming).toBe(true)
+    const s2 = reducer(s1, { type: 'STREAM_DELTA', sessionId: 's1', kind: 'text', delta: 'Hello' })
+    const s3 = reducer(s2, { type: 'STREAM_DELTA', sessionId: 's1', kind: 'text', delta: ', World' })
+    expect(s3.streamingBySession['s1'].blocks[0]).toEqual({ type: 'text', text: 'Hello, World' })
   })
 
-  it('STREAM_END 把文本块合并为 assistant 消息并清理流式状态', () => {
+  it('STREAM_END 把流式 blocks 固化为 assistant 消息并清理 streaming', () => {
     const state = initialState() // s1 有 2 条消息
     const before = state.projects.find(p => p.id === 'p1')!.sessions.find(s => s.id === 's1')!.messages.length
     const s1 = reducer(state, { type: 'STREAM_START', sessionId: 's1' })
-    const s2 = reducer(s1, { type: 'STREAM_DELTA', sessionId: 's1', delta: '部分文本' })
+    const s2 = reducer(s1, { type: 'STREAM_DELTA', sessionId: 's1', kind: 'text', delta: '最终回复' })
     const next = reducer(s2, {
       type: 'STREAM_END',
       sessionId: 's1',
-      content: [{ type: 'text', text: '最终回复' }, { type: 'tool_use', name: 'bash' }],
       costUSD: 0.01,
       durationMs: 1234,
     })
@@ -309,16 +308,18 @@ describe('reducer', () => {
     expect(session.messages.length).toBe(before + 1)
     const last = session.messages[session.messages.length - 1]
     expect(last.role).toBe('assistant')
-    expect(last.content).toEqual([{ type: 'text', text: '最终回复' }]) // 只保留 text 块
+    expect(last.content).toEqual([{ type: 'text', text: '最终回复' }])
+    expect(last.costUSD).toBe(0.01)
+    expect(last.durationMs).toBe(1234)
     // 流式状态清理
     expect(next.streamingBySession['s1']).toBeUndefined()
   })
 
-  it('STREAM_ERROR 记录错误并结束流式', () => {
+  it('STREAM_ERROR 标记 error 不结束流', () => {
     const state = initialState()
     const s1 = reducer(state, { type: 'STREAM_START', sessionId: 's1' })
     const next = reducer(s1, { type: 'STREAM_ERROR', sessionId: 's1', error: 'boom' })
-    expect(next.streamingBySession['s1']).toEqual({ isStreaming: false, currentText: '', error: 'boom' })
+    expect(next.streamingBySession['s1'].error).toBe('boom')
   })
 
   it('STREAM_ABORTED 清理流式状态', () => {

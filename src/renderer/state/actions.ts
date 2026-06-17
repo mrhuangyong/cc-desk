@@ -1,4 +1,4 @@
-import type { AppView, AppSettings, Message, PickedElement, Project, SettingsSection, Tab, TabType, ThemeId } from '../types'
+import type { AppView, AppSettings, ContentBlock, Message, PickedElement, Project, SettingsSection, SystemNotice, Tab, TabType, ThemeId, ToolResult } from '../types'
 
 export type Action =
   | { type: 'ADD_PROJECT'; name: string; path: string }
@@ -19,14 +19,16 @@ export type Action =
   | { type: 'SEND_MESSAGE' } // 把当前 draft（text + attachment）合成消息追加到激活会话
   | { type: 'SET_VIEW'; view: AppView }
   | { type: 'SET_SETTINGS_SECTION'; section: SettingsSection }
-  // 流式输出：Claude 流式响应的状态机
+  // 流式输出：blocks 拼接规约（按会话隔离）
   | { type: 'STREAM_START'; sessionId: string }
-  | { type: 'STREAM_DELTA'; sessionId: string; delta: string }
-  | { type: 'STREAM_THINKING'; sessionId: string; delta: string }
-  | { type: 'STREAM_TOOL_USE'; sessionId: string; tool: { id: string; name: string } }
-  | { type: 'STREAM_END'; sessionId: string; content: any[]; costUSD: number; durationMs: number }
+  | { type: 'STREAM_DELTA'; sessionId: string; kind: 'text' | 'thinking'; delta: string }
+  | { type: 'STREAM_TOOL_USE_START'; sessionId: string; block: Extract<ContentBlock, { type: 'tool_use' }> }
+  | { type: 'STREAM_TOOL_RESULT'; sessionId: string; toolUseId: string; result: ToolResult }
+  | { type: 'STREAM_ASSISTANT_BLOCKS'; sessionId: string; blocks: ContentBlock[]; uuid: string }
+  | { type: 'STREAM_NOTICE'; sessionId: string; notice: SystemNotice }
   | { type: 'STREAM_ERROR'; sessionId: string; error: string }
   | { type: 'STREAM_ABORTED'; sessionId: string }
+  | { type: 'STREAM_END'; sessionId: string; costUSD?: number; durationMs?: number; turns?: number; isError?: boolean }
   // 应用设置：AppSettings 的部分更新（apiKey / model / cwd / providers / models）
   | { type: 'SET_SETTINGS'; settings: Partial<AppSettings> }
   // 初始化：从主进程拉取的 projects 列表
