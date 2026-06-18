@@ -54,3 +54,7 @@ export type Action =
   // AskUserQuestion 等用户对话：显示/应答
   | { type: 'SHOW_DIALOG'; reqId: string; dialogKind: string; payload: any; toolUseId?: string }
   | { type: 'ANSWER_DIALOG' }
+  // 消息排队（queue 模式：AI 流式中发送的消息先排队）
+  | { type: 'ENQUEUE_MESSAGE'; sessionId: string; prompt: string; attachments: import('../types').DraftAttachment[] }
+  | { type: 'DEQUEUE_MESSAGE'; sessionId: string; queueId: string }
+  | { type: 'CLEAR_QUEUE'; sessionId: string }
