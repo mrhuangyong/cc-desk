@@ -60,7 +60,7 @@ export function usePanelAnimation(collapsed: boolean) {
     : phase === 'transitioning'
     ? { width: targetWidth, overflow: 'hidden', transition: 'width .25s ease' }
     : phase === 'expanded'
-    ? { overflow: 'hidden' }   // 不带 width transition：拖动调节在 expanded 态发生，有 transition 会不跟手
+    ? { overflow: 'hidden', transition: 'width .25s ease' }
     : phase === 'collapsing'
     ? { width: targetWidth, overflow: 'hidden', transition: 'width .25s ease' }
     : {}
