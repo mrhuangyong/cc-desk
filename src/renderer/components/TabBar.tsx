@@ -27,6 +27,8 @@ export function TabBar() {
   const [menuOpen, setMenuOpen] = useState(false)
   const fileTabRefs = useRef<Record<string, FileTabHandle | null>>({})
   const [confirmTabId, setConfirmTabId] = useState<string | null>(null)
+  const addBtnRef = useRef<HTMLButtonElement | null>(null)
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
 
   // 渲染所有已打开 tab（常驻 DOM，靠 display 切显隐）。
   // 关键：终端 tab 切换时不能卸载——否则 pty 进程被 kill、会话历史丢失。
@@ -114,15 +116,24 @@ export function TabBar() {
             >×</button>
           </div>
         ))}
+        {/* + 按钮：在可滚动 tab 列表内，紧跟 tabs，随 tab 一起滚动 */}
+        <button
+          ref={addBtnRef}
+          onClick={() => {
+            const r = addBtnRef.current?.getBoundingClientRect()
+            setMenuPos(r ? { top: r.bottom + 2, left: r.left } : null)
+            setMenuOpen(o => !o)
+          }}
+          title="新增 Tab"
+          style={{ padding: '0 12px', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}
+        ><Plus size={16} /></button>
         </div>
-        {/* + 按钮：点击展开类型选择下拉菜单 */}
-        <button onClick={() => setMenuOpen(o => !o)} title="新增 Tab" style={{ padding: '0 12px', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}><Plus size={16} /></button>
-        {menuOpen && (
+        {menuOpen && menuPos && (
           <>
             {/* 点外部关闭 */}
             <div onClick={() => setMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 90 }} />
             <div style={{
-              position: 'absolute', top: '100%', left: 0, marginTop: 2, zIndex: 100,
+              position: 'fixed', top: menuPos.top, left: menuPos.left, zIndex: 100,
               background: 'var(--bg-elevated)', border: '1px solid var(--border)',
               borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-float)', padding: 4, minWidth: 120
             }}>
