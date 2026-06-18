@@ -59,6 +59,8 @@ export function extractToolResults(content: any[]): { toolUseId: string; content
 
 // 从 tool_result block 提取 SDK 后台任务 id（Bash auto-background 场景）。
 // 走四条路径：顶层字段 → structuredContent → content 对象内部 → 文本 JSON。
+import { bgLog } from './bg-debug-log'
+
 export function extractBackgroundTaskId(toolResultBlock: any): string | undefined {
   if (!toolResultBlock) return undefined
   // 1) tool_result 顶层字段
@@ -74,7 +76,7 @@ export function extractBackgroundTaskId(toolResultBlock: any): string | undefine
   let text = ''
   if (typeof c === 'string') text = c
   else if (Array.isArray(c)) text = c.map((x: any) => x?.text ?? '').join('')
-  console.log('[bg] extract: cKeys=' + JSON.stringify(c && typeof c === 'object' && !Array.isArray(c) ? Object.keys(c) : 'not-obj-or-array') + ' topBg=' + JSON.stringify(topBg) + ' textHead=' + JSON.stringify(text.slice(0, 200)))
+  bgLog('extract_detail cKeys=' + JSON.stringify(c && typeof c === 'object' && !Array.isArray(c) ? Object.keys(c) : (typeof c === 'string' ? 'string' : 'array')) + ' topBg=' + JSON.stringify(topBg ?? null) + ' textHead=' + JSON.stringify(text.slice(0, 300)))
   const m = text.match(/"backgroundTaskId"\s*:\s*"([^"]+)"/)
   if (m) return m[1]
   return undefined

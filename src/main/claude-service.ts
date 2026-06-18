@@ -6,6 +6,7 @@ import { getSettings } from './settings-store'
 import { getModelProvidersConfig, resolveActiveProviderModel, buildSdkEnv } from './cc-desk-store'
 import { getGeneralConfig } from './claude-config'
 import { normalizeBetaBlocks, extractToolResults, extractBackgroundTaskId, mkNotice } from './claude-normalize'
+import { bgLog } from './bg-debug-log'
 
 /**
  * ClaudeService wraps the Claude Agent SDK `query()` into a renderer-facing
@@ -142,8 +143,21 @@ export class ClaudeService {
       this.streamRef = stream
 
       for await (const message of stream) {
-        console.log('[cc-stream] [4] message', message.type, (message as any).subtype ?? '')
         const mtype: string = message.type
+        const subtype = (message as any).subtype ?? ''
+        console.log('[cc-stream] [4] message', mtype, subtype)
+        // dump user/tool_result 结构到文件
+        if (mtype === 'user') {
+          const raw = (message as any).message?.content
+          if (Array.isArray(raw)) {
+            for (const b of raw) {
+              if (b?.type === 'tool_result') {
+                bgLog('user raw tool_result keys=' + JSON.stringify(Object.keys(b)) + ' tuid=' + JSON.stringify(b.tool_use_id))
+                bgLog('user raw tool_result content.typeof=' + typeof b.content + ' isArray=' + Array.isArray(b.content) + ' contentSample=' + JSON.stringify(b.content).slice(0, 500))
+              }
+            }
+          }
+        }
         switch (mtype) {
           case 'system': {
             const sys = message as any
@@ -168,7 +182,7 @@ export class ClaudeService {
               webContents.send('claude:blocks', { localSessionId: lsid, op: 'tool_use_start', block: { type: 'tool_use', id: tb.id, name: tb.name, input: tb.input, status: 'running' } })
               // 记录所有 tool_use 的 input，供 tool_result 阶段提取 auto-background 信息
               if (tb.name === 'Bash' || tb.name === 'Task') {
-                console.log('[bg] record tool_use id=' + JSON.stringify(tb.id) + ' name=' + tb.name + ' bg=' + !!tb.input?.run_in_background + ' cmd=' + JSON.stringify(String((tb.input?.command ?? tb.input?.prompt ?? '')).slice(0, 60)))
+                bgLog('record ' + tb.id + ' ' + tb.name + ' bg=' + !!tb.input?.run_in_background + ' cmd=' + JSON.stringify(String((tb.input?.command ?? tb.input?.prompt ?? '')).slice(0, 60)))
                 this.toolUseInputs.set(tb.id, { name: tb.name, input: tb.input })
               }
             }
@@ -186,19 +200,15 @@ export class ClaudeService {
             }
             // 检测 auto-background 命令：Bash tool_result 带 backgroundTaskId → 建 backend task
             const rawContent = (message as any).message?.content || []
-            console.log('[bg] user rawContent isArray=' + Array.isArray(rawContent) + ' len=' + (Array.isArray(rawContent) ? rawContent.length : 0))
             if (Array.isArray(rawContent)) {
               for (const b of rawContent) {
-                console.log('[bg] user block type=' + JSON.stringify(b?.type) + ' tuid=' + JSON.stringify(b?.tool_use_id))
                 if (b?.type !== 'tool_result') continue
-                console.log('[bg] tool_result tuid=' + JSON.stringify(b.tool_use_id) + ' contentIsObj=' + (typeof b.content === 'object') + ' contentIsArr=' + Array.isArray(b.content) + ' keys=' + JSON.stringify(b.content && typeof b.content === 'object' && !Array.isArray(b.content) ? Object.keys(b.content) : []))
                 const bgId = extractBackgroundTaskId(b)
-                console.log('[bg] bgId=' + JSON.stringify(bgId ?? null) + ' hasRegistry=' + !!this.registry)
+                bgLog('extract tuid=' + JSON.stringify(b.tool_use_id) + ' bgId=' + JSON.stringify(bgId ?? null) + ' hasReg=' + !!this.registry)
                 if (!bgId || !this.registry) continue
                 const toolUse = this.toolUseInputs.get(b.tool_use_id)
-                console.log('[bg] lookup result=' + (toolUse ? JSON.stringify({name: toolUse.name, cmd: String(toolUse.input?.command ?? toolUse.input?.prompt ?? '').slice(0, 40)}) : 'NOT_FOUND') + ' mapSize=' + this.toolUseInputs.size)
+                bgLog('lookup tuid=' + JSON.stringify(b.tool_use_id) + ' found=' + (!!toolUse) + (toolUse ? ' name=' + toolUse.name : '') + ' mapSize=' + this.toolUseInputs.size)
                 if (!toolUse || toolUse.name !== 'Bash') continue
-                // 用 backgroundTaskId 作主键创建 backend task（非 task_started 路径）
                 const cmd = toolUse.input.command ?? toolUse.input.prompt ?? '(后台命令)'
                 const desc = toolUse.input.description ?? cmd
                 const t = this.registry.handleTaskStarted(lsid, {
@@ -208,7 +218,7 @@ export class ClaudeService {
                   task_type: 'local_workflow',
                 })
                 if (t) {
-                  console.log('[bg] backend task CREATED id=' + JSON.stringify(t.id) + ' cmd=' + JSON.stringify(t.command))
+                  bgLog('CREATED task id=' + JSON.stringify(t.id) + ' cmd=' + JSON.stringify(t.command))
                   webContents.send('claude:backend-task', { localSessionId: lsid, op: 'create', task: t })
                 }
               }
