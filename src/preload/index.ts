@@ -62,6 +62,7 @@ contextBridge.exposeInMainWorld('api', {
     readTree: (dirPath: string) => ipcRenderer.invoke('fs:read-tree', dirPath),
     readFile: (filePath: string) => ipcRenderer.invoke('fs:read-file', filePath),
     searchFiles: (dirPath: string) => ipcRenderer.invoke('fs:search-files', dirPath),
+    writeFile: (filePath: string, content: string) => ipcRenderer.invoke('fs:write-file', filePath, content),
   },
   dialog: {
     openDirectory: () => ipcRenderer.invoke('dialog:open-directory'),

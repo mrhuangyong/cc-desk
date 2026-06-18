@@ -58,6 +58,7 @@ interface ProjectsAPI {
 interface FsAPI {
   readTree(dirPath: string): Promise<any[]>
   readFile(filePath: string): Promise<string>
+  writeFile(filePath: string, content: string): Promise<void>
 }
 
 interface PtyAPI {
