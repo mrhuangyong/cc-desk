@@ -3,7 +3,7 @@ import { ArrowDown, Copy, Check } from 'lucide-react'
 import { useStore } from '../state/store'
 import { useI18n } from '../i18n/useI18n'
 import { AttachmentChip } from './AttachmentChip'
-import { TaskPanel } from './TaskPanel'
+import { BackendTaskPanel } from './BackendTaskPanel'
 import { InputBar } from './InputBar'
 import { InputDock } from './InputDock'
 import { BlockRenderer } from './blocks/BlockRenderer'
@@ -216,7 +216,15 @@ export function ChatArea() {
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: 'var(--bg)', position: 'relative' }}>
       {/* 闪烁光标动画 */}
       <style>{`@keyframes blink { 50% { opacity: 0 } }`}</style>
-      <TaskPanel />
+      <BackendTaskPanel
+        tasks={state.tasksBySession[state.activeSessionId] ?? []}
+        backendTasks={state.backendTasksBySession[state.activeSessionId] ?? []}
+        showTodo={state.settings.showTodo}
+        showBackendTask={state.settings.showBackendTask}
+        folded={state.panelFold}
+        activeSessionId={state.activeSessionId}
+        dispatch={dispatch}
+      />
       <div
         ref={scrollRef}
         onScroll={onScroll}
