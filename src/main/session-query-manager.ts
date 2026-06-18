@@ -137,6 +137,6 @@ export class SessionQueryManager {
   async stopTask(localSessionId: string, taskId: string): Promise<void> {
     const sq = this.sessions.get(localSessionId)
     if (!sq) return
-    await (sq.query as any).stopTask(taskId)
+    try { await (sq.query as any).stopTask(taskId) } catch (err) { console.error('[session-query] stopTask failed', err) }
   }
 }
