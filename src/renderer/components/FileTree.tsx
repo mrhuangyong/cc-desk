@@ -15,11 +15,10 @@ function Node({ node, depth }: { node: FileNode; depth: number }) {
   const { dispatch } = useStore()
   const [open, setOpen] = useState(depth === 0)
   const [hovered, setHovered] = useState(false)
-  // 按需加载的子节点：首次展开时读取，避免受 readTree depth=3 限制
-  const [children, setChildren] = useState<FileNode[] | null>(
-    // 顶层节点的 children 已由父级 readTree 读出（depth=3 内），直接复用避免重复请求
-    node.children ?? null
-  )
+  // 按需加载的子节点：首次展开时读取，避免受 readTree depth=3 限制。
+  // 注意：readTree 对深层目录返回 children=[]（depth 到 0），无法区分"空目录"
+  // 和"未读取"，所以统一初始为 null，展开时按需读取该目录单层。
+  const [children, setChildren] = useState<FileNode[] | null>(null)
   const [loading, setLoading] = useState(false)
 
   const toggle = async () => {
