@@ -15,6 +15,7 @@ import { readFile, writeFile, readdir, stat } from 'fs/promises'
 import { existsSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
+import { BUILTIN_COMMANDS } from './builtin-commands'
 
 const HOME = homedir()
 const CLAUDE_DIR = join(HOME, '.claude')
@@ -78,6 +79,9 @@ export interface ClaudeCommand {
   desc: string
   enabled: boolean          // 跟随所属插件
   source: string
+  // 内置命令透传：渲染端据此区分 builtin 并分发到 handler
+  kind?: 'command' | 'builtin'
+  builtinAction?: import('../renderer/editor/types').BuiltinAction
 }
 
 export interface ClaudeHook {
@@ -307,6 +311,10 @@ async function scanCommandsInDir(dir: string, source: string, enabled: boolean):
 export async function getCommands(): Promise<ClaudeCommand[]> {
   const plugins = await getPlugins()
   const out: ClaudeCommand[] = []
+  // 内置命令（最前）
+  for (const b of BUILTIN_COMMANDS) {
+    out.push({ id: b.id, name: b.name, desc: b.desc, enabled: true, source: 'builtin', kind: 'builtin', builtinAction: b.builtinAction })
+  }
   for (const p of plugins) {
     if (!p.enabled) continue
     out.push(...await scanCommandsInDir(join(p.installPath, 'commands'), p.name, true))
