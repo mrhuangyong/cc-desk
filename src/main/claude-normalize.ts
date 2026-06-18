@@ -63,23 +63,19 @@ export function extractBackgroundTaskId(toolResultBlock: any): string | undefine
   if (!toolResultBlock) return undefined
   // 1) tool_result 顶层字段
   const topBg = toolResultBlock.backgroundTaskId
-  console.log('[bg] extract try 1(top):', 'exists=', topBg !== undefined, 'type=', typeof topBg, 'val=', String(topBg ?? ''))
   if (typeof topBg === 'string' && topBg) return topBg
   // 2) structuredContent
   const sc = toolResultBlock.structuredContent
-  console.log('[bg] extract try 2(strucContent):', 'exists=', sc !== undefined)
   if (sc && typeof sc === 'object' && typeof sc.backgroundTaskId === 'string' && sc.backgroundTaskId) return sc.backgroundTaskId
   // 3) content 是对象时
   const c = toolResultBlock.content
-  console.log('[bg] extract try 3(content obj):', 'type=', typeof c, 'isArray=', Array.isArray(c), 'keys=', c && typeof c === 'object' && !Array.isArray(c) ? Object.keys(c).join(',') : 'n/a')
   if (c && typeof c === 'object' && !Array.isArray(c) && typeof c.backgroundTaskId === 'string' && c.backgroundTaskId) return c.backgroundTaskId
   // 4) content 文本中 JSON 兜底
   let text = ''
   if (typeof c === 'string') text = c
   else if (Array.isArray(c)) text = c.map((x: any) => x?.text ?? '').join('')
-  if (text) console.log('[bg] extract try 4(text):', text.slice(0, 200))
+  console.log('[bg] extract: cKeys=' + JSON.stringify(c && typeof c === 'object' && !Array.isArray(c) ? Object.keys(c) : 'not-obj-or-array') + ' topBg=' + JSON.stringify(topBg) + ' textHead=' + JSON.stringify(text.slice(0, 200)))
   const m = text.match(/"backgroundTaskId"\s*:\s*"([^"]+)"/)
   if (m) return m[1]
-  console.log('[bg] extract: ALL FAILED')
   return undefined
 }
