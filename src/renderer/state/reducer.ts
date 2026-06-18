@@ -171,7 +171,8 @@ export function reducer(state: AppState, action: Action): AppState {
       const newTab: Tab = {
         id: nextId('t'),
         type: action.tabType,
-        title: action.tabType === 'browser' ? '浏览器' : action.tabType === 'terminal' ? '终端' : action.tabType === 'review' ? '审查' : '文件'
+        title: action.tabType === 'browser' ? '浏览器' : action.tabType === 'terminal' ? '终端' : action.tabType === 'review' ? '审查' : '文件',
+        ...(action.cwd ? { cwd: action.cwd } : {})
       }
       return {
         ...state,

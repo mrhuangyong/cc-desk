@@ -114,6 +114,20 @@ describe('reducer', () => {
     expect(s2.tabsBySession['s1'].length).toBe(2) // browser 不去重，可多开
   })
 
+  it('OPEN_TAB terminal 类型携带 cwd 写入 Tab', () => {
+    const state = initialState()
+    const next = reducer(state, { type: 'OPEN_TAB', tabType: 'terminal', cwd: '/proj' })
+    const tab = next.tabsBySession['s1'][0]
+    expect(tab.type).toBe('terminal')
+    expect(tab.cwd).toBe('/proj')
+  })
+
+  it('OPEN_TAB 未传 cwd 时 Tab.cwd 为 undefined', () => {
+    const state = initialState()
+    const next = reducer(state, { type: 'OPEN_TAB', tabType: 'browser' })
+    expect(next.tabsBySession['s1'][0].cwd).toBeUndefined()
+  })
+
   it('CLOSE_TAB 关掉最后一个后 activeTabId 为 null', () => {
     const state = initialState()
     const s1 = reducer(state, { type: 'OPEN_FILE_TAB', filePath: 'a.ts', fileName: 'a.ts' })
