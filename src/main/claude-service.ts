@@ -345,6 +345,10 @@ export class ClaudeService {
     const transcript = toSummarize.map((m: any) => `${m.role}: ${m.content.map((b: any) => b.text ?? '').join(' ')}`).join('\n')
     try {
       const summary = await this.runSideQuery(`请用 200 字以内总结以下对话历史的关键信息，用于上下文压缩：\n\n${transcript}`)
+      if (!summary || !summary.trim()) {
+        webContents.send('claude:notice', { ...mkNotice('error', '压缩失败：摘要为空', 'error'), localSessionId })
+        return
+      }
       webContents.send('claude:builtin-result', { localSessionId, op: 'compact', summary, keepRecent: 6 })
     } catch (err) {
       webContents.send('claude:notice', { ...mkNotice('error', `压缩失败：${String(err)}`, 'error'), localSessionId })
@@ -372,16 +376,20 @@ export class ClaudeService {
 
   /** /export：导出会话为 markdown 文件。 */
   async exportSession(localSessionId: string, webContents: WebContents): Promise<void> {
-    const snap = getProjectsSnapshot()
-    const session = findSession(snap.projects, localSessionId)
-    if (!session) return
-    const md = session.messages.map((m: any) => {
-      const role = m.role === 'user' ? '## 🧑 用户' : '## 🤖 助手'
-      const body = m.content.map((b: any) => b.text ?? '').join('\n')
-      return `${role}\n\n${body}`
-    }).join('\n\n---\n\n')
-    const path = await showSaveDialog(`session-${localSessionId}.md`, md)
-    if (path) webContents.send('claude:notice', { ...mkNotice('info', `已导出至 ${path}`, 'info'), localSessionId })
+    try {
+      const snap = getProjectsSnapshot()
+      const session = findSession(snap.projects, localSessionId)
+      if (!session) return
+      const md = session.messages.map((m: any) => {
+        const role = m.role === 'user' ? '## 🧑 用户' : '## 🤖 助手'
+        const body = m.content.map((b: any) => b.text ?? '').join('\n')
+        return `${role}\n\n${body}`
+      }).join('\n\n---\n\n')
+      const path = await showSaveDialog(`session-${localSessionId}.md`, md)
+      if (path) webContents.send('claude:notice', { ...mkNotice('info', `已导出至 ${path}`, 'info'), localSessionId })
+    } catch (err) {
+      webContents.send('claude:notice', { ...mkNotice('error', `导出失败：${String(err)}`, 'error'), localSessionId })
+    }
   }
 
   /** /add-dir：校验目录并通知渲染端记录。 */
@@ -397,6 +405,7 @@ export class ClaudeService {
   private async runSideQuery(prompt: string, cwd?: string): Promise<string> {
     const cfg = getModelProvidersConfig()
     const resolved = resolveActiveProviderModel(cfg)
+    if (!resolved) throw new Error('请先在「设置 → 模型设置」中添加并启用供应商与模型')
     const result = query({
       prompt,
       options: {
