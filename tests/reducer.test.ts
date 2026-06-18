@@ -26,7 +26,7 @@ function initialState(): AppState {
     },
     claudeSessionMap: {},
     pendingDialog: null,
-    dirtyTabIds: {}, queueBySession: {}, tasksBySession: {},
+    dirtyTabIds: {}, lastFileOpenedSeq: 0, queueBySession: {}, tasksBySession: {},
   }
 }
 
@@ -98,6 +98,33 @@ describe('reducer', () => {
     const s1 = reducer(state, { type: 'OPEN_FILE_TAB', filePath: 'src/main.tsx', fileName: 'main.tsx' })
     const s2 = reducer(s1, { type: 'OPEN_FILE_TAB', filePath: 'package.json', fileName: 'package.json' })
     expect(s2.tabsBySession['s1'].length).toBe(2)
+  })
+
+  it('OPEN_FILE_TAB 递增 lastFileOpenedSeq（新开与去重切换都计数）', () => {
+    const state = initialState()
+    expect(state.lastFileOpenedSeq).toBe(0)
+    // 新开
+    const s1 = reducer(state, { type: 'OPEN_FILE_TAB', filePath: 'a.ts', fileName: 'a.ts' })
+    expect(s1.lastFileOpenedSeq).toBe(1)
+    // 同文件再次点击（去重切换）也要计数——用户点击意图即应展开右栏
+    const s2 = reducer(s1, { type: 'OPEN_FILE_TAB', filePath: 'a.ts', fileName: 'a.ts' })
+    expect(s2.lastFileOpenedSeq).toBe(2)
+    expect(s2.tabsBySession['s1'].length).toBe(1) // 仍只有一个 tab
+  })
+
+  it('切换/关闭 Tab 不递增 lastFileOpenedSeq', () => {
+    const state = initialState()
+    const s1 = reducer(state, { type: 'OPEN_FILE_TAB', filePath: 'a.ts', fileName: 'a.ts' })
+    const openedAt = s1.lastFileOpenedSeq
+    const tabId = s1.activeTabIdBySession['s1']!
+    // 开第二个，切回第一个——SELECT_TAB 不递增
+    const s2 = reducer(s1, { type: 'OPEN_FILE_TAB', filePath: 'b.ts', fileName: 'b.ts' })
+    const s3 = reducer(s2, { type: 'SELECT_TAB', tabId })
+    expect(s3.lastFileOpenedSeq).toBe(s2.lastFileOpenedSeq) // SELECT_TAB 不动计数
+    // CLOSE_TAB 不递增
+    const s4 = reducer(s3, { type: 'CLOSE_TAB', tabId })
+    expect(s4.lastFileOpenedSeq).toBe(s2.lastFileOpenedSeq)
+    expect(openedAt).toBe(1)
   })
 
   it('OPEN_TAB 开启 browser 类型 Tab', () => {

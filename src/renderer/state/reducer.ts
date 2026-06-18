@@ -28,6 +28,9 @@ export interface AppState {
   pendingDialog: { reqId: string; dialogKind: string; payload: any; toolUseId?: string } | null
   // 脏 tab 记录：key = tabId，value = true（未保存改动）。FileTab 上报，TabBar 读取消耗。
   dirtyTabIds: Record<string, boolean>
+  // 用户点击文件树打开文件的递增计数：每次 OPEN_FILE_TAB +1。App 监听它，
+  // 检测到文件被点击时自动展开折叠的右栏。切 tab/关 tab 不动它。
+  lastFileOpenedSeq: number
   // 消息排队（queue 模式）：按会话隔离的待发送队列
   queueBySession: Record<string, import('../types').QueuedMessage[]>
   // Claude task：按会话隔离的 task 列表（悬浮面板）
@@ -156,7 +159,8 @@ export function reducer(state: AppState, action: Action): AppState {
       if (existing) {
         return {
           ...state,
-          activeTabIdBySession: { ...state.activeTabIdBySession, [activeSessionId]: existing.id }
+          activeTabIdBySession: { ...state.activeTabIdBySession, [activeSessionId]: existing.id },
+          lastFileOpenedSeq: state.lastFileOpenedSeq + 1
         }
       }
       const newTab: Tab = {
@@ -168,7 +172,8 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         tabsBySession: { ...state.tabsBySession, [activeSessionId]: [...tabs, newTab] },
-        activeTabIdBySession: { ...state.activeTabIdBySession, [activeSessionId]: newTab.id }
+        activeTabIdBySession: { ...state.activeTabIdBySession, [activeSessionId]: newTab.id },
+        lastFileOpenedSeq: state.lastFileOpenedSeq + 1
       }
     }
     case 'OPEN_TAB': {

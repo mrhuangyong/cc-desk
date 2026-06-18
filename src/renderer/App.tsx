@@ -14,6 +14,13 @@ export function App() {
   const [leftCollapsed, setLeftCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(true)  // 右栏默认隐藏
 
+  // 文件树点击打开文件时，自动展开折叠的右栏。监听 lastFileOpenedSeq 计数：
+  // 它只在 OPEN_FILE_TAB（文件树点击）时递增，切 tab/关 tab 不动它，
+  // 故不会因无关 tab 变化误触发展开。
+  useEffect(() => {
+    if (state.lastFileOpenedSeq > 0) setRightCollapsed(false)
+  }, [state.lastFileOpenedSeq])
+
   // 界面主题：始终（含设置页）把 state.theme 落到 document，并持久化。
   // 之前仅 ThemeSwitcher 内驱动，而设置页不渲染 TitleBar/ThemeSwitcher，
   // 导致在设置页改主题无效果。这里在 App 层兜底。
