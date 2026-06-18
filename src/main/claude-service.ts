@@ -196,6 +196,9 @@ export class ClaudeService {
           effort: thinking ?? 'medium',                    // SDK EffortLevel，控制思考强度
           thinking: { type: 'adaptive' },                  // 配合 effort 自适应思考
           additionalDirectories: extraDirs?.length ? extraDirs : undefined,
+          // 模型输出语言跟随界面国际化设置（zh-CN → chinese，en → english）。
+          // SDK Settings.language：Preferred language for Claude responses。
+          settings: { language: settings.lang === 'en' ? 'english' : 'chinese' },
           maxTurns: 20,
           // Required to receive incremental stream_event deltas.
           includePartialMessages: true,
