@@ -45,7 +45,8 @@ export function TerminalTab({ tabId, cwd }: Props) {
     window.api?.pty.create({ tabId, cols: term.cols, rows: term.rows, cwd })
 
     // 链接检测：终端中的 URL 可点击，用内置浏览器打开（非系统浏览器）。
-    const URL_RE = /https?:\/\/[^\s<>)\]"'`]*/g
+    const URL_RE = /https?:\/\/[^\s<>)\]"'`，。、；：！？）】》]+/g
+    const TRAIL_PUNCT = /[.,;:!?)]+$/
     const linkProvider = term.registerLinkProvider({
       provideLinks(bufferLineNumber, callback) {
         const line = term.buffer.active.getLine(bufferLineNumber - 1)
@@ -55,16 +56,19 @@ export function TerminalTab({ tabId, cwd }: Props) {
         let m: RegExpExecArray | null
         URL_RE.lastIndex = 0
         while ((m = URL_RE.exec(text)) !== null) {
+          const raw = m[0]
+          const url = raw.replace(TRAIL_PUNCT, '')
+          if (!url) continue
           const startX = m.index + 1  // xterm buffer 1-indexed
-          const endX = m.index + m[0].length
+          const endX = m.index + url.length
           links.push({
             range: {
               start: { x: startX, y: bufferLineNumber },
               end: { x: endX, y: bufferLineNumber }
             },
-            text: m[0],
-            activate: (_e: MouseEvent, url: string) => {
-              dispatch({ type: 'OPEN_TAB', tabType: 'browser', url })
+            text: url,
+            activate: (_e: MouseEvent, linkText: string) => {
+              dispatch({ type: 'OPEN_TAB', tabType: 'browser', url: linkText })
             }
           })
         }

@@ -15,7 +15,13 @@ function langFromClassName(className?: string): string {
 
 // remark 插件：自动识别文本中的 bare URL，转换为链接节点。
 // 不依赖 unist-util-visit，递归遍历 AST，仅处理 text 类型节点（跳过已有的 link/code 节点）。
-const URL_RE = /https?:\/\/[^\s<>)\]]+/g
+// 排除 CJK 标点避免吃掉 URL 后的中文；西文尾部标点（. , ; : ! ? )）用 cleanUrl 修剪。
+const URL_RE = /https?:\/\/[^\s<>)\]"'`，。、；：！？）】》]+/g
+// 修剪 URL 尾部常见西文标点（URL 内部的 . 不修剪，但末尾孤立的 . , ; : ! ? ) 要剪掉）
+const TRAIL_PUNCT = /[.,;:!?)]+$/
+function cleanUrl(url: string): string {
+  return url.replace(TRAIL_PUNCT, '')
+}
 function remarkLinkify() {
   return (tree: any) => {
     walkAndLinkify(tree)
@@ -34,9 +40,13 @@ function walkAndLinkify(node: any) {
         let m: RegExpExecArray | null
         URL_RE.lastIndex = 0
         while ((m = URL_RE.exec(child.value)) !== null) {
-          if (m.index > last) parts.push({ type: 'text', value: child.value.slice(last, m.index) })
-          parts.push({ type: 'link', url: m[0], children: [{ type: 'text', value: m[0] }] })
-          last = m.index + m[0].length
+          const raw = m[0]
+          const url = cleanUrl(raw)
+          if (url) {
+            if (m.index > last) parts.push({ type: 'text', value: child.value.slice(last, m.index) })
+            parts.push({ type: 'link', url, children: [{ type: 'text', value: url }] })
+          }
+          last = m.index + raw.length
         }
         if (parts.length > 0) {
           if (last < child.value.length) parts.push({ type: 'text', value: child.value.slice(last) })
