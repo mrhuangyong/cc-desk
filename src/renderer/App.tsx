@@ -22,6 +22,22 @@ export function App() {
     localStorage.setItem('cc-desk-theme', state.theme)
   }, [state.theme])
 
+  // 应用级快捷键：Cmd+,（macOS）/ Ctrl+, 切换设置/工作区
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === ',') {
+        e.preventDefault()
+        if (state.currentView === 'settings') {
+          dispatch({ type: 'SET_VIEW', view: 'workspace' })
+        } else {
+          dispatch({ type: 'SET_SETTINGS_SECTION', section: 'general' })
+        }
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [state.currentView, dispatch])
+
   // 界面缩放：zoom 只作用于内容区（TitleBar 之外），避免缩放自定义 titleBar
   // 导致其按钮与 macOS 原生红绿灯（不受 CSS zoom 影响）错位。
   const zoomFactor = (() => {
