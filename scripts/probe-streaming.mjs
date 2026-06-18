@@ -124,4 +124,36 @@ async function main() {
   try { execSync('pkill -f "sleep 60" 2>/dev/null || true') } catch {}
 }
 
-main().catch(e => { console.error('ERROR:', e); process.exit(1) })
+async function probeResume() {
+  console.log('\n=== probeResume: 验证 streaming 模式 resume 恢复历史 ===')
+  // 第一轮：建会话，让 Claude 记住一个事实
+  const c1 = makePushableStream()
+  const q1 = query({ prompt: c1.iterable, options: { permissionMode: 'auto', maxTurns: 5, model: 'qwen' } })
+  c1.push({ type: 'user', message: { role: 'user', content: '记住这个密码：banana7749。只回复"记住了"。' }, parent_tool_use_id: null })
+  let sessionId = null
+  for await (const m of q1) {
+    if (m.type === 'system' && m.subtype === 'init') sessionId = m.session_id
+    if (m.type === 'result') { console.log('>>> 第一轮 sessionId:', sessionId); break }
+  }
+  try { await q1.return() } catch {}
+
+  if (!sessionId) { console.log('>>> 未拿到 sessionId，跳过'); return }
+  // 第二轮：用 resume 恢复，问之前记住的密码
+  const c2 = makePushableStream()
+  const q2 = query({ prompt: c2.iterable, options: { permissionMode: 'auto', maxTurns: 5, model: 'qwen', resume: sessionId } })
+  c2.push({ type: 'user', message: { role: 'user', content: '我之前让你记住的密码是什么？只回复密码本身，不要其他文字。' }, parent_tool_use_id: null })
+  let answer = ''
+  for await (const m of q2) {
+    console.log('>>> [resume round2] msg type:', m.type, m.subtype ?? '')
+    if (m.type === 'result') {
+      console.log('>>> [resume round2] result is_error:', !!m.is_error, 'subtype:', m.subtype, 'result:', JSON.stringify(m.result ?? '').slice(0, 300))
+    }
+    if (m.type === 'stream_event' && m.event?.type === 'content_block_delta' && m.event.delta?.text) answer += m.event.delta.text
+    if (m.type === 'result') break
+  }
+  console.log('>>> 第二轮 Claude 回答:', JSON.stringify(answer.trim()))
+  console.log('>>> resume 验证:', answer.includes('banana7749') ? '✅ 历史上下文可见' : '❌ 历史上下文丢失')
+  try { await q2.return() } catch {}
+}
+
+main().then(probeResume).catch(e => { console.error('ERROR:', e); process.exit(1) })
