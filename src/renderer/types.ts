@@ -86,6 +86,8 @@ export interface Tab {
   filePath?: string
   // browser 类型独有：当前网址
   url?: string
+  // terminal 类型独有：终端工作目录
+  cwd?: string
 }
 
 // 主题 ID

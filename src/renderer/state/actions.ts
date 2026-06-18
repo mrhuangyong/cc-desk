@@ -8,7 +8,7 @@ export type Action =
   | { type: 'SELECT_SESSION'; sessionId: string }
   | { type: 'ADD_MESSAGE'; sessionId: string; message: Message }
   | { type: 'OPEN_FILE_TAB'; filePath: string; fileName: string }
-  | { type: 'OPEN_TAB'; tabType: TabType }
+  | { type: 'OPEN_TAB'; tabType: TabType; cwd?: string }
   | { type: 'CLOSE_TAB'; tabId: string }
   | { type: 'SELECT_TAB'; tabId: string }
   | { type: 'SET_THEME'; theme: ThemeId }
