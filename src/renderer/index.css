@@ -162,7 +162,8 @@ button {
 .md a { color: #3b82f6; text-decoration: none; }
 .md a:hover { text-decoration: underline; }
 .md blockquote {
-  margin: 8px 0; padding: 4px 12px; border-left: 3px solid var(--border);
+  margin: 8px 0; padding: 6px 14px;
+  background: var(--surface-1); border-radius: 8px;
   color: var(--text-muted);
 }
 .md hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
@@ -173,8 +174,9 @@ button {
 }
 /* 表格 */
 .md table { border-collapse: collapse; margin: 8px 0; font-size: 0.95em; }
-.md th, .md td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
-.md th { background: var(--bg-hover); font-weight: 600; }
+.md th, .md td { border-bottom: 1px solid var(--border-hair); padding: 6px 12px; text-align: left; }
+.md th { background: var(--surface-2); font-weight: 600; border-bottom: 1px solid var(--border-hair); }
+.md tr:last-child td { border-bottom: none; }
 /* 任务列表 */
 .md input[type='checkbox'] { margin-right: 6px; }
 /* 图片 */
@@ -184,7 +186,7 @@ button {
    shiki codeToHtml 输出两个 <pre>：.shiki-light / .shiki-dark。
    浅色主题显 light、藏 dark；codex-dark 显 dark、藏 light。 */
 .md .shiki-block { margin: 8px 0; }
-.md .shiki-block pre { margin: 0; border-radius: 8px; overflow-x: auto; font-family: var(--font-mono); }
+.md .shiki-block pre { margin: 0; border-radius: 10px; overflow-x: auto; font-family: var(--font-mono); background: var(--surface-1); padding: 12px 14px; }
 [data-theme='codex-dark'] .md .shiki-light { display: none; }
 [data-theme='codex-light'] .md .shiki-dark,
 [data-theme='codex-warm'] .md .shiki-dark,
