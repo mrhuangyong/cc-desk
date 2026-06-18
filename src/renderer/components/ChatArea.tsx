@@ -162,7 +162,6 @@ export function ChatArea() {
       }
     })
     const unsubBackendTask = window.api.backendTask.onEvent((data: any) => {
-      console.log('[rx] backendTask event: ' + JSON.stringify({ op: data?.op, taskId: data?.task?.id, sid: data?.localSessionId }))
       if (!data || !data.task) return
       if (data.op === 'create' || data.op === 'update') {
         dispatch({ type: 'UPSERT_BACKEND_TASK', sessionId: data.localSessionId, task: data.task })
