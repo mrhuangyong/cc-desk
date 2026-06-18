@@ -17,7 +17,7 @@ contextBridge.exposeInMainWorld('api', {
     onDialogRequest: (cb: (data: any) => void) => { ipcRenderer.on('claude:dialog-request', (_, data) => cb(data)) },
     dialogResponse: (payload: { reqId: string; result: any }) => ipcRenderer.invoke('claude:dialog-response', payload),
     removeAllListeners: () => {
-      ['claude:system', 'claude:delta', 'claude:blocks', 'claude:notice', 'claude:task', 'claude:result', 'claude:error', 'claude:aborted', 'claude:dialog-request']
+      ['claude:system', 'claude:delta', 'claude:blocks', 'claude:notice', 'claude:task', 'claude:result', 'claude:error', 'claude:aborted', 'claude:dialog-request', 'claude:backend-task']
         .forEach(ch => ipcRenderer.removeAllListeners(ch))
     },
   },
@@ -87,7 +87,10 @@ contextBridge.exposeInMainWorld('api', {
     list: (localSessionId: string) => ipcRenderer.invoke('backend-task:list', localSessionId),
     kill: (localSessionId: string, taskId: string) => ipcRenderer.invoke('backend-task:kill', localSessionId, taskId),
     onEvent: (cb: (data: any) => void) => {
-      ipcRenderer.on('claude:backend-task', (_, data) => cb(data))
+      const channel = 'claude:backend-task'
+      const handler = (_: any, data: any) => cb(data)
+      ipcRenderer.on(channel, handler)
+      return () => ipcRenderer.removeListener(channel, handler)
     },
   },
 })

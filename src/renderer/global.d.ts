@@ -74,7 +74,7 @@ interface PtyAPI {
 interface BackendTaskAPI {
   list(localSessionId: string): Promise<any[]>
   kill(localSessionId: string, taskId: string): Promise<{ ok: boolean; error?: string }>
-  onEvent(cb: (data: any) => void): void
+  onEvent(cb: (data: any) => void): () => void
 }
 
 interface DialogAPI {
