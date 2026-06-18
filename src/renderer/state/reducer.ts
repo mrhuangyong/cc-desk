@@ -35,6 +35,10 @@ export interface AppState {
   queueBySession: Record<string, import('../types').QueuedMessage[]>
   // Claude task：按会话隔离的 task 列表（悬浮面板）
   tasksBySession: Record<string, import('../types').TaskItem[]>
+  // 后台任务：按会话隔离的后台任务列表（悬浮面板）
+  backendTasksBySession: Record<string, import('../types').BackendTask[]>
+  // 右上角 Panel 折叠状态（三层独立）
+  panelFold: { root: boolean; taskCard: boolean; backendTaskCard: boolean }
 }
 
 // TODO: idCounter is module-level mutable state — non-deterministic IDs. Acceptable for prototype; thread through state if persistence/time-travel needed later.
@@ -499,6 +503,20 @@ export function reducer(state: AppState, action: Action): AppState {
     }
     case 'CLEAR_TASKS': {
       return { ...state, tasksBySession: { ...state.tasksBySession, [action.sessionId]: [] } }
+    }
+    case 'UPSERT_BACKEND_TASK': {
+      const list = state.backendTasksBySession[action.sessionId] ?? []
+      const idx = list.findIndex(t => t.id === action.task.id)
+      const next = idx >= 0
+        ? list.map(t => t.id === action.task.id ? action.task : t)
+        : [...list, action.task]
+      return { ...state, backendTasksBySession: { ...state.backendTasksBySession, [action.sessionId]: next } }
+    }
+    case 'CLEAR_BACKEND_TASKS': {
+      return { ...state, backendTasksBySession: { ...state.backendTasksBySession, [action.sessionId]: [] } }
+    }
+    case 'SET_PANEL_FOLD': {
+      return { ...state, panelFold: { ...state.panelFold, [action.panel]: action.folded } }
     }
     default:
       return state

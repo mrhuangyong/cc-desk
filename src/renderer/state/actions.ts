@@ -61,3 +61,8 @@ export type Action =
   // Claude task 状态（悬浮面板）
   | { type: 'UPSERT_TASK'; sessionId: string; task: import('../types').TaskItem }
   | { type: 'CLEAR_TASKS'; sessionId: string }
+  // 后台任务（悬浮面板）
+  | { type: 'UPSERT_BACKEND_TASK'; sessionId: string; task: import('../types').BackendTask }
+  | { type: 'CLEAR_BACKEND_TASKS'; sessionId: string }
+  // 右上角 Panel 折叠状态（三层独立）
+  | { type: 'SET_PANEL_FOLD'; panel: 'root' | 'taskCard' | 'backendTaskCard'; folded: boolean }

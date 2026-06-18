@@ -93,6 +93,7 @@ export interface AppSettings {
   queueMode: string         // queue | interrupt
   showThinking: boolean
   showTodo: boolean
+  showBackendTask: boolean
   autoArchive: boolean
   archiveDays: string
   dataPath: string
@@ -186,6 +187,7 @@ const defaults: AppSettings = {
   queueMode: 'queue',
   showThinking: false,
   showTodo: false,
+  showBackendTask: true,
   autoArchive: true,
   archiveDays: '7',
   dataPath: process.env.HOME || '',
@@ -250,7 +252,7 @@ function withDefaults(raw: Partial<AppSettings>): AppSettings {
   ;(['theme', 'lang', 'zoom', 'proxy', 'terminalFont', 'queueMode', 'archiveDays', 'dataPath'] as const).forEach(k => {
     ;(merged as any)[k] = (raw as any)[k] ?? (defaults as any)[k]
   })
-  ;(['inheritTerminal', 'taskNotify', 'notifySound', 'showThinking', 'showTodo', 'autoArchive'] as const).forEach(k => {
+  ;(['inheritTerminal', 'taskNotify', 'notifySound', 'showThinking', 'showTodo', 'showBackendTask', 'autoArchive'] as const).forEach(k => {
     ;(merged as any)[k] = (raw as any)[k] ?? (defaults as any)[k]
   })
   return merged

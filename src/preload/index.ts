@@ -82,5 +82,12 @@ contextBridge.exposeInMainWorld('api', {
     onExit: (cb: (data: any) => void) => {
       ipcRenderer.on('pty:exit', (_, data) => cb(data))
     }
-  }
+  },
+  backendTask: {
+    list: (localSessionId: string) => ipcRenderer.invoke('backend-task:list', localSessionId),
+    kill: (localSessionId: string, taskId: string) => ipcRenderer.invoke('backend-task:kill', localSessionId, taskId),
+    onEvent: (cb: (data: any) => void) => {
+      ipcRenderer.on('claude:backend-task', (_, data) => cb(data))
+    },
+  },
 })

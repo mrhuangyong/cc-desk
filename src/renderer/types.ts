@@ -74,6 +74,18 @@ export interface TaskItem {
   status: TaskStatus
 }
 
+// 后台任务（Task 工具 run_in_background 起的长进程，悬浮面板展示）
+export type BackendTaskStatus = 'running' | 'completed' | 'failed' | 'stopped'
+export interface BackendTask {
+  id: string
+  localSessionId: string
+  command: string
+  taskType?: string
+  status: BackendTaskStatus
+  startedAt: number
+  lastKnownAt: number
+}
+
 // 会话：归属于某个项目
 export interface Session {
   id: string
@@ -180,6 +192,7 @@ export interface AppSettings {
   queueMode: string
   showThinking: boolean
   showTodo: boolean
+  showBackendTask: boolean
   autoArchive: boolean
   archiveDays: string
   dataPath: string
