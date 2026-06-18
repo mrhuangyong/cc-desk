@@ -251,6 +251,28 @@ describe('BackendTaskRegistry', () => {
     expect(result).toBeNull()
   })
 
+  it('handleTaskUpdated 跨 session 不生效，不修改任务', () => {
+    const reg = new BackendTaskRegistry()
+    // 在 session 's1' 中创建任务
+    reg.handleTaskStarted('s1', {
+      task_id: 'cross1',
+      description: 's1 的任务',
+      task_type: 'local_workflow',
+    })
+
+    // 通过 session 's2' 调用 handleTaskUpdated 不应生效
+    const result = reg.handleTaskUpdated('s2', {
+      task_id: 'cross1',
+      patch: { status: 'completed' },
+    })
+    expect(result).toBeNull()
+
+    // 任务状态应保持不变（仍是 running）
+    const tasks = reg.listBySession('s1')
+    expect(tasks).toHaveLength(1)
+    expect(tasks[0].status).toBe('running')
+  })
+
   // ---- 重复 task_id 不覆盖 ----
   it('重复 task_id 不覆盖已有记录', () => {
     const reg = new BackendTaskRegistry()
