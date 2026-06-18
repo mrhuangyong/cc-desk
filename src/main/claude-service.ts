@@ -236,6 +236,9 @@ export class ClaudeService {
           else if (evt.delta?.type === 'thinking_delta') webContents.send('claude:delta', { localSessionId: lsid, kind: 'thinking', delta: evt.delta.thinking })
         } else if (evt?.type === 'content_block_start' && evt.content_block?.type === 'tool_use') {
           const tb = evt.content_block
+          // AskUserQuestion 由底部面板承载（见 assistant 分支拦截），不推 tool_use_start，
+          // 否则它会先入 streaming blocks 渲染成卡片（assistant_blocks 的过滤此时已太晚）。
+          if (tb.name === 'AskUserQuestion') break
           webContents.send('claude:blocks', { localSessionId: lsid, op: 'tool_use_start', block: { type: 'tool_use', id: tb.id, name: tb.name, input: tb.input, status: 'running' } })
           // 记录所有 tool_use 的 input，供 tool_result 阶段提取 auto-background 信息
           if (tb.name === 'Bash' || tb.name === 'Task') {
