@@ -12,6 +12,8 @@ export interface SessionQuery {
   query: Query
   controller: PushController<SDKUserMessage>
   iterateTask: Promise<void>
+  onEvent: (msg: any) => void        // mutable, updated on each ensureSession
+  onError: (err: unknown) => void    // mutable, updated on each ensureSession
 }
 
 export interface EnsureSessionOpts {
@@ -75,15 +77,24 @@ export class SessionQueryManager {
 
   ensureSession(opts: EnsureSessionOpts): SessionQuery {
     const existing = this.sessions.get(opts.localSessionId)
-    if (existing) return existing
+    if (existing) {
+      // 复用：更新回调到最新（支持窗口重载后新 webContents）
+      existing.onEvent = opts.onEvent
+      existing.onError = opts.onError
+      return existing
+    }
     const controller = new PushController<SDKUserMessage>()
     const q = opts.buildQuery(controller)
     const sq: SessionQuery = {
       localSessionId: opts.localSessionId,
       query: q,
       controller,
-      iterateTask: this.runIterate(opts.localSessionId, q, opts.onEvent, opts.onError),
+      onEvent: opts.onEvent,
+      onError: opts.onError,
+      iterateTask: Promise.resolve(),  // placeholder, set below
     }
+    // runIterate reads sq.onEvent/onError (mutable), so pass sq reference
+    sq.iterateTask = this.runIterate(opts.localSessionId, sq)
     this.sessions.set(opts.localSessionId, sq)
     return sq
   }
@@ -98,19 +109,14 @@ export class SessionQueryManager {
     })
   }
 
-  private async runIterate(
-    localSessionId: string,
-    q: Query,
-    onEvent: (msg: any) => void,
-    onError: (err: unknown) => void,
-  ): Promise<void> {
+  private async runIterate(localSessionId: string, sq: SessionQuery): Promise<void> {
     try {
-      for await (const message of q) {
-        onEvent(message)
+      for await (const message of sq.query) {
+        sq.onEvent(message)
       }
     } catch (err) {
       // 先通知渲染端（清掉 streaming 状态、显示错误），再做本地清理。
-      onError(err)
+      sq.onError(err)
       this.handleCrash(localSessionId, err)
     }
   }
