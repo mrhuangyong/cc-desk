@@ -24,6 +24,7 @@ function initialState(): AppState {
     },
     claudeSessionMap: {},
     pendingDialog: null,
+    dirtyTabIds: {},
   }
 }
 
