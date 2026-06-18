@@ -44,6 +44,7 @@ export interface Message {
   content: ContentBlock[]
   // 可选：拾取的网页元素附件，发送时带入消息
   attachment?: PickedElement
+  attachments?: DraftAttachment[]   // 输入框上方 chip 栏的附件（图片/文件/网页元素）
   notices?: SystemNotice[]
   costUSD?: number
   durationMs?: number
@@ -51,10 +52,10 @@ export interface Message {
   isError?: boolean
 }
 
-// 输入框草稿：文本 + 可选的拾取附件
+// 输入框草稿：TipTap 文档 JSON + 上方 chip 栏附件
 export interface Draft {
-  text: string
-  attachment?: PickedElement
+  doc: import('./editor/types').TipTapDocJSON | null
+  attachments: DraftAttachment[]
 }
 
 // 会话：归属于某个项目
@@ -215,3 +216,19 @@ export interface Plugin {
   commands: number           // 命令数
   mcps: number               // MCP 数
 }
+
+// ===== 输入框内联 chip / 草稿附件 =====
+
+// 内联 chip（技能或文件），作为 TipTap inline 节点的属性
+export interface InlineChipAttrs {
+  refId: string   // skill: 带 source 前缀的 id（如 "superpowers:frontend-design"），仅内部标识
+                  // file: 文件绝对路径
+  label: string   // skill: 技能 name（如 "frontend-design"），展开文本用——Claude 用 SkillTool 按 name 调用
+                  // file: 文件名（不含目录），仅显示
+}
+
+// 草稿附件（上方 chip 栏），扩展现有 PickedElement
+export type DraftAttachment =
+  | { type: 'pickedElement'; el: PickedElement }
+  | { type: 'image'; name: string; base64: string; mediaType: string }
+  | { type: 'file'; name: string; path: string }

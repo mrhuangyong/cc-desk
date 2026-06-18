@@ -12,11 +12,12 @@ export type Action =
   | { type: 'CLOSE_TAB'; tabId: string }
   | { type: 'SELECT_TAB'; tabId: string }
   | { type: 'SET_THEME'; theme: ThemeId }
-  // 草稿：输入框文本 + 拾取附件分离管理
-  | { type: 'SET_DRAFT_TEXT'; text: string }
-  | { type: 'SET_DRAFT_ATTACHMENT'; attachment: PickedElement }
-  | { type: 'CLEAR_DRAFT_ATTACHMENT' }
-  | { type: 'SEND_MESSAGE' } // 把当前 draft（text + attachment）合成消息追加到激活会话
+  // 草稿：TipTap doc JSON + 上方 chip 栏附件
+  | { type: 'SET_DRAFT_DOC'; doc: import('../editor/types').TipTapDocJSON | null }
+  | { type: 'ADD_DRAFT_ATTACHMENT'; attachment: import('../types').DraftAttachment }
+  | { type: 'REMOVE_DRAFT_ATTACHMENT'; index: number }
+  | { type: 'CLEAR_DRAFT' }
+  | { type: 'SEND_MESSAGE' } // 把当前 draft（doc + attachments）序列化后追加到激活会话
   | { type: 'SET_VIEW'; view: AppView }
   | { type: 'SET_SETTINGS_SECTION'; section: SettingsSection }
   // 流式输出：blocks 拼接规约（按会话隔离）
