@@ -114,4 +114,29 @@ export class SessionQueryManager {
       this.sessions.delete(localSessionId)
     }
   }
+
+  async interrupt(localSessionId: string): Promise<void> {
+    const sq = this.sessions.get(localSessionId)
+    if (!sq) return
+    try { await (sq.query as any).interrupt() } catch (err) { console.error('[session-query] interrupt failed', err) }
+  }
+
+  async closeSession(localSessionId: string): Promise<void> {
+    const sq = this.sessions.get(localSessionId)
+    if (!sq) return
+    sq.controller.close()
+    try { await sq.query.return() } catch (err) { console.error('[session-query] closeSession return failed', err) }
+    this.sessions.delete(localSessionId)
+  }
+
+  async closeAll(): Promise<void> {
+    const ids = [...this.sessions.keys()]
+    await Promise.all(ids.map(id => this.closeSession(id)))
+  }
+
+  async stopTask(localSessionId: string, taskId: string): Promise<void> {
+    const sq = this.sessions.get(localSessionId)
+    if (!sq) return
+    await (sq.query as any).stopTask(taskId)
+  }
 }

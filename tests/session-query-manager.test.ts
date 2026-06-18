@@ -86,4 +86,51 @@ describe('SessionQueryManager', () => {
     mgr.pushMessage('s1', 'hello')
     expect(mgr.sessions.get('s1')!.controller.isClosed()).toBe(false)
   })
+
+  it('interrupt 调用 query.interrupt', async () => {
+    const fakeQuery = makeFakeQuery()
+    const mgr = new SessionQueryManager()
+    const wc = {} as WebContents
+    mgr.ensureSession({ localSessionId: 's1', webContents: wc, onEvent: () => {}, buildQuery: () => fakeQuery as any })
+    await mgr.interrupt('s1')
+    expect(fakeQuery._interruptCalled()).toBe(true)
+  })
+
+  it('interrupt 不存在的 session 不抛错', async () => {
+    const mgr = new SessionQueryManager()
+    await expect(mgr.interrupt('nope')).resolves.toBeUndefined()
+  })
+
+  it('closeSession 调用 query.return 并删除 session', async () => {
+    const fakeQuery = makeFakeQuery()
+    const mgr = new SessionQueryManager()
+    const wc = {} as WebContents
+    mgr.ensureSession({ localSessionId: 's1', webContents: wc, onEvent: () => {}, buildQuery: () => fakeQuery as any })
+    await mgr.closeSession('s1')
+    expect(fakeQuery._returnCalled()).toBe(true)
+    expect(mgr.sessions.has('s1')).toBe(false)
+  })
+
+  it('closeAll 关闭所有 session', async () => {
+    const queries: any[] = []
+    const mgr = new SessionQueryManager()
+    const wc = {} as WebContents
+    const buildQuery = () => { const f = makeFakeQuery(); queries.push(f); return f as any }
+    mgr.ensureSession({ localSessionId: 's1', webContents: wc, onEvent: () => {}, buildQuery })
+    mgr.ensureSession({ localSessionId: 's2', webContents: wc, onEvent: () => {}, buildQuery })
+    await mgr.closeAll()
+    expect(mgr.sessions.size).toBe(0)
+    expect(queries.every(q => q._returnCalled())).toBe(true)
+  })
+
+  it('stopTask 调用 query.stopTask', async () => {
+    const fakeQuery = makeFakeQuery()
+    let stoppedTask: string | null = null
+    fakeQuery.stopTask = async (id: string) => { stoppedTask = id }
+    const mgr = new SessionQueryManager()
+    const wc = {} as WebContents
+    mgr.ensureSession({ localSessionId: 's1', webContents: wc, onEvent: () => {}, buildQuery: () => fakeQuery as any })
+    await mgr.stopTask('s1', 'task_xyz')
+    expect(stoppedTask).toBe('task_xyz')
+  })
 })
