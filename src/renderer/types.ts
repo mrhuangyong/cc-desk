@@ -91,6 +91,8 @@ export interface Session {
   id: string
   title: string
   messages: Message[]
+  archived?: boolean
+  archivedAt?: number
   updatedAt?: number    // 最后活动时间戳（ms），用于自动归档判断
 }
 
@@ -134,7 +136,7 @@ export interface FileNode {
 // 设置子页标识
 export type SettingsSection =
   | 'general' | 'code-preview' | 'model' | 'skills'
-  | 'mcp' | 'plugins' | 'commands' | 'hooks'
+  | 'mcp' | 'plugins' | 'commands' | 'hooks' | 'archived'
 
 // 顶层视图
 export type AppView = 'workspace' | 'settings'

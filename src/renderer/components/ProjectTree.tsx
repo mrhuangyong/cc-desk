@@ -35,8 +35,8 @@ export function ProjectTree({ onOpenFiles, expandedProjects, onToggleExpand, tre
     <div style={{ flex: 1, overflowY: 'auto' }}>
       {state.projects.map(project => {
         const filtered = q
-          ? project.sessions.filter(s => s.title.toLowerCase().includes(q))
-          : project.sessions
+          ? project.sessions.filter(s => !s.archived && s.title.toLowerCase().includes(q))
+          : project.sessions.filter(s => !s.archived)
         if (q && filtered.length === 0) return null
 
         const sorted = [...filtered].sort((a, b) => {
