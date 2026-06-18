@@ -24,25 +24,21 @@ describe('DeleteConfirmIcon', () => {
     expect(onConfirm).toHaveBeenCalledTimes(1)
   })
 
-  it('确认态有取消按钮，点击取消还原', () => {
+  it('确认态只有一个确认按钮，无取消按钮', () => {
     const onConfirm = vi.fn()
     render(<DeleteConfirmIcon onConfirm={onConfirm} />)
     fireEvent.click(screen.getByRole('button', { name: /归档/ }))
-    fireEvent.click(screen.getByRole('button', { name: /取消/ }))
-    // 回到初始态：归档按钮可见，无确认按钮
-    expect(screen.getByRole('button', { name: /归档/ }).querySelector('svg')).toBeTruthy()
-    expect(screen.queryByRole('button', { name: /确认归档/ })).toBeNull()
-    expect(onConfirm).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: /确认归档/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /取消/ })).toBeNull()
   })
 
-  it('鼠标离开确认态区域则还原', () => {
+  it('鼠标离开确认态则还原', () => {
     const onConfirm = vi.fn()
-    const { container } = render(<DeleteConfirmIcon onConfirm={onConfirm} />)
-    fireEvent.click(screen.getByRole('button', { name: /归档/ }))
-    // mouseLeave 绑在包裹确认按钮的外层 span
-    const span = container.querySelector('span')
-    expect(span).toBeTruthy()
-    fireEvent.mouseLeave(span!)
+    render(<DeleteConfirmIcon onConfirm={onConfirm} />)
+    const btn = screen.getByRole('button', { name: /归档/ })
+    fireEvent.click(btn)
+    const confirmBtn = screen.getByRole('button', { name: /确认归档/ })
+    fireEvent.mouseLeave(confirmBtn)
     expect(screen.getByRole('button', { name: /归档/ }).querySelector('svg')).toBeTruthy()
     expect(onConfirm).not.toHaveBeenCalled()
   })
