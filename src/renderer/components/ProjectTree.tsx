@@ -82,6 +82,7 @@ export function ProjectTree({ onOpenFiles, expandedProjects, onToggleExpand, tre
               return (
               <div
                 key={session.id}
+                data-active={active || undefined}
                 onMouseEnter={() => setHoveredSession(session.id)}
                 onMouseLeave={() => setHoveredSession(null)}
                 onClick={() => dispatch({ type: 'SELECT_SESSION', sessionId: session.id })}
@@ -95,7 +96,6 @@ export function ProjectTree({ onOpenFiles, expandedProjects, onToggleExpand, tre
                   cursor: 'pointer'
                 }}
               >
-                {active && <span data-testid="session-active-bar" style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: 'var(--accent)' }} />}
                 <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' }}>
                   <MessageCircle size={13} style={{ flexShrink: 0 }} />
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.title}</span>
