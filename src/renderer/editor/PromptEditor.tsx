@@ -27,15 +27,19 @@ interface Props {
   onDocChange: (doc: TipTapDocJSON) => void
   onPasteFiles?: (files: File[]) => void
   onSend?: () => void            // Enter（无 Shift）触发发送
+  onBuiltinRun?: (item: SlashMenuItem) => void   // 内置命令选中回调
+  onEditorReady?: (editor: any) => void           // 暴露 editor 实例给父组件（用于插文本）
 }
 
-export function PromptEditor({ doc, placeholder, allSlashItems, getCwd, onDocChange, onPasteFiles, onSend }: Props) {
+export function PromptEditor({ doc, placeholder, allSlashItems, getCwd, onDocChange, onPasteFiles, onSend, onBuiltinRun, onEditorReady }: Props) {
   const slashItemsRef = useRef(allSlashItems)
   const getCwdRef = useRef(getCwd)
   const onSendRef = useRef(onSend)
+  const onBuiltinRunRef = useRef(onBuiltinRun)
   useEffect(() => { slashItemsRef.current = allSlashItems }, [allSlashItems])
   useEffect(() => { getCwdRef.current = getCwd }, [getCwd])
   useEffect(() => { onSendRef.current = onSend }, [onSend])
+  useEffect(() => { onBuiltinRunRef.current = onBuiltinRun }, [onBuiltinRun])
 
   const editor = useEditor({
     extensions: [
@@ -43,7 +47,7 @@ export function PromptEditor({ doc, placeholder, allSlashItems, getCwd, onDocCha
       Placeholder.configure({ placeholder }),
       SkillChip,
       FileChip,
-      buildSlashExtension(() => slashItemsRef.current),
+      buildSlashExtension(() => slashItemsRef.current, (item) => onBuiltinRunRef.current?.(item)),
       buildFileExtension(() => getCwdRef.current()),
     ],
     content: doc ?? '',
@@ -87,6 +91,9 @@ export function PromptEditor({ doc, placeholder, allSlashItems, getCwd, onDocCha
     const cur = JSON.stringify(editor.getJSON())
     if (cur !== JSON.stringify(doc)) editor.commands.setContent(doc, { emitUpdate: false })
   }, [doc, editor])
+
+  // editor 初始化后回调一次（暴露给父组件用于插文本等）
+  useEffect(() => { if (editor) onEditorReady?.(editor) }, [editor, onEditorReady])
 
   // 降级：editor 初始化失败 → 原生 textarea
   if (!editor) {
