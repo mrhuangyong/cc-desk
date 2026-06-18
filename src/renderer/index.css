@@ -237,3 +237,9 @@ button {
   outline: 2px solid var(--accent);
   border-radius: 999;
 }
+
+/* tab 横向滚动：细滚动条 */
+.tab-scroll::-webkit-scrollbar { height: 6px; }
+.tab-scroll::-webkit-scrollbar-track { background: transparent; }
+.tab-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.tab-scroll::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }

@@ -61,6 +61,8 @@ export function TabBar() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div style={{ display: 'flex', minHeight: 36, alignItems: 'stretch', borderBottom: '1px solid var(--border)', background: 'var(--bg-sidebar)', position: 'relative' }}>
+        {/* tab 列表：可水平滚动，tab 不缩 */}
+        <div style={{ display: 'flex', flex: 1, minWidth: 0, overflowX: 'auto' }} className="tab-scroll">
         {tabs.map(t => (
           <div
             key={t.id}
@@ -69,7 +71,7 @@ export function TabBar() {
               padding: '0 12px', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
               borderBottom: activeTabId === t.id ? '2px solid var(--accent)' : '2px solid transparent',
               color: activeTabId === t.id ? 'var(--text)' : 'var(--text-muted)', fontSize: 13,
-              maxWidth: 140
+              maxWidth: 140, flexShrink: 0, whiteSpace: 'nowrap',
             }}
           >
             <span style={{ display: 'inline-flex', alignItems: 'center' }}>{(() => { const Icon = TAB_ICON[t.type]; return <Icon size={14} />; })()}</span>
@@ -92,8 +94,9 @@ export function TabBar() {
             >×</button>
           </div>
         ))}
+        </div>
         {/* + 按钮：点击展开类型选择下拉菜单 */}
-        <button onClick={() => setMenuOpen(o => !o)} title="新增 Tab" style={{ padding: '0 12px', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center' }}><Plus size={16} /></button>
+        <button onClick={() => setMenuOpen(o => !o)} title="新增 Tab" style={{ padding: '0 12px', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}><Plus size={16} /></button>
         {menuOpen && (
           <>
             {/* 点外部关闭 */}
