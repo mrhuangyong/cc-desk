@@ -120,7 +120,7 @@ export const FileTab = forwardRef<FileTabHandle, Props>(function FileTab({ tabId
   const showMdToggle = isMarkdown(filePath)
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }} onKeyDown={onKeyDown}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', minHeight: 0 }} onKeyDown={onKeyDown}>
       {error && (
         <div style={{ padding: '6px 10px', background: 'rgba(220,38,38,.12)', color: 'var(--danger, #dc2626)', fontSize: 12 }}>{error}</div>
       )}
@@ -137,7 +137,7 @@ export const FileTab = forwardRef<FileTabHandle, Props>(function FileTab({ tabId
         </div>
       )}
       {showMdToggle && viewMode === 'preview' ? (
-        <div style={{ flex: 1, overflow: 'auto', padding: 12 }}>
+        <div style={{ flex: 1, overflow: 'auto', padding: 12, minHeight: 0 }}>
           <MarkdownRenderer text={content} />
         </div>
       ) : (
