@@ -1,4 +1,5 @@
 import { useState, useRef, type CSSProperties, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import type { LucideIcon } from 'lucide-react'
 import { FileText, Globe, SquareTerminal, FileDiff, Plus } from 'lucide-react'
 import { useStore } from '../state/store'
@@ -28,6 +29,8 @@ export function TabBar() {
   const fileTabRefs = useRef<Record<string, FileTabHandle | null>>({})
   const [confirmTabId, setConfirmTabId] = useState<string | null>(null)
   const addBtnRef = useRef<HTMLButtonElement | null>(null)
+  // + 按钮的视口坐标（点击时取）。菜单用 portal 渲染到 body（在内容区 zoom 之外），
+  // fixed 定位相对真实视口，与 getBoundingClientRect 坐标系一致，不受 zoom 扭曲。
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
 
   // 渲染所有已打开 tab（常驻 DOM，靠 display 切显隐）。
@@ -53,7 +56,7 @@ export function TabBar() {
           />
         )
       } else if (t.type === 'browser') {
-        body = <BrowserTab />
+        body = <BrowserTab initialUrl={t.url} />
       } else if (t.type === 'review') {
         body = <ReviewTab />
       } else {
@@ -128,7 +131,7 @@ export function TabBar() {
           style={{ padding: '0 12px', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}
         ><Plus size={16} /></button>
         </div>
-        {menuOpen && menuPos && (
+        {menuOpen && menuPos && createPortal(
           <>
             {/* 点外部关闭 */}
             <div onClick={() => setMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 90 }} />
@@ -152,7 +155,8 @@ export function TabBar() {
                 </button>
               ))}
             </div>
-          </>
+          </>,
+          document.body
         )}
       </div>
         {confirmTabId && (

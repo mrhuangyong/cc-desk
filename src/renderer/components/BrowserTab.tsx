@@ -74,12 +74,12 @@ type WebviewEl = HTMLDivElement & {
   openDevTools?: () => void
 }
 
-export function BrowserTab() {
+export function BrowserTab({ initialUrl }: { initialUrl?: string }) {
   const { state, dispatch } = useStore()
   const webviewRef = useRef<WebviewEl | null>(null)
-  const [url, setUrl] = useState('')
-  const [input, setInput] = useState(url)
-  const [history, setHistory] = useState<string[]>(url ? [url] : [])
+  const [url, setUrl] = useState(initialUrl ?? '')
+  const [input, setInput] = useState(initialUrl ?? '')
+  const [history, setHistory] = useState<string[]>(initialUrl ? [initialUrl] : [])
   const [idx, setIdx] = useState(0)
   const [picking, setPicking] = useState(false)
 
