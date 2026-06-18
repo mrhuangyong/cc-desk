@@ -2,33 +2,53 @@ import { useState } from 'react'
 import { Folder, FolderOpen, MessageCircle, FolderTree, ChevronDown, ChevronRight, Plus } from 'lucide-react'
 import { useStore } from '../state/store'
 import { DeleteConfirmIcon } from './DeleteConfirmIcon'
+import { formatSessionTime } from '../utils/formatSessionTime'
 
 interface Props {
   onOpenFiles: (projectId: string) => void
-  // 展开的项目 id 集合（未在其中视为收起）
   expandedProjects: Set<string>
   onToggleExpand: (projectId: string) => void
-  // 会话过滤关键词（按标题匹配，空则不过滤）
   treeFilter: string
 }
+
+const MAX_VISIBLE_SESSIONS = 5
 
 export function ProjectTree({ onOpenFiles, expandedProjects, onToggleExpand, treeFilter }: Props) {
   const { state, dispatch } = useStore()
   const [hoveredProject, setHoveredProject] = useState<string | null>(null)
   const [hoveredSession, setHoveredSession] = useState<string | null>(null)
+  const [expandedSessionCounts, setExpandedSessionCounts] = useState<Set<string>>(new Set())
 
   const q = treeFilter.trim().toLowerCase()
+  const activeSessionId = state.activeSessionId
+
+  const toggleSessionExpand = (projectId: string) => {
+    setExpandedSessionCounts(prev => {
+      const next = new Set(prev)
+      if (next.has(projectId)) next.delete(projectId)
+      else next.add(projectId)
+      return next
+    })
+  }
 
   return (
     <div style={{ flex: 1, overflowY: 'auto' }}>
       {state.projects.map(project => {
-        // 过滤：有关键词时，只保留标题匹配的会话；项目无匹配会话则隐藏整个项目
-        const visibleSessions = q
+        const filtered = q
           ? project.sessions.filter(s => s.title.toLowerCase().includes(q))
           : project.sessions
-        if (q && visibleSessions.length === 0) return null
+        if (q && filtered.length === 0) return null
+
+        const sorted = [...filtered].sort((a, b) => {
+          if (a.id === activeSessionId) return -1
+          if (b.id === activeSessionId) return 1
+          return (b.updatedAt ?? 0) - (a.updatedAt ?? 0)
+        })
 
         const expanded = expandedProjects.has(project.id)
+        const sessionExpanded = expandedSessionCounts.has(project.id)
+        const total = sorted.length
+        const visible = sessionExpanded ? sorted : sorted.slice(0, MAX_VISIBLE_SESSIONS)
 
         return (
           <div key={project.id}>
@@ -58,8 +78,9 @@ export function ProjectTree({ onOpenFiles, expandedProjects, onToggleExpand, tre
                 </span>
               </span>
             </div>
-            {expanded && visibleSessions.map(session => {
-              const active = state.activeSessionId === session.id
+            {expanded && visible.map(session => {
+              const active = activeSessionId === session.id
+              const hovered = hoveredSession === session.id
               return (
               <div
                 key={session.id}
@@ -70,21 +91,41 @@ export function ProjectTree({ onOpenFiles, expandedProjects, onToggleExpand, tre
                   padding: '6px 12px 6px 30px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   fontSize: 'var(--font-size)',
                   color: active ? 'var(--text)' : 'var(--text-muted)',
-                  background: active || hoveredSession === session.id ? 'var(--bg-hover)' : 'transparent',
+                  background: active || hovered ? 'var(--bg-hover)' : 'transparent',
                   fontWeight: active ? 500 : 400,
                   cursor: 'pointer'
                 }}
               >
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' }}>
                   <span style={{ width: 6, height: 6, borderRadius: 999, background: active ? 'var(--accent)' : 'transparent', flexShrink: 0 }} />
-                  <MessageCircle size={13} /> {session.title}
+                  <MessageCircle size={13} style={{ flexShrink: 0 }} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.title}</span>
                 </span>
-                <span style={{ opacity: hoveredSession === session.id ? 1 : 0, pointerEvents: hoveredSession === session.id ? 'auto' : 'none' }}>
-                  <DeleteConfirmIcon onConfirm={() => dispatch({ type: 'DELETE_SESSION', projectId: project.id, sessionId: session.id })} />
+                <span style={{ position: 'relative', minWidth: 40, display: 'inline-flex', justifyContent: 'flex-end', flexShrink: 0 }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', opacity: hovered ? 0 : 1, transition: 'opacity .15s' }}>
+                    {formatSessionTime(session.updatedAt ?? 0)}
+                  </span>
+                  <span style={{
+                    position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)',
+                    opacity: hovered ? 1 : 0, pointerEvents: hovered ? 'auto' : 'none', transition: 'opacity .15s',
+                  }}>
+                    <DeleteConfirmIcon onConfirm={() => dispatch({ type: 'DELETE_SESSION', projectId: project.id, sessionId: session.id })} />
+                  </span>
                 </span>
               </div>
               )
             })}
+            {expanded && total > MAX_VISIBLE_SESSIONS && (
+              <div
+                onClick={(e) => { e.stopPropagation(); toggleSessionExpand(project.id) }}
+                style={{
+                  padding: '4px 12px 4px 30px', fontSize: 11, color: 'var(--text-muted)',
+                  cursor: 'pointer', textAlign: 'left',
+                }}
+              >
+                {sessionExpanded ? '收起' : `+ 展开更多 (${total - MAX_VISIBLE_SESSIONS})`}
+              </div>
+            )}
           </div>
         )
       })}
