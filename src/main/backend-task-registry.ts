@@ -79,6 +79,7 @@ export class BackendTaskRegistry {
   handleTaskUpdated(localSessionId: string, event: TaskUpdatedEvent): BackendTask | null {
     const task = this.tasks.get(event.task_id)
     if (!task) return null
+    if (task.localSessionId !== localSessionId) return null
 
     if (event.patch.status !== undefined) {
       task.status = this.mapStatus(event.patch.status)
