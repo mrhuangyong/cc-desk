@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Trash2, Archive, Check, X } from 'lucide-react'
+import { Trash2, Archive, Check } from 'lucide-react'
 import type { CSSProperties } from 'react'
 
 interface Props {
@@ -18,27 +18,15 @@ export function DeleteConfirmIcon({ onConfirm, variant = 'archive' }: Props) {
 
   if (confirming) {
     return (
-      <span
+      <button
         onMouseLeave={() => setConfirming(false)}
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}
+        aria-label={`确认${actionLabel}`}
+        onClick={(e) => { e.stopPropagation(); onConfirm(); setConfirming(false) }}
+        title={`再次点击确认${actionLabel}`}
+        style={confirmBtnStyle(isDelete)}
       >
-        <button
-          aria-label={`确认${actionLabel}`}
-          onClick={(e) => { e.stopPropagation(); onConfirm(); setConfirming(false) }}
-          title={`再次点击确认${actionLabel}`}
-          style={confirmBtnStyle(isDelete)}
-        >
-          <Check size={13} />
-        </button>
-        <button
-          aria-label="取消"
-          onClick={(e) => { e.stopPropagation(); setConfirming(false) }}
-          title="取消"
-          style={cancelBtnStyle}
-        >
-          <X size={13} />
-        </button>
-      </span>
+        <Check size={14} />
+      </button>
     )
   }
 
@@ -62,16 +50,11 @@ const idleBtnStyle: CSSProperties = {
 
 function confirmBtnStyle(isDelete: boolean): CSSProperties {
   return {
-    display: 'inline-flex', alignItems: 'center', padding: '2px 4px', lineHeight: 1,
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    padding: '2px 4px', lineHeight: 1,
     background: isDelete ? 'rgba(255,59,48,0.12)' : 'var(--bg-hover)',
     border: `1px solid ${isDelete ? 'rgba(255,59,48,0.4)' : 'var(--border)'}`,
     borderRadius: 4, cursor: 'pointer',
     color: isDelete ? '#ff3b30' : 'var(--accent)',
   }
-}
-
-const cancelBtnStyle: CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', padding: '2px 4px', lineHeight: 1,
-  background: 'none', border: 'none', cursor: 'pointer',
-  color: 'var(--text-muted)',
 }
