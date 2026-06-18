@@ -50,6 +50,15 @@ describe('extractBackgroundTaskId', () => {
     expect(extractBackgroundTaskId(block)).toBe('bg_def456')
   })
 
+  it('从 content 对象（BashOutput）提取 backgroundTaskId', () => {
+    // SDK 将 Bash 工具的返回值直接作为 tool_result.content，BashOutput 对象含 backgroundTaskId
+    const block = {
+      type: 'tool_result', tool_use_id: 'tu1',
+      content: { stdout: 'Command running in background with ID: bl6xbce7r', stderr: '', backgroundTaskId: 'bl6xbce7r', interrupted: false },
+    }
+    expect(extractBackgroundTaskId(block)).toBe('bl6xbce7r')
+  })
+
   it('从 content 文本 JSON 提取', () => {
     const block = { type: 'tool_result', tool_use_id: 'tu1', content: [{ type: 'text', text: '{"backgroundTaskId":"bg_ghi789"}' }] }
     expect(extractBackgroundTaskId(block)).toBe('bg_ghi789')
