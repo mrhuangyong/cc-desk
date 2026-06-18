@@ -261,7 +261,7 @@ export function ChatArea() {
             // 用户消息：右对齐，浅灰块
             <div key={m.id} className="msg-row is-user" style={{
               maxWidth: '80%', alignSelf: 'flex-end',
-              background: 'var(--bg-hover)', borderRadius: 10, padding: '9px 13px',
+              background: 'var(--surface-1)', borderRadius: 'var(--radius-lg)', padding: '9px 14px',
               color: 'var(--text)',
               display: 'flex', flexDirection: 'column', gap: 6,
               userSelect: 'text', cursor: 'text',
@@ -292,7 +292,7 @@ export function ChatArea() {
             style={{
               position: 'absolute', left: '50%', transform: 'translateX(-50%)', bottom: '100%', marginBottom: 20,
               width: 34, height: 34, borderRadius: '50%',
-              background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+              background: 'var(--surface-1)',
               boxShadow: 'var(--shadow-float)', color: 'var(--text)',
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               cursor: 'pointer', zIndex: 50,
