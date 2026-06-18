@@ -1,5 +1,20 @@
 import { describe, it, expect } from 'vitest'
-import { PushController } from '../src/main/session-query-manager'
+import { PushController, SessionQueryManager } from '../src/main/session-query-manager'
+import type { WebContents } from 'electron'
+
+function makeFakeQuery() {
+  let interruptCalled = false
+  let returnCalled = false
+  const fakeQuery = {
+    [Symbol.asyncIterator]() { return { next: async () => ({ value: undefined, done: true }) } },
+    interrupt: async () => { interruptCalled = true },
+    return: async () => { returnCalled = true; return { value: undefined, done: true } },
+    stopTask: async (_id: string) => {},
+    _interruptCalled: () => interruptCalled,
+    _returnCalled: () => returnCalled,
+  }
+  return fakeQuery
+}
 
 describe('PushController', () => {
   it('push 后 next 能按顺序取出', async () => {
@@ -39,5 +54,36 @@ describe('PushController', () => {
     const iter = c.iterable[Symbol.asyncIterator]()
     const r = await iter.next()
     expect(r.done).toBe(true)
+  })
+})
+
+describe('SessionQueryManager', () => {
+  it('ensureSession 首次创建，再次调用复用同一 session', () => {
+    const fakeQuery = makeFakeQuery()
+    const mgr = new SessionQueryManager()
+    const wc = {} as WebContents
+    const buildQuery = () => fakeQuery as any
+    const sq1 = mgr.ensureSession({ localSessionId: 's1', webContents: wc, onEvent: () => {}, buildQuery })
+    const sq2 = mgr.ensureSession({ localSessionId: 's1', webContents: wc, onEvent: () => {}, buildQuery })
+    expect(sq1).toBe(sq2)
+  })
+
+  it('不同 localSessionId 创建不同 session', () => {
+    const fakeQuery = makeFakeQuery()
+    const mgr = new SessionQueryManager()
+    const wc = {} as WebContents
+    const buildQuery = () => fakeQuery as any
+    const sq1 = mgr.ensureSession({ localSessionId: 's1', webContents: wc, onEvent: () => {}, buildQuery })
+    const sq2 = mgr.ensureSession({ localSessionId: 's2', webContents: wc, onEvent: () => {}, buildQuery })
+    expect(sq1).not.toBe(sq2)
+  })
+
+  it('pushMessage 后 controller 未关闭', () => {
+    const fakeQuery = makeFakeQuery()
+    const mgr = new SessionQueryManager()
+    const wc = {} as WebContents
+    mgr.ensureSession({ localSessionId: 's1', webContents: wc, onEvent: () => {}, buildQuery: () => fakeQuery as any })
+    mgr.pushMessage('s1', 'hello')
+    expect(mgr.sessions.get('s1')!.controller.isClosed()).toBe(false)
   })
 })
