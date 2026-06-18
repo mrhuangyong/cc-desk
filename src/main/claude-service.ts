@@ -190,8 +190,28 @@ export class ClaudeService {
             webContents.send('claude:notice', { ...mkNotice('auth', text, am.error ? 'warn' : 'info'), localSessionId: lsid })
             break
           }
-          case 'task_started':
-          case 'task_updated':
+          case 'task_started': {
+            // 结构化 task 事件：推到 claude:task，渲染端维护 task 面板
+            const tm = message as any
+            webContents.send('claude:task', {
+              localSessionId: lsid,
+              kind: 'started',
+              taskId: tm.task_id,
+              description: tm.description ?? '',
+              taskType: tm.task_type ?? '',
+            })
+            break
+          }
+          case 'task_updated': {
+            const tm = message as any
+            webContents.send('claude:task', {
+              localSessionId: lsid,
+              kind: 'updated',
+              taskId: tm.task_id,
+              patch: tm.patch ?? {},
+            })
+            break
+          }
           case 'task_progress':
           case 'task_notification':
             webContents.send('claude:notice', { ...mkNotice('task', `任务事件：${message.type}`, 'info'), localSessionId: lsid }); break

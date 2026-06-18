@@ -29,6 +29,7 @@ function makeInitialState(seedProjects?: Project[]): AppState {
       pendingDialog: null,
       dirtyTabIds: {},
       queueBySession: {},
+      tasksBySession: {},
     }
   }
   return {
@@ -53,6 +54,7 @@ function makeInitialState(seedProjects?: Project[]): AppState {
     pendingDialog: null,
     dirtyTabIds: {},
     queueBySession: {},
+    tasksBySession: {},
   }
 }
 

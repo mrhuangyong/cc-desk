@@ -30,6 +30,8 @@ export interface AppState {
   dirtyTabIds: Record<string, boolean>
   // 消息排队（queue 模式）：按会话隔离的待发送队列
   queueBySession: Record<string, import('../types').QueuedMessage[]>
+  // Claude task：按会话隔离的 task 列表（悬浮面板）
+  tasksBySession: Record<string, import('../types').TaskItem[]>
 }
 
 // TODO: idCounter is module-level mutable state — non-deterministic IDs. Acceptable for prototype; thread through state if persistence/time-travel needed later.
@@ -479,6 +481,17 @@ export function reducer(state: AppState, action: Action): AppState {
     }
     case 'CLEAR_QUEUE': {
       return { ...state, queueBySession: { ...state.queueBySession, [action.sessionId]: [] } }
+    }
+    case 'UPSERT_TASK': {
+      const list = state.tasksBySession[action.sessionId] ?? []
+      const idx = list.findIndex(t => t.id === action.task.id)
+      const next = idx >= 0
+        ? list.map(t => t.id === action.task.id ? action.task : t)
+        : [...list, action.task]
+      return { ...state, tasksBySession: { ...state.tasksBySession, [action.sessionId]: next } }
+    }
+    case 'CLEAR_TASKS': {
+      return { ...state, tasksBySession: { ...state.tasksBySession, [action.sessionId]: [] } }
     }
     default:
       return state
