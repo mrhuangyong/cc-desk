@@ -207,7 +207,7 @@ button {
   position: absolute; bottom: -32px;
   opacity: 0; transition: opacity 0.12s;
   padding: 4px; border-radius: 6px;
-  background: var(--bg-elevated); border: 1px solid var(--border);
+  background: var(--surface-1);
   box-shadow: var(--shadow-float); color: var(--text-muted);
   cursor: pointer; display: inline-flex; align-items: center;
   line-height: 0; z-index: 20;
