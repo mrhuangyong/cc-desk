@@ -5,7 +5,7 @@ import type { WebContents } from 'electron'
 import { getSettings } from './settings-store'
 import { getModelProvidersConfig, resolveActiveProviderModel, buildSdkEnv } from './cc-desk-store'
 import { getGeneralConfig } from './claude-config'
-import { normalizeBetaBlocks, extractToolResults, mkNotice } from './claude-normalize'
+import { normalizeBetaBlocks, extractToolResults, extractBackgroundTaskId, mkNotice } from './claude-normalize'
 
 /**
  * ClaudeService wraps the Claude Agent SDK `query()` into a renderer-facing
@@ -32,6 +32,8 @@ export class ClaudeService {
   private dialogResolvers = new Map<string, (r: { behavior: 'completed'; result: unknown } | { behavior: 'cancelled' }) => void>()
   private streamRef: Awaited<ReturnType<typeof query>> | null = null
   private registry: BackendTaskRegistry | null = null
+  // 记录 Bash 工具的 tool_use block，供 tool_result 阶段提取 auto-background 命令
+  private toolUseInputs = new Map<string, { name: string; input: any }>()
 
   /**
    * Bridge the SDK's blocking `onUserDialog` callback to a renderer-side dialog
@@ -103,6 +105,7 @@ export class ClaudeService {
     const general = await getGeneralConfig()
 
     this.abortController = new AbortController()
+    this.toolUseInputs.clear()
 
     // 代理环境变量（来自常规设置 proxy）
     const proxyEnv: Record<string, string> = general.proxy
@@ -163,6 +166,10 @@ export class ClaudeService {
             } else if (evt?.type === 'content_block_start' && evt.content_block?.type === 'tool_use') {
               const tb = evt.content_block
               webContents.send('claude:blocks', { localSessionId: lsid, op: 'tool_use_start', block: { type: 'tool_use', id: tb.id, name: tb.name, input: tb.input, status: 'running' } })
+              // 记录所有 tool_use 的 input，供 tool_result 阶段提取 auto-background 信息
+              if (tb.name === 'Bash' || tb.name === 'Task') {
+                this.toolUseInputs.set(tb.id, { name: tb.name, input: tb.input })
+              }
             }
             break
           }
@@ -175,6 +182,29 @@ export class ClaudeService {
             const results = extractToolResults((message as any).message?.content || [])
             for (const r of results) {
               webContents.send('claude:blocks', { localSessionId: lsid, op: 'tool_result', toolUseId: r.toolUseId, result: { content: r.content, isError: r.isError } })
+            }
+            // 检测 auto-background 命令：Bash tool_result 带 backgroundTaskId → 建 backend task
+            const rawContent = (message as any).message?.content || []
+            if (Array.isArray(rawContent)) {
+              for (const b of rawContent) {
+                if (b?.type !== 'tool_result') continue
+                const bgId = extractBackgroundTaskId(b)
+                if (!bgId || !this.registry) continue
+                const toolUse = this.toolUseInputs.get(b.tool_use_id)
+                if (!toolUse || toolUse.name !== 'Bash') continue
+                // 用 backgroundTaskId 作主键创建 backend task（非 task_started 路径）
+                const cmd = toolUse.input.command ?? toolUse.input.prompt ?? '(后台命令)'
+                const desc = toolUse.input.description ?? cmd
+                const t = this.registry.handleTaskStarted(lsid, {
+                  task_id: bgId,
+                  description: desc,
+                  prompt: cmd,
+                  task_type: 'local_workflow',
+                })
+                if (t) {
+                  webContents.send('claude:backend-task', { localSessionId: lsid, op: 'create', task: t })
+                }
+              }
             }
             break
           }
