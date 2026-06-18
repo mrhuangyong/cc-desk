@@ -19,7 +19,7 @@ export const PERMISSION_MODE_MAP: Record<string, string> = {
   '完全访问':   'bypassPermissions',
 }
 
-export function getPermissionMode(label: string | undefined): string {
+export function getPermissionMode(label: string | null | undefined): string {
   return (label && PERMISSION_MODE_MAP[label]) || 'default'
 }
 
