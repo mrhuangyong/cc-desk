@@ -9,7 +9,7 @@ import type {
 } from '../main/claude-config'
 
 interface ClaudeAPI {
-  send(opts: { prompt: string; localSessionId?: string; sessionId?: string; cwd?: string }): Promise<void>
+  send(opts: { prompt: string; localSessionId?: string; sessionId?: string; cwd?: string; permission?: string; thinking?: 'low' | 'medium' | 'high'; extraDirs?: string[] }): Promise<void>
   stop(localSessionId: string): Promise<void>
   onSystem(cb: (data: { sessionId: string; model: string; tools: string[] }) => void): void
   onDelta(cb: (data: { kind: 'text' | 'thinking'; delta: string }) => void): void
@@ -20,6 +20,7 @@ interface ClaudeAPI {
   onError(cb: (data: { error: string }) => void): void
   onAborted(cb: (data: any) => void): void
   onDialogRequest(cb: (data: any) => void): void
+  onBuiltinResult(cb: (data: any) => void): void
   dialogResponse(payload: { reqId: string; result: any }): Promise<void>
   removeAllListeners(): void
 }
@@ -112,6 +113,12 @@ interface ClaudeConfigAPI {
   general: {
     get(): Promise<GeneralConfig>
     save(cfg: Partial<GeneralConfig>): Promise<void>
+  }
+  builtin: {
+    compact(localSessionId: string): Promise<void>
+    init(opts: { cwd: string }): Promise<void>
+    exportSession(localSessionId: string): Promise<void>
+    addDir(opts: { localSessionId: string; dir: string }): Promise<void>
   }
 }
 

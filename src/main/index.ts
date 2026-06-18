@@ -56,6 +56,10 @@ function createWindow() {
   ipcMain.handle('claude:dialog-response', (_e, { reqId, result }) => {
     claude.resolveDialog(reqId, result)
   })
+  ipcMain.handle('cc:builtin:compact', (_e, localSessionId: string) => claude.compactSession(localSessionId, win.webContents))
+  ipcMain.handle('cc:builtin:init', (_e, opts: { cwd: string }) => claude.initProject(opts.cwd, win.webContents))
+  ipcMain.handle('cc:builtin:export', (_e, localSessionId: string) => claude.exportSession(localSessionId, win.webContents))
+  ipcMain.handle('cc:builtin:add-dir', (_e, opts: { localSessionId: string; dir: string }) => claude.addDir(opts.localSessionId, opts.dir, win.webContents))
 
   // Settings
   ipcMain.handle('settings:get', () => getSettings())

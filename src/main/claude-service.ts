@@ -1,10 +1,14 @@
 // src/main/claude-service.ts
+import { existsSync } from 'fs'
+import { writeFile } from 'fs/promises'
+import { join } from 'path'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { BackendTaskRegistry } from './backend-task-registry'
 import type { SessionQueryManager, PushController, SDKUserMessage } from './session-query-manager'
 import type { WebContents } from 'electron'
 import { getSettings } from './settings-store'
 import { getModelProvidersConfig, resolveActiveProviderModel, buildSdkEnv } from './cc-desk-store'
+import { getProjectsSnapshot } from './projects-store'
 import { getGeneralConfig } from './claude-config'
 import { normalizeBetaBlocks, extractToolResults, extractBackgroundTaskId, mkNotice } from './claude-normalize'
 import { getPermissionMode } from './builtin-commands'
@@ -327,4 +331,109 @@ export class ClaudeService {
   stopTask(localSessionId: string, taskId: string): Promise<void> {
     return this.manager?.stopTask(localSessionId, taskId) ?? Promise.resolve()
   }
+
+  /** /compact：读会话历史，调 SDK 摘要，回填（保留最近 6 条）。 */
+  async compactSession(localSessionId: string, webContents: WebContents): Promise<void> {
+    const snap = getProjectsSnapshot()
+    const session = findSession(snap.projects, localSessionId)
+    if (!session) return
+    if (session.messages.length <= 6) {
+      webContents.send('claude:notice', { ...mkNotice('info', '消息较少，无需压缩', 'info'), localSessionId })
+      return
+    }
+    const toSummarize = session.messages.slice(0, -6)
+    const transcript = toSummarize.map((m: any) => `${m.role}: ${m.content.map((b: any) => b.text ?? '').join(' ')}`).join('\n')
+    try {
+      const summary = await this.runSideQuery(`请用 200 字以内总结以下对话历史的关键信息，用于上下文压缩：\n\n${transcript}`)
+      webContents.send('claude:builtin-result', { localSessionId, op: 'compact', summary, keepRecent: 6 })
+    } catch (err) {
+      webContents.send('claude:notice', { ...mkNotice('error', `压缩失败：${String(err)}`, 'error'), localSessionId })
+    }
+  }
+
+  /** /init：在 cwd 生成 CLAUDE.md，已存在问覆盖。 */
+  async initProject(cwd: string, webContents: WebContents): Promise<void> {
+    const target = join(cwd, 'CLAUDE.md')
+    if (existsSync(target)) {
+      const ok = await showOverwriteDialog(target)
+      if (!ok) {
+        webContents.send('claude:notice', { ...mkNotice('info', '已取消，未改动', 'info'), localSessionId: '' })
+        return
+      }
+    }
+    try {
+      const content = await this.runSideQuery('分析当前项目并生成 CLAUDE.md：包含项目概述、技术栈、常用命令、代码结构。直接输出 markdown 内容，不要用代码块包裹。', cwd)
+      await writeFile(target, content || '', 'utf-8')
+      webContents.send('claude:notice', { ...mkNotice('info', `已生成 ${target}`, 'info'), localSessionId: '' })
+    } catch (err) {
+      webContents.send('claude:notice', { ...mkNotice('error', `生成失败：${String(err)}`, 'error'), localSessionId: '' })
+    }
+  }
+
+  /** /export：导出会话为 markdown 文件。 */
+  async exportSession(localSessionId: string, webContents: WebContents): Promise<void> {
+    const snap = getProjectsSnapshot()
+    const session = findSession(snap.projects, localSessionId)
+    if (!session) return
+    const md = session.messages.map((m: any) => {
+      const role = m.role === 'user' ? '## 🧑 用户' : '## 🤖 助手'
+      const body = m.content.map((b: any) => b.text ?? '').join('\n')
+      return `${role}\n\n${body}`
+    }).join('\n\n---\n\n')
+    const path = await showSaveDialog(`session-${localSessionId}.md`, md)
+    if (path) webContents.send('claude:notice', { ...mkNotice('info', `已导出至 ${path}`, 'info'), localSessionId })
+  }
+
+  /** /add-dir：校验目录并通知渲染端记录。 */
+  async addDir(localSessionId: string, dir: string, webContents: WebContents): Promise<void> {
+    if (!existsSync(dir)) {
+      webContents.send('claude:notice', { ...mkNotice('error', `目录不存在：${dir}`, 'error'), localSessionId })
+      return
+    }
+    webContents.send('claude:builtin-result', { localSessionId, op: 'add-dir', dir })
+  }
+
+  /** 旁路 query：跑一次性摘要/生成，不复用会话 manager。 */
+  private async runSideQuery(prompt: string, cwd?: string): Promise<string> {
+    const cfg = getModelProvidersConfig()
+    const resolved = resolveActiveProviderModel(cfg)
+    const result = query({
+      prompt,
+      options: {
+        model: resolved?.model.sdkModelId,
+        cwd,
+        maxTurns: cwd ? 8 : 1,
+        permissionMode: 'bypassPermissions',
+      } as any,
+    })
+    let text = ''
+    for await (const m of result) {
+      if (m.type === 'assistant' && Array.isArray((m as any).message?.content)) {
+        text = ((m as any).message.content as any[]).filter(b => b.type === 'text').map(b => b.text).join('')
+      }
+    }
+    return text
+  }
+}
+
+function findSession(projects: any[], localSessionId: string): any | null {
+  for (const p of projects) {
+    const s = p.sessions.find((x: any) => x.id === localSessionId)
+    if (s) return s
+  }
+  return null
+}
+
+async function showOverwriteDialog(target: string): Promise<boolean> {
+  const { dialog } = await import('electron')
+  const r = await dialog.showMessageBox({ type: 'question', buttons: ['覆盖', '取消'], defaultId: 1, message: `${target} 已存在，是否覆盖？` })
+  return r.response === 0
+}
+
+async function showSaveDialog(defaultName: string, content: string): Promise<string | null> {
+  const { dialog } = await import('electron')
+  const r = await dialog.showSaveDialog({ defaultPath: defaultName, filters: [{ name: 'Markdown', extensions: ['md'] }] })
+  if (r.canceled || !r.filePath) return null
+  await writeFile(r.filePath, content, 'utf-8')
+  return r.filePath
 }
