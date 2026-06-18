@@ -190,6 +190,16 @@ export class ClaudeService {
           }
           case 'assistant': {
             const blocks = normalizeBetaBlocks((message as any).message?.content || [])
+            // assistant 消息含完整 tool_use input（stream_event 的 content_block_start 时 input 还是空壳，
+            // 这里补全，供 user 阶段提取后台命令文本）
+            const aContent = (message as any).message?.content || []
+            if (Array.isArray(aContent)) {
+              for (const ab of aContent) {
+                if (ab?.type === 'tool_use' && (ab.name === 'Bash' || ab.name === 'Task')) {
+                  this.toolUseInputs.set(ab.id, { name: ab.name, input: ab.input })
+                }
+              }
+            }
             webContents.send('claude:blocks', { localSessionId: lsid, op: 'assistant_blocks', blocks, uuid: (message as any).uuid })
             break
           }
@@ -204,21 +214,26 @@ export class ClaudeService {
               for (const b of rawContent) {
                 if (b?.type !== 'tool_result') continue
                 const bgId = extractBackgroundTaskId(b)
-                bgLog('extract tuid=' + JSON.stringify(b.tool_use_id) + ' bgId=' + JSON.stringify(bgId ?? null) + ' hasReg=' + !!this.registry)
                 if (!bgId || !this.registry) continue
                 const toolUse = this.toolUseInputs.get(b.tool_use_id)
-                bgLog('lookup tuid=' + JSON.stringify(b.tool_use_id) + ' found=' + (!!toolUse) + (toolUse ? ' name=' + toolUse.name : '') + ' mapSize=' + this.toolUseInputs.size)
-                if (!toolUse || toolUse.name !== 'Bash') continue
-                const cmd = toolUse.input.command ?? toolUse.input.prompt ?? '(后台命令)'
-                const desc = toolUse.input.description ?? cmd
+                // tool_result content 文本（用于兜底提取命令）
+                let resultText = ''
+                const bc = b.content
+                if (typeof bc === 'string') resultText = bc
+                else if (Array.isArray(bc)) resultText = bc.map((x: any) => x?.text ?? '').join('')
+                // 命令优先级：toolUse.input.command → 文本里 "ID: xxx" 前的上下文 → 占位
+                let cmd = toolUse?.input?.command || toolUse?.input?.prompt || ''
+                if (!cmd) {
+                  // 没拿到命令文本，用结果文本头部作展示
+                  cmd = resultText.split('\n')[0].slice(0, 60) || '(后台命令)'
+                }
                 const t = this.registry.handleTaskStarted(lsid, {
                   task_id: bgId,
-                  description: desc,
+                  description: cmd,
                   prompt: cmd,
                   task_type: 'local_workflow',
                 })
                 if (t) {
-                  bgLog('CREATED task id=' + JSON.stringify(t.id) + ' cmd=' + JSON.stringify(t.command))
                   webContents.send('claude:backend-task', { localSessionId: lsid, op: 'create', task: t })
                 }
               }

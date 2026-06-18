@@ -64,6 +64,14 @@ describe('extractBackgroundTaskId', () => {
     expect(extractBackgroundTaskId(block)).toBe('bg_ghi789')
   })
 
+  it('从 Bash 后台命令的人类可读文本提取 ID（SDK 0.3.178 主路径）', () => {
+    const block = {
+      type: 'tool_result', tool_use_id: 'tu1',
+      content: 'Command running in background with ID: bsm94mjx1. Output is being written to: /tmp/x.output',
+    }
+    expect(extractBackgroundTaskId(block)).toBe('bsm94mjx1')
+  })
+
   it('无 backgroundTaskId 返回 undefined', () => {
     const block = { type: 'tool_result', tool_use_id: 'tu1', content: 'just some output' }
     expect(extractBackgroundTaskId(block)).toBeUndefined()
