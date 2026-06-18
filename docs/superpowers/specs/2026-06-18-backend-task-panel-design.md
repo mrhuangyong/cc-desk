@@ -32,53 +32,47 @@ cc-desk 中 Claude 通过 Claude Agent SDK 的 `query()` 执行命令（`src/mai
 - 不做"反馈给 Claude"——经讨论，反馈依赖实时输出，与"不要实时"矛盾，砍掉
 
 ### 终止机制路线
-**backgroundTaskId 驱动（小工程）**：cc-desk 不接管命令执行，而是从 SDK 流事件里提取后台任务的稳定标识 `backgroundTaskId`，据此探活与终止（调 `TaskOutput` 探活、`TaskStop` 终止——具体可行性见前置 gate 实验结果）。
+**`Query.stopTask(taskId)` 驱动**：`query()` 返回的 `Query` 对象自带 `stopTask()` 方法，cc-desk 直接调用即可终止后台任务，零额外 SDK 探索成本。
 
-> **不采用 MCP 自定义 Bash（内置终端）路线**：该路线能力最强（一次性解决退出感知/PID/终止/未来输出），但需在 cc-desk 内实现完整 Bash 工具替代品，工程量最大。本设计暂不采用，作为未来升级方向保留。
+### 退出感知
+**`task_notification` 推送事件**：SDK 在任务完成/失败/被终止时主动推 `system(task_notification)` 事件，cc-desk 被动接收，无需轮询探活。
 
-## 最大风险：SDK 后台任务的实际机制（前置 gate）
+## Task 1 验证结论（2026-06-18，从 SDK v0.3.178 类型定义直接确认）
 
-整个"可控 + 退出感知"能力的可行性，押在 SDK 后台任务机制上。
+**所有 4 个待验证点均已确认，分支 A 成立，且架构比预期更简单。**
 
-### 已验证事实（SDK v0.3.178 类型定义）
+### 数据源：SDK `system` 事件（非 tool_result 解析）
 
-读取 `node_modules/@anthropic-ai/claude-agent-sdk/sdk-tools.d.ts` 确认，SDK 已把"后台"概念收敛为统一 API，**不再是旧的 `Bash(run_in_background)` + `BashOutput` + `KillShell` 三件套**：
-
-| 工具 | 作用 | 关键字段 |
+| SDK 事件 | 字段 | 用途 |
 |---|---|---|
-| `Bash` | 普通同步命令执行（`run_in_background` 字段在 Bash 上已无后台语义） | `BashInput` |
-| `Task`（Agent） | 起后台 agent，`run_in_background: true` | 返回 `backgroundTaskId` |
-| `TaskOutput` | **主动读后台任务输出**（`task_id`, `block`, `timeout`）——实时输出的官方入口 | `TaskOutputInput` |
-| `TaskStop` | **终止后台任务**（`task_id`，旧 `shell_id` 已废弃） | `TaskStopInput` |
+| `system` / `task_started` | `task_id`, `description`, `prompt`, `task_type`, `subagent_type` | CREATE 任务（task_id 直接当主键） |
+| `system` / `task_updated` | `task_id`, `patch: { status, ... }` | UPDATE 状态 |
+| `system` / `task_notification` | `task_id`, `status: 'completed'\|'failed'\|'stopped'` | **任务结束感知**（原生推送，无需轮询探活） |
 
-`BashOutput` 接口含 `backgroundTaskId?: string`、`backgroundedByUser`、`assistantAutoBackgrounded`——说明 **`backgroundTaskId` 是跨工具的稳定字符串主键**，cc-desk 可直接用，不靠 toolUseId 凑，也不靠 `process.kill(pid,0)` 这种脆弱探活。
+`task_id` 是稳定 UUID 字符串，跨所有事件一致。`task_type === 'local_workflow'` 用于区分为"后台进程"还是"Claude 内部待办"。
 
-### 仍需实验确认的点（实现第一步）
+> 现状：`claude-service.ts` 已在处理 `task_started`（line 193）和 `task_updated`（line 205），转发为 `claude:task` 给 TaskPanel。**`task_notification` 被当作普通 notice 丢弃了**（line 216-217），而这正是退出感知的关键事件。
 
-1. **`backgroundTaskId` 在 tool_result 里的具体位置/JSON 结构**。现状 `claude-normalize.ts:extractToolResults` 把 tool_result.content 拍平成字符串，会吃掉结构化字段——需要 dump 一次真实 tool_result 确认 `backgroundTaskId` 是在 content 文本里、还是单独的 JSON 字段。
-2. **cc-desk 能否直接调用 `TaskStop` / `TaskOutput`**。这些是 Claude 侧工具，cc-desk 自己调用路径未确认——可能要走 `claude` CLI 子命令，或只能在会话内由 Claude 代调。
-3. **"探活"的可行实现**：理想是用 `TaskOutput(task_id, block:false, timeout:0)` 探"任务还活着吗"，但 cc-desk 能否独立调用同上未确认。
+### 终止：`Query.stopTask(taskId)` 就在手上
 
-### 分支（按实验结果决定）
+`query()` 返回的 `Query` 对象（`sdk.d.ts:2242`）同时是 AsyncIterable 和有方法的对象：
 
-**分支 A：cc-desk 能拿到 backgroundTaskId 且能调用 TaskStop/TaskOutput**
+```typescript
+export declare interface Query extends AsyncGenerator<SDKMessage, void> {
+    stopTask(taskId: string): Promise<void>;
+    // ... 还有 interrupt(), setPermissionMode(), setModel(), background() 等
+}
+```
 
-- 标识：tool_result 提取 `backgroundTaskId` 作为稳定主键。
-- 探活：定时（建议 5s）调 `TaskOutput(block:false, timeout:0)`，任务不存在/已结束即标记 `exited`。
-- 终止：调 `TaskStop(task_id)`。
-- 完整能力成立。
+现状 `claude-service.ts:108` 的 `const stream = query({...})` 已经拿到了 `Query` 对象，**但 `stopTask()` 方法被白白丢弃了**。只需把 `stream` 存为字段引用，暴露一个 `stopTask(taskId)` wrapper。
 
-**分支 B：cc-desk 能拿到 backgroundTaskId，但无法独立调用 TaskStop/TaskOutput**
+### 无需轮询探活
 
-- 标识：仍能用 backgroundTaskId 做主键展示。
-- 探活：做不了（无法独立查活）。
-- 终止：做不了（无法独立杀）。
-- **退化范围**：第一版纯展示——显示命令 + 上次已知输出片段，状态永远"运行中（最后已知）"，直到 Claude 主动调 TaskStop 才更新为"已终止"。用户已同意此退化。
+`task_notification` 事件在任务完成/失败/被终止时由 SDK 主动推送，cc-desk 无需额外轮询。**原计划 Task 9（探活定时器）取消。**
 
-**分支 C：tool_result 里根本没有 backgroundTaskId（结构不符预期）**
+### 分支结论：分支 A 确认成立，无退化
 
-- 无法关联任务，整套特性无数据源。
-- 整体搁置，待后续上 MCP 内置终端方案。
+`backgroundTaskId` / 终止 / 退出感知三条路全部打通，**且实现路径比计划设想的更干净**——不需要从 tool_result JSON 解析、不需要额外 SDK 调用入口、不需要定时轮询。全部依赖 SDK 原生 API。
 
 ## 架构与数据流
 
@@ -88,14 +82,12 @@ cc-desk 中 Claude 通过 Claude Agent SDK 的 `query()` 执行命令（`src/mai
 
 ```typescript
 interface BackendTask {
-  // 任务主键：SDK 返回的 backgroundTaskId（稳定字符串）；拿到前用 localSessionId+toolUseId 临时占位
-  id: string              // backgroundTaskId（实验确认前先以 toolUseId 作占位主键）
+  // 任务主键：SDK system 事件的 task_id（稳定 UUID 字符串），task_started 直接提供
+  id: string              // = SDK task_id
   localSessionId: string
-  toolUseId: string       // 触发该后台任务的 tool_use.id，用于回填 backgroundTaskId
-  command: string         // Task/Bash 的 input.command 或子 agent prompt
-  cwd?: string            // 当时 SDK 的 cwd
-  status: 'running' | 'killed' | 'exited' | 'unknown'
-  outputSnippets: string[]  // TaskOutput tool_result 经过的片段，append
+  command: string         // task_started 的 description 或 prompt
+  taskType?: string       // SDK 的 task_type（如 'local_workflow'）
+  status: 'running' | 'completed' | 'failed' | 'stopped'
   startedAt: number
   lastKnownAt: number     // 最后一次状态更新时间
 }
@@ -107,19 +99,20 @@ interface BackendTask {
 SDK query() 流
    │
    ▼
-claude-service.ts（扩展）──► 识别工具事件：
-   │                          • tool_use_start（Task / auto-backgrounded Bash）→ CREATE 占位任务（toolUseId）
-   │                          • tool_result 含 backgroundTaskId            → 回填稳定 id
-   │                          • tool_use_start（TaskOutput）               → 关联任务，append 输出片段
-   │                          • tool_use_start（TaskStop）                  → MARK_KILLED
+claude-service.ts（扩展）──► 处理 system 事件：
+   │                          • task_started (task_type==='local_workflow') → CREATE 后台任务
+   │                          • task_updated                                → UPDATE 状态
+   │                          • task_notification (completed/failed/stopped) → 退出感知
    │
-   ▼  webContents.send('claude:backend-task', { op, localSessionId, ... })
+   │  存 stream(Query) 引用 → Query.stopTask(taskId) 供终止用
+   │
+   ▼  webContents.send('claude:backend-task', { op, localSessionId, task })
 
 backend-task-registry.ts ──存──► Map<taskId, BackendTask>
    │
    ▼  新增 IPC
    • 'backend-task:list'   → 渲染端拉取当前列表（按 localSessionId 过滤）
-   • 'backend-task:kill'   → 渲染端请求终止（id）→ 调 TaskStop（分支 A）
+   • 'backend-task:kill'   → 渲染端请求终止（taskId）→ claude.stopTask(taskId)
 
 preload 暴露 window.api.backendTask.{ list, kill, onEvent }
    │
@@ -127,17 +120,17 @@ preload 暴露 window.api.backendTask.{ list, kill, onEvent }
 渲染端 store ──► BackendTaskPanel.tsx（右上角悬浮 Panel）
 ```
 
-### 工具事件识别细节
+### 事件识别细节（实际架构，非旧假设）
 
 | SDK 事件 | 判断条件 | 动作 |
 |---|---|---|
-| `stream_event` / `tool_use_start`，name === 'Task' | `input.run_in_background === true` | CREATE 占位任务，主键先用 localSessionId + block.id |
-| `user` / `tool_result`（对应上述工具） | 从返回体提取 `backgroundTaskId` | 回填任务稳定 id |
-| `stream_event`，name === 'Bash' 且 tool_result 含 `assistantAutoBackgrounded:true` 或 `backgroundTaskId` | —— | CREATE/回填（SDK 自动后台的长命令） |
-| `tool_use_start`，name === 'TaskOutput' | 取 `input.task_id` 关联任务 | 把 result stdout 片段 append |
-| `tool_use_start`，name === 'TaskStop' | 取 `input.task_id` | MARK_KILLED 对应任务 |
+| `system` / `task_started` | `task_type === 'local_workflow'` | CREATE 后台任务，`id = task_id`，存 `command = description \|\| prompt` |
+| `system` / `task_started` | `task_type` 不满足上述（或无 task_type） | 走现有 `claude:task` → TaskCard（待办），不做后端任务 |
+| `system` / `task_updated` | 该 `task_id` 在 registry 中 | UPDATE 状态（`patch.status`） |
+| `system` / `task_notification` | 该 `task_id` 在 registry 中 | **退出感知**：`status` 为 completed/failed/stopped → 标记对应状态 |
+| `system` / `task_notification` | `task_id` 不在 registry 中 | 走现有 `claude:task` → TaskCard（待办结束通知） |
 
-> **注意**：`extractToolResults`（claude-normalize.ts）当前把 tool_result.content 拍平成字符串，会吃掉结构化字段。提取 `backgroundTaskId` 需扩展该函数保留原始结构，或在 `claude-service.ts` 的 `user` 分支直接读未拍平的 content。具体落点由实验确认 backgroundTaskId 实际位置后定。
+> **现状**：`claude-service.ts` 已处理 `task_started`（line 193-203）和 `task_updated`（line 205-213），转发为 `claude:task`。**`task_notification` 被当成普通 notice 丢弃**（line 216-217）——这是本次要修的关键 gap。另外 `const stream = query({...})` 的 `Query` 对象需存为字段引用以暴露 `stopTask()`。
 
 ### 会话隔离
 与现有 TaskPanel 一致，按 `activeSessionId` 过滤，切会话只看本会话起的后台任务。任务数据存 `state.backendTasksBySession`，与现有 `tasksBySession` 同构。
@@ -186,7 +179,7 @@ preload 暴露 window.api.backendTask.{ list, kill, onEvent }
 
 - 两张 Card 都空（无待办、无后台进程）→ Panel 整体不显示。
 - 仅 TaskCard 有内容 → 只显示 TaskCard。
-- 状态标注诚实：进程状态显示"运行中（最后已知）"而非"运行中"——因为不实时，进程可能已死但未被感知。分支 A 下探活确认退出后显示"已退出"；分支 B 下永远停在"运行中（最后已知）"直到 Claude 调 KillShell。
+- 状态标注：由 `task_notification` 推送事件驱动——running 直到收到 completed/failed/stopped 才更新。
 
 ### 单条后台任务展示
 
@@ -200,34 +193,26 @@ preload 暴露 window.api.backendTask.{ list, kill, onEvent }
 
 | 场景 | 处理 |
 |---|---|
-| SDK 拿不到 backgroundTaskId（分支 B/C） | 隐藏终止按钮，状态停"运行中（最后已知）"，纯展示 |
-| 探活时任务已结束（分支 A） | TaskOutput 返回结束态 → 标记 `exited`，显示"已退出" |
-| 终止失败（TaskStop 抛错） | 状态回退，面板提示"终止失败"，不静默吞错 |
-| TaskStop / TaskOutput 工具调用未关联到任何已知任务 | 忽略，记日志 |
-| 多个后台任务命令文本相同 | 用 backgroundTaskId（或 toolUseId）主键区分，不靠命令文本关联 |
+| `task_notification` 未关联到任何已知任务 | 忽略，记日志 |
+| `stopTask` 调用失败 | 状态回退，面板提示"终止失败"，不静默吞错 |
 | 会话切换 | 任务数据按 localSessionId 隔离，不串台（与现有 Claude 流隔离逻辑一致） |
 
 ## 测试策略
 
-- **工具事件识别**：给定 mock 的 stream_event / tool_result，断言 registry 正确 CREATE（占位）→ 回填 backgroundTaskId → APPEND（TaskOutput）→ MARK_KILLED（TaskStop）。
-- **状态机**：running → killed / exited / unknown 的转换。
-- **会话隔离**：不同 localSessionId 的任务互不干扰。
-- **探活逻辑**（分支 A）：mock TaskOutput，断言返回结束态时标记 exited。
+- **registry 纯函数**（vitest）：mock task_started（task_type=local_workflow / 无 task_type），断言 CREATE / 跳过；mock task_notification，断言状态转换；会话隔离测试。
 - **UI 层**（@testing-library/react）：
   - Panel 三层折叠：各层独立展开/收起。
   - 显示规则：两 Card 空 → 不渲染 Panel；单 Card 有内容 → 只显该 Card。
   - 任务列表渲染 + 终止按钮点击触发 `backend-task:kill`。
-  - 状态文案：分支 A/B 下分别正确标注。
-- **前置验证实验**（非自动化测试，手工跑一次）：独立脚本调 `query()` 起一个后台 Task（如 "跑 sleep 60"，run_in_background:true），dump 所有流事件，确认：(1) backgroundTaskId 在 tool_result 的具体位置；(2) cc-desk 能否独立调 TaskStop/TaskOutput。结果记录到 spec，决定走分支 A/B/C。
 
-## 实现顺序（概要，详见后续 writing-plans）
+## 实现顺序（已验证架构，无分支退化）
 
-1. **前置验证实验**——跑脚本确认 backgroundTaskId 位置 + cc-desk 能否独立调 TaskStop/TaskOutput，记录结果，定分支。
-2. `backend-task-registry.ts` 主进程模块 + 工具事件识别（CREATE/回填/APPEND/MARK_KILLED 纯函数）。
-3. `claude-service.ts` 扩展转发 `claude:backend-task` 事件；`claude-normalize.ts` 扩展保留 backgroundTaskId。
-4. preload 暴露 + IPC（list / kill）。
-5. 渲染端 store + `BackendTaskPanel` 容器 + 改造 `TaskPanel` 为 Card。
-6. 分支 A 专属：探活定时器（TaskOutput）+ 终止实现（TaskStop）。
+1. `backend-task-registry.ts` 主进程模块：`task_id` 作主键，CREATE（task_started）/ UPDATE（task_updated）/ EXIT_DETECT（task_notification）。
+2. `claude-service.ts` 扩展：处理 `task_started`（分叉→backend task vs todo）、`task_notification`（退出感知）、保存 `stream` 引用暴露 `stopTask()`。
+3. preload 暴露 + IPC（list / kill → `claude.stopTask(taskId)`）。
+4. 渲染端 types + reducer + actions + store 接线。
+5. `BackendTaskPanel` 容器 + `BackendTaskCard` + 改造 `TaskPanel` 为 Card。
+6. 终止按钮接通 `stopTask`。
 7. 测试。
 
 ## 未来方向（不在本设计范围）
