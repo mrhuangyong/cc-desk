@@ -2,9 +2,10 @@
 // 内置命令的渲染端副作用：builtinAction.type → 执行。
 // ctx 由 InputBar 注入（dispatch/session/editor/toggleMenu 等）。
 import type { SlashMenuItem } from '../editor/types'
+import type { Action } from '../state/actions'
 
 export interface BuiltinCtx {
-  dispatch: (a: any) => void
+  dispatch: (a: Action) => void
   sessionId: string
   cwd: string
   modelName: string
