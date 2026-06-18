@@ -17,6 +17,10 @@ describe('BUILTIN_COMMANDS', () => {
     const names = BUILTIN_COMMANDS.map(c => c.name)
     expect(new Set(names).size).toBe(names.length)
   })
+  it('id 全部唯一', () => {
+    const ids = BUILTIN_COMMANDS.map(c => c.id)
+    expect(new Set(ids).size).toBe(ids.length)
+  })
 })
 
 describe('PERMISSION_MODE_MAP', () => {
@@ -26,8 +30,10 @@ describe('PERMISSION_MODE_MAP', () => {
     expect(PERMISSION_MODE_MAP['计划模式']).toBe('plan')
     expect(PERMISSION_MODE_MAP['完全访问']).toBe('bypassPermissions')
   })
-  it('getPermissionMode 未知值回退 default', () => {
+  it('getPermissionMode 未知值/空/null 回退 default', () => {
     expect(getPermissionMode('不存在的')).toBe('default')
     expect(getPermissionMode(undefined)).toBe('default')
+    expect(getPermissionMode('')).toBe('default')
+    expect(getPermissionMode(null as any)).toBe('default')
   })
 })
