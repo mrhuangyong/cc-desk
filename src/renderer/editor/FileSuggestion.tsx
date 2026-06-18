@@ -60,10 +60,9 @@ export function buildFileExtension(getCwd: () => string): Extension {
             return items.map(it => ({ relPath: it.relPath, absPath: base + it.relPath }))
           },
           command: ({ editor, range, props }: { editor: any; range: any; props: FlatFileItem }) => {
-            editor.chain().focus().deleteRange(range).run()
-            // 插入 fileChip：refId=绝对路径，label=文件名
+            // 单次 chain：删触发符 + 插 chip，避免两次 run() 间光标/placeholder 状态异常
             const fname = props.relPath.slice(props.relPath.lastIndexOf('/') + 1)
-            editor.chain().focus().insertContent({
+            editor.chain().focus().deleteRange(range).insertContent({
               type: 'fileChip',
               attrs: { refId: props.absPath, label: fname },
             }).insertContent(' ').run()
