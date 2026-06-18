@@ -76,10 +76,15 @@ export class ClaudeService {
   async send(opts: {
     prompt: string
     sessionId?: string
+    localSessionId?: string
     cwd?: string
     webContents: WebContents
   }): Promise<void> {
-    const { prompt, sessionId, cwd, webContents } = opts
+    const { prompt, sessionId, localSessionId, cwd, webContents } = opts
+    // 本次流绑定的渲染端会话 id。所有事件载荷带上它，渲染端据此路由到正确会话，
+    // 避免「在 A 发送后切到 B，A 的流式输出串到 B」（之前用「当前激活会话」导致串台）。
+    const lsid = localSessionId ?? ''
+    console.log('[cc-stream] ClaudeService.send', { lsid, hasLocalSessionId: !!localSessionId, sessionId })
     const settings = getSettings()
 
     // 从 cc-desk 自有配置（~/.cc-desk/config.json）取激活的供应商+模型。
@@ -87,7 +92,7 @@ export class ClaudeService {
     const cfg = getModelProvidersConfig()
     const resolved = resolveActiveProviderModel(cfg)
     if (!resolved) {
-      webContents.send('claude:error', { error: '请先在「设置 → 模型设置」中添加并启用供应商与模型' })
+      webContents.send('claude:error', { localSessionId: lsid, error: '请先在「设置 → 模型设置」中添加并启用供应商与模型' })
       return
     }
     const general = await getGeneralConfig()
@@ -134,11 +139,11 @@ export class ClaudeService {
           case 'system': {
             const sys = message as any
             if (sys.subtype === 'init') {
-              webContents.send('claude:system', { sessionId: sys.session_id, model: sys.model, tools: sys.tools })
+              webContents.send('claude:system', { localSessionId: lsid, sessionId: sys.session_id, model: sys.model, tools: sys.tools })
             } else if (sys.subtype === 'permission_denied') {
-              webContents.send('claude:notice', mkNotice('permission_denied', `权限拒绝：${sys.tool_name}`, 'warn'))
+              webContents.send('claude:notice', { ...mkNotice('permission_denied', `权限拒绝：${sys.tool_name}`, 'warn'), localSessionId: lsid })
             } else if (sys.subtype === 'compact' || (sys.subtype && String(sys.subtype).startsWith('compact') && sys.compact_result === 'failed')) {
-              webContents.send('claude:notice', mkNotice('compact', `上下文压缩失败：${sys.compact_error ?? sys.subtype}`, 'warn'))
+              webContents.send('claude:notice', { ...mkNotice('compact', `上下文压缩失败：${sys.compact_error ?? sys.subtype}`, 'warn'), localSessionId: lsid })
             }
             // 其余 system 子类型（status 的 requesting/processing 瞬态、hook_started/hook_response
             // 协议进度等）属内部噪声，仅记日志、不打扰用户。
@@ -147,61 +152,62 @@ export class ClaudeService {
           case 'stream_event': {
             const evt = (message as any).event
             if (evt?.type === 'content_block_delta') {
-              if (evt.delta?.type === 'text_delta') webContents.send('claude:delta', { kind: 'text', delta: evt.delta.text })
-              else if (evt.delta?.type === 'thinking_delta') webContents.send('claude:delta', { kind: 'thinking', delta: evt.delta.thinking })
+              if (evt.delta?.type === 'text_delta') webContents.send('claude:delta', { localSessionId: lsid, kind: 'text', delta: evt.delta.text })
+              else if (evt.delta?.type === 'thinking_delta') webContents.send('claude:delta', { localSessionId: lsid, kind: 'thinking', delta: evt.delta.thinking })
             } else if (evt?.type === 'content_block_start' && evt.content_block?.type === 'tool_use') {
               const tb = evt.content_block
-              webContents.send('claude:blocks', { op: 'tool_use_start', block: { type: 'tool_use', id: tb.id, name: tb.name, input: tb.input, status: 'running' } })
+              webContents.send('claude:blocks', { localSessionId: lsid, op: 'tool_use_start', block: { type: 'tool_use', id: tb.id, name: tb.name, input: tb.input, status: 'running' } })
             }
             break
           }
           case 'assistant': {
             const blocks = normalizeBetaBlocks((message as any).message?.content || [])
-            webContents.send('claude:blocks', { op: 'assistant_blocks', blocks, uuid: (message as any).uuid })
+            webContents.send('claude:blocks', { localSessionId: lsid, op: 'assistant_blocks', blocks, uuid: (message as any).uuid })
             break
           }
           case 'user': {
             const results = extractToolResults((message as any).message?.content || [])
             for (const r of results) {
-              webContents.send('claude:blocks', { op: 'tool_result', toolUseId: r.toolUseId, result: { content: r.content, isError: r.isError } })
+              webContents.send('claude:blocks', { localSessionId: lsid, op: 'tool_result', toolUseId: r.toolUseId, result: { content: r.content, isError: r.isError } })
             }
             break
           }
           case 'result': {
             const r = message as any
             webContents.send('claude:result', {
+              localSessionId: lsid,
               sessionId: r.session_id, subtype: r.subtype, isError: !!r.is_error,
               costUSD: r.total_cost_usd, durationMs: r.duration_ms, turns: r.num_turns,
             })
-            if (r.is_error) webContents.send('claude:notice', mkNotice('error', `任务出错（${r.subtype}）`, 'error'))
+            if (r.is_error) webContents.send('claude:notice', { ...mkNotice('error', `任务出错（${r.subtype}）`, 'error'), localSessionId: lsid })
             break
           }
           case 'api_retry':
-            webContents.send('claude:notice', mkNotice('api_retry', 'API 重试中', 'warn')); break
+            webContents.send('claude:notice', { ...mkNotice('api_retry', 'API 重试中', 'warn'), localSessionId: lsid }); break
           case 'auth_status': {
             const am = message as any
             const text = am.error ? `认证错误：${am.error}` : ((Array.isArray(am.output) ? am.output.join(' ') : '') || (am.isAuthenticating ? '认证中…' : '认证就绪'))
-            webContents.send('claude:notice', mkNotice('auth', text, am.error ? 'warn' : 'info'))
+            webContents.send('claude:notice', { ...mkNotice('auth', text, am.error ? 'warn' : 'info'), localSessionId: lsid })
             break
           }
           case 'task_started':
           case 'task_updated':
           case 'task_progress':
           case 'task_notification':
-            webContents.send('claude:notice', mkNotice('task', `任务事件：${message.type}`, 'info')); break
+            webContents.send('claude:notice', { ...mkNotice('task', `任务事件：${message.type}`, 'info'), localSessionId: lsid }); break
           case 'keep_alive':
           case 'worker_shutting_down':
           case 'commands_changed':
             console.log('[cc-stream] protocol event ignored', message.type); break
           default:
-            webContents.send('claude:notice', mkNotice('info', `未分类事件：${message.type}`, 'info'))
+            webContents.send('claude:notice', { ...mkNotice('info', `未分类事件：${message.type}`, 'info'), localSessionId: lsid })
         }
       }
     } catch (err) {
       if (err instanceof AbortError) {
-        webContents.send('claude:aborted')
+        webContents.send('claude:aborted', { localSessionId: lsid })
       } else {
-        webContents.send('claude:error', { error: String(err) })
+        webContents.send('claude:error', { localSessionId: lsid, error: String(err) })
       }
     } finally {
       this.abortController = null

@@ -92,11 +92,10 @@ export function ChatArea() {
   }, [state.activeSessionId])
 
   // 监听器只在挂载时注册一次，回调内需要的"会变值"通过 ref 取最新值，
-  // 避免因依赖数组变化而 removeAllListeners→重注册，造成 claude:result 事件丢失、
-  // STREAM_END 不派发、isStreaming 永久卡死的竞态。
-  const activeSessionIdRef = useRef(state.activeSessionId)
+  // settings 用 ref 在挂载一次的监听器闭包里取最新值（taskNotify/notifySound）。
+  // 注意：流式回调用「事件自带的 localSessionId」路由，不再用「当前激活会话」，
+  // 否则 A 发送后切到 B 会串台。activeSessionId 不再进 ref。
   const settingsRef = useRef(state.settings)
-  useEffect(() => { activeSessionIdRef.current = state.activeSessionId }, [state.activeSessionId])
   useEffect(() => { settingsRef.current = state.settings }, [state.settings])
 
   // 注册 IPC 监听器：归一化后的新通道（delta/blocks/notice/result/error/aborted）
@@ -106,51 +105,50 @@ export function ChatArea() {
 
     // 捕获 Claude 返回的真实 sessionId，建立 localSessionId → claudeSessionId 映射，供后续消息 resume 续接
     api.onSystem((data: any) => {
-      if (data?.sessionId) {
+      if (data?.sessionId && data?.localSessionId) {
         dispatch({
           type: 'SET_CLAUDE_SESSION_ID',
-          localSessionId: activeSessionIdRef.current,
+          localSessionId: data.localSessionId,
           claudeSessionId: data.sessionId,
         })
       }
     })
-    // 增量文本/思考
-    api.onDelta(({ kind, delta }) => {
-      dispatch({ type: 'STREAM_DELTA', sessionId: activeSessionIdRef.current, kind, delta })
+    // 增量文本/思考。用事件自带的 localSessionId 路由（发送时绑定），而非「当前激活会话」，
+    // 否则 A 发送后切到 B，A 的流式会串到 B。
+    api.onDelta((data: any) => {
+      const sid = data?.localSessionId
+      console.log('[cc-stream] onDelta', { sid, kind: data?.kind, keys: Object.keys(data || {}) })
+      if (!sid) {
+        console.warn('[cc-stream] onDelta 丢弃：事件缺 localSessionId（主进程可能未重启，仍在跑旧代码）', data)
+        return
+      }
+      dispatch({ type: 'STREAM_DELTA', sessionId: sid, kind: data.kind, delta: data.delta })
     })
     // 归一化 blocks：工具开始 / assistant 整块 / 工具结果
     api.onBlocks((data: any) => {
-      if (data?.op === 'tool_use_start') {
-        dispatch({
-          type: 'STREAM_TOOL_USE_START',
-          sessionId: activeSessionIdRef.current,
-          block: data.block,
-        })
-      } else if (data?.op === 'assistant_blocks') {
-        dispatch({
-          type: 'STREAM_ASSISTANT_BLOCKS',
-          sessionId: activeSessionIdRef.current,
-          blocks: data.blocks,
-          uuid: data.uuid,
-        })
-      } else if (data?.op === 'tool_result') {
-        dispatch({
-          type: 'STREAM_TOOL_RESULT',
-          sessionId: activeSessionIdRef.current,
-          toolUseId: data.toolUseId,
-          result: data.result,
-        })
+      const sid = data?.localSessionId
+      if (!sid) return
+      if (data.op === 'tool_use_start') {
+        dispatch({ type: 'STREAM_TOOL_USE_START', sessionId: sid, block: data.block })
+      } else if (data.op === 'assistant_blocks') {
+        dispatch({ type: 'STREAM_ASSISTANT_BLOCKS', sessionId: sid, blocks: data.blocks, uuid: data.uuid })
+      } else if (data.op === 'tool_result') {
+        dispatch({ type: 'STREAM_TOOL_RESULT', sessionId: sid, toolUseId: data.toolUseId, result: data.result })
       }
     })
-    // 系统通知（状态/权限/压缩/重试/任务/错误等）
-    api.onNotice((notice: any) => {
-      dispatch({ type: 'STREAM_NOTICE', sessionId: activeSessionIdRef.current, notice })
+    // 系统通知（状态/权限/压缩/重试/任务/错误等）。localSessionId 随载荷带来，剥离后作为 notice。
+    api.onNotice((data: any) => {
+      const sid = data?.localSessionId
+      if (!sid) return
+      const { localSessionId, ...notice } = data
+      dispatch({ type: 'STREAM_NOTICE', sessionId: sid, notice })
     })
     api.onResult((data: any) => {
+      const sid = data?.localSessionId
+      if (!sid) return
       dispatch({
         type: 'STREAM_END',
-        // 始终用本地 activeSessionId：streamingBySession 的 key 是本地 id。
-        sessionId: activeSessionIdRef.current,
+        sessionId: sid,
         costUSD: data.costUSD,
         durationMs: data.durationMs,
         turns: data.turns,
@@ -163,11 +161,15 @@ export function ChatArea() {
         n.onclick = () => window.focus()
       }
     })
-    api.onError(({ error }) => {
-      dispatch({ type: 'STREAM_ERROR', sessionId: activeSessionIdRef.current, error })
+    api.onError((data: any) => {
+      const sid = data?.localSessionId
+      if (!sid) return
+      dispatch({ type: 'STREAM_ERROR', sessionId: sid, error: data.error })
     })
-    api.onAborted(() => {
-      dispatch({ type: 'STREAM_ABORTED', sessionId: activeSessionIdRef.current })
+    api.onAborted((data: any) => {
+      const sid = data?.localSessionId
+      if (!sid) return
+      dispatch({ type: 'STREAM_ABORTED', sessionId: sid })
     })
     // AskUserQuestion 等用户对话请求
     api.onDialogRequest((data) => {
@@ -204,7 +206,7 @@ export function ChatArea() {
               display: 'flex', flexDirection: 'column', gap: 6,
               userSelect: 'text', cursor: 'text',
             }}>
-              {m.attachment && <AttachmentChip attachment={m.attachment} />}
+              {m.attachment && <AttachmentChip attachment={{ type: 'pickedElement', el: m.attachment }} />}
               <Notices notices={m.notices ?? []} />
               {m.content.map((b, i) => <BlockRenderer key={i} block={b} />)}
               {/* 底部行：cost 元数据 + 复制钮，同一水平线，距上方 md 内容 10px */}
@@ -229,7 +231,7 @@ export function ChatArea() {
               userSelect: 'text', cursor: 'text',
             }}>
               <CopyButton text={extractText(m.content)} />
-              {m.attachment && <AttachmentChip attachment={m.attachment} />}
+              {m.attachment && <AttachmentChip attachment={{ type: 'pickedElement', el: m.attachment }} />}
               {m.content.map((b, i) => <BlockRenderer key={i} block={b} />)}
             </div>
           )
