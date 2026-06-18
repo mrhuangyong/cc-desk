@@ -15,6 +15,7 @@ interface ClaudeAPI {
   onDelta(cb: (data: { kind: 'text' | 'thinking'; delta: string }) => void): void
   onBlocks(cb: (data: any) => void): void
   onNotice(cb: (data: any) => void): void
+  onTask(cb: (data: any) => void): void
   onResult(cb: (data: { sessionId: string; subtype: string; isError: boolean; costUSD: number; durationMs: number; turns: number }) => void): void
   onError(cb: (data: { error: string }) => void): void
   onAborted(cb: (data: any) => void): void

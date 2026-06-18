@@ -65,6 +65,15 @@ export interface QueuedMessage {
   attachments: DraftAttachment[]
 }
 
+// Claude task（Task 工具创建的子任务，悬浮面板展示）
+export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'killed' | 'paused'
+export interface TaskItem {
+  id: string                  // SDK 的 task_id
+  description: string
+  taskType: string
+  status: TaskStatus
+}
+
 // 会话：归属于某个项目
 export interface Session {
   id: string

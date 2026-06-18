@@ -3,6 +3,7 @@ import { ArrowDown, Copy, Check } from 'lucide-react'
 import { useStore } from '../state/store'
 import { useI18n } from '../i18n/useI18n'
 import { AttachmentChip } from './AttachmentChip'
+import { TaskPanel } from './TaskPanel'
 import { InputBar } from './InputBar'
 import { InputDock } from './InputDock'
 import { BlockRenderer } from './blocks/BlockRenderer'
@@ -97,6 +98,8 @@ export function ChatArea() {
   // 否则 A 发送后切到 B 会串台。activeSessionId 不再进 ref。
   const settingsRef = useRef(state.settings)
   useEffect(() => { settingsRef.current = state.settings }, [state.settings])
+  const tasksRef = useRef(state.tasksBySession)
+  useEffect(() => { tasksRef.current = state.tasksBySession }, [state.tasksBySession])
 
   // 注册 IPC 监听器：归一化后的新通道（delta/blocks/notice/result/error/aborted）
   useEffect(() => {
@@ -142,6 +145,22 @@ export function ChatArea() {
       if (!sid) return
       const { localSessionId, ...notice } = data
       dispatch({ type: 'STREAM_NOTICE', sessionId: sid, notice })
+    })
+    api.onTask((data: any) => {
+      const sid = data?.localSessionId
+      if (!sid) return
+      if (data.kind === 'started') {
+        dispatch({ type: 'UPSERT_TASK', sessionId: sid, task: {
+          id: data.taskId, description: data.description ?? '', taskType: data.taskType ?? '', status: 'running',
+        } })
+      } else if (data.kind === 'updated') {
+        // 合并 patch：需读当前 task 再更新状态字段
+        const list = tasksRef.current[sid] ?? []
+        const existing = list.find(t => t.id === data.taskId)
+        if (existing) {
+          dispatch({ type: 'UPSERT_TASK', sessionId: sid, task: { ...existing, ...data.patch } })
+        }
+      }
     })
     api.onResult((data: any) => {
       const sid = data?.localSessionId
@@ -189,6 +208,7 @@ export function ChatArea() {
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: 'var(--bg)', position: 'relative' }}>
       {/* 闪烁光标动画 */}
       <style>{`@keyframes blink { 50% { opacity: 0 } }`}</style>
+      <TaskPanel />
       <div
         ref={scrollRef}
         onScroll={onScroll}

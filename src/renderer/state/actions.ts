@@ -58,3 +58,6 @@ export type Action =
   | { type: 'ENQUEUE_MESSAGE'; sessionId: string; prompt: string; attachments: import('../types').DraftAttachment[] }
   | { type: 'DEQUEUE_MESSAGE'; sessionId: string; queueId: string }
   | { type: 'CLEAR_QUEUE'; sessionId: string }
+  // Claude task 状态（悬浮面板）
+  | { type: 'UPSERT_TASK'; sessionId: string; task: import('../types').TaskItem }
+  | { type: 'CLEAR_TASKS'; sessionId: string }
