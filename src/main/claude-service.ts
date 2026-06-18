@@ -48,26 +48,89 @@ export class ClaudeService {
     request: { dialogKind: string; payload: unknown; toolUseID?: string },
     signal: AbortSignal,
   ): Promise<any> {
+    return this.askUserViaPanel(webContents, request.dialogKind, request.payload, request.toolUseID, signal)
+  }
+
+  /**
+   * 经渲染端底部面板问用户问题（AskUserQuestion 拦截场景与 SDK dialog 场景共用）。
+   * 发 claude:dialog-request，挂起 Promise 直到渲染端经 dialog-response 回答。
+   * signal 可选：SDK dialog 场景传 query 的 AbortSignal；本地拦截场景传 undefined（永不 abort）。
+   */
+  async askUserViaPanel(
+    webContents: WebContents,
+    dialogKind: string,
+    payload: unknown,
+    toolUseId: string | undefined,
+    signal?: AbortSignal,
+  ): Promise<any> {
     const reqId = `dlg${Date.now()}_${Math.floor(performance.now())}`
     webContents.send('claude:dialog-request', {
       reqId,
-      dialogKind: request.dialogKind,
-      payload: request.payload,
-      toolUseId: request.toolUseID,
+      dialogKind,
+      payload,
+      toolUseId,
     })
     return new Promise<any>((resolve) => {
       this.dialogResolvers.set(reqId, resolve)
-      signal.addEventListener(
-        'abort',
-        () => {
-          if (this.dialogResolvers.has(reqId)) {
-            this.dialogResolvers.delete(reqId)
-            resolve({ behavior: 'cancelled' })
-          }
-        },
-        { once: true },
-      )
+      if (signal) {
+        signal.addEventListener(
+          'abort',
+          () => {
+            if (this.dialogResolvers.has(reqId)) {
+              this.dialogResolvers.delete(reqId)
+              resolve({ behavior: 'cancelled' })
+            }
+          },
+          { once: true },
+        )
+      }
     })
+  }
+
+  /**
+   * 处理拦截到的 AskUserQuestion tool_use：弹底部面板让用户答，
+   * 答案格式化成文本 pushMessage 回 SDK，让对话续跑（SDK 自动回填的 dummy tool_result 那轮结束，
+   * 新 user turn 触发新一轮 assistant 输出）。
+   */
+  private async handleAskUserQuestion(
+    localSessionId: string,
+    toolUse: { id: string; input: any },
+    webContents: WebContents,
+  ): Promise<void> {
+    const input = toolUse.input || {}
+    const questions: any[] = Array.isArray(input.questions) ? input.questions : []
+    if (questions.length === 0) return
+    let result: any
+    try {
+      result = await this.askUserViaPanel(webContents, 'ask_user_question', input, toolUse.id)
+    } catch {
+      result = { behavior: 'cancelled' }
+    }
+    if (!this.manager) return
+    // 取消 / 未完成：仍推一条提示，避免模型卡住
+    if (result?.behavior !== 'completed') {
+      this.manager.pushMessage(localSessionId, '（用户取消了这次提问）')
+      return
+    }
+    // 把答案格式化成自然语言文本
+    const answers: any[] = result?.result?.answers ?? []
+    const lines: string[] = []
+    questions.forEach((q, qi) => {
+      const ans = answers.find((a) => a.questionIndex === qi)
+      const label = q.question || `问题 ${qi + 1}`
+      if (!ans) { lines.push(`${label}：（未回答）`); return }
+      if (ans.other !== undefined) {
+        lines.push(`${label}：${ans.other}`)
+      } else if (ans.selected) {
+        // selected 可能是 {index,label}（单选）或数组（多选）
+        const sel = ans.selected
+        const text = Array.isArray(sel)
+          ? sel.map((s: any) => s?.label ?? s).join('、')
+          : (sel?.label ?? String(sel))
+        lines.push(`${label}：${text}`)
+      }
+    })
+    this.manager.pushMessage(localSessionId, `用户回答：\n${lines.join('\n')}`)
   }
 
   async send(opts: {
@@ -137,6 +200,8 @@ export class ClaudeService {
           // Required to receive incremental stream_event deltas.
           includePartialMessages: true,
           // Bridge the SDK's blocking `onUserDialog` to a renderer-side dialog UI.
+          // 经第三方代理时 AskUserQuestion 不走 SDK dialog（cc-desk 在 forwardEvent 自行拦截）；
+          // 此处仅声明 refusal_fallback_prompt（权限拒绝回退）。
           supportedDialogKinds: ['refusal_fallback_prompt'],
           onUserDialog: async (request: any, { signal }: { signal: AbortSignal }) => {
             return this.askUserDialog(webContents, request, signal)
@@ -180,10 +245,24 @@ export class ClaudeService {
         break
       }
       case 'assistant': {
-        const blocks = normalizeBetaBlocks(message.message?.content || [])
+        const aContent = message.message?.content || []
+        // 经第三方代理（如 GLM）时，SDK 未把 AskUserQuestion 注册为内置工具，
+        // 模型仍会输出该 tool_use 但不走 SDK dialog 通道（自动回填 dummy tool_result）。
+        // 这里拦截：弹出渲染端面板，用户答完后把答案作为新 user message 推回，让对话续跑。
+        if (Array.isArray(aContent)) {
+          const askBlocks = aContent.filter((ab: any) => ab?.type === 'tool_use' && ab.name === 'AskUserQuestion')
+          if (askBlocks.length > 0) {
+            for (const ab of askBlocks) {
+              // 异步发起：不阻塞 forwardEvent 的事件循环
+              void this.handleAskUserQuestion(lsid, ab, webContents)
+            }
+          }
+        }
+        const blocks = normalizeBetaBlocks(aContent)
+          // 过滤掉 AskUserQuestion tool_use：它由底部面板承载，不渲染成卡片
+          .filter((b: any) => !(b.type === 'tool_use' && b.name === 'AskUserQuestion'))
         // assistant 消息含完整 tool_use input（stream_event 的 content_block_start 时 input 还是空壳，
         // 这里补全，供 user 阶段提取后台命令文本）
-        const aContent = message.message?.content || []
         if (Array.isArray(aContent)) {
           for (const ab of aContent) {
             if (ab?.type === 'tool_use' && (ab.name === 'Bash' || ab.name === 'Task')) {
