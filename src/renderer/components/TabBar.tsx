@@ -28,7 +28,7 @@ export function TabBar() {
   const renderContent = () => {
     const active = tabs.find(t => t.id === activeTabId)
     if (!active) return <div style={{ display: 'grid', placeItems: 'center', flex: 1, color: 'var(--text-muted)' }}>暂无打开的面板</div>
-    if (active.type === 'file') return <FileTab filePath={active.filePath} />
+    if (active.type === 'file') return <FileTab tabId={active.id} filePath={active.filePath} />
     if (active.type === 'browser') return <BrowserTab />
     if (active.type === 'review') return <ReviewTab />
     return <TerminalTab tabId={active.id} cwd={active.cwd} />
