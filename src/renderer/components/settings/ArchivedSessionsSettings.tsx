@@ -11,7 +11,7 @@ export function ArchivedSessionsSettings({ projects, dispatch }: Props) {
   )
 
   return (
-    <div style={{ maxWidth: 720 }}>
+    <div style={{ maxWidth: 760, margin: '0 auto', width: '100%', display: 'flex', flexDirection: 'column' }}>
       <h2 style={{ fontSize: 18, marginBottom: 16 }}>已归档会话</h2>
       {archived.length === 0 ? (
         <div style={{ color: 'var(--text-muted)', padding: 24, textAlign: 'center' }}>暂无已归档会话</div>
