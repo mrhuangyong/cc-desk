@@ -4,24 +4,33 @@ import { Extension } from '@tiptap/core'
 import Suggestion from '@tiptap/suggestion'
 import { PluginKey } from '@tiptap/pm/state'
 import { makeSuggestionController } from './suggestionController'
-import { listDir, filterFileItems } from './fileNav'
+import { filterFileItems } from './fileNav'
 import { Folder, File as FileIcon } from 'lucide-react'
 import type { FileNode } from '../types'
 import type { FileMenuItem } from './types'
 
 const FILE_LIMIT = 50
 
+// 拼接 cwd + prefix 成绝对路径（浏览器端无 path 模块，手写）
+function joinDir(cwd: string, prefix: string): string {
+  if (!prefix) return cwd
+  const base = cwd.endsWith('/') ? cwd : cwd + '/'
+  return base + prefix
+}
+
 // 独立 pluginKey：与 slashSuggestion 区分，避免 ProseMirror 同 key plugin 冲突。
 const filePluginKey = new PluginKey('fileSuggestion')
 
 export function buildFileExtension(getCwd: () => string): Extension {
-  // 缓存：同一 cwd 的树只读一次（输入框生命周期内）。cwd 变（切项目）时重置。
-  let treeCache: { cwd: string; tree: FileNode[] } | null = null
+  // 目录层缓存：key=目录绝对路径，value=该目录直接子节点列表。
+  // 按需读取——用户进入某目录时才读该目录，不受 readTree depth 限制，可下钻到任意层级。
+  const dirCache = new Map<string, FileNode[]>()
 
-  async function getTree(cwd: string): Promise<FileNode[]> {
-    if (treeCache && treeCache.cwd === cwd) return treeCache.tree
-    const tree = await (window as any).api.fs.readTree(cwd)
-    treeCache = { cwd, tree }
+  async function listLayer(cwd: string, prefix: string): Promise<FileNode[]> {
+    const absDir = joinDir(cwd, prefix)
+    if (dirCache.has(absDir)) return dirCache.get(absDir)!
+    const tree = await (window as any).api.fs.readTree(absDir)
+    dirCache.set(absDir, tree)
     return tree
   }
 
@@ -47,8 +56,7 @@ export function buildFileExtension(getCwd: () => string): Extension {
             const cwd = getCwd()
             if (!cwd) return []
             const { prefix, filter } = parseQuery(query)
-            const tree = await getTree(cwd)
-            const layer = listDir(tree, prefix)
+            const layer = await listLayer(cwd, prefix)
             const { items } = filterFileItems(layer, filter, FILE_LIMIT)
             return items
           },

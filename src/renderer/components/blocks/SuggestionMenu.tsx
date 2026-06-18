@@ -2,6 +2,7 @@
 // 通用 suggestion 浮层：/ 和 @ 共用。
 // 用 React Portal 定位到光标 clientRect 上方。
 import { createPortal } from 'react-dom'
+import { useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 
 interface Props<T> {
@@ -19,6 +20,13 @@ export function SuggestionMenu<T>({
   items, selectedIndex, clientRect, renderItem, emptyHint, footer, onSelectIdx, onHover,
 }: Props<T>) {
   const rect = clientRect?.() ?? null
+  // 选中项滚动入视图：键盘 ↑↓ 时选中项可能超出浮层可视区，自动滚进。
+  const itemRefs = useRef<Array<HTMLDivElement | null>>([])
+  useEffect(() => {
+    const el = itemRefs.current[selectedIndex]
+    // block:'nearest' 避免不必要的滚动，仅当选中项不在可视区时才滚
+    el?.scrollIntoView({ block: 'nearest' })
+  }, [selectedIndex])
   if (!rect) return null
   const top = rect.top
   const left = rect.left
@@ -35,6 +43,7 @@ export function SuggestionMenu<T>({
       {items.map((item, i) => (
         <div
           key={i}
+          ref={el => { itemRefs.current[i] = el }}
           onMouseEnter={() => onHover(i)}
           onClick={() => onSelectIdx(i)}
           style={{
