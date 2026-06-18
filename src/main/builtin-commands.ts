@@ -1,6 +1,7 @@
 // src/main/builtin-commands.ts
 // 内置 slash 命令静态注册表 + 权限/思考映射。纯逻辑，无副作用，便于单测。
 import type { BuiltinAction } from '../renderer/editor/types'
+import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk'
 
 // 主进程与渲染端共享的命令形态（SlashMenuItem 的 builtin 子集）
 export interface ClaudeBuiltinCommand {
@@ -12,14 +13,14 @@ export interface ClaudeBuiltinCommand {
 }
 
 // 权限：中文标签 → SDK permissionMode code
-export const PERMISSION_MODE_MAP: Record<string, string> = {
+export const PERMISSION_MODE_MAP: Record<string, PermissionMode> = {
   '变更前确认': 'default',
   '自动编辑':   'acceptEdits',
   '计划模式':   'plan',
   '完全访问':   'bypassPermissions',
 }
 
-export function getPermissionMode(label: string | null | undefined): string {
+export function getPermissionMode(label: string | null | undefined): PermissionMode {
   return (label && PERMISSION_MODE_MAP[label]) || 'default'
 }
 

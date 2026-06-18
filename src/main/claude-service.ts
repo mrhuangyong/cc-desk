@@ -125,7 +125,7 @@ export class ClaudeService {
           model: resolved.model.sdkModelId,
           cwd: cwd || settings.cwd || process.cwd(),
           resume: sessionId,
-          permissionMode: getPermissionMode(permission) as 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions' | 'auto',   // 中文标签 → SDK permissionMode（未知回退 'default'）
+          permissionMode: getPermissionMode(permission),   // 中文标签 → SDK permissionMode（未知回退 'default'）
           effort: thinking ?? 'medium',                    // SDK EffortLevel，控制思考强度
           thinking: { type: 'adaptive' },                  // 配合 effort 自适应思考
           additionalDirectories: extraDirs?.length ? extraDirs : undefined,
