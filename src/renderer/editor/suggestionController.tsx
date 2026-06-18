@@ -10,6 +10,8 @@ interface Options<T> {
   renderItem: (item: T, selected: boolean) => ReactNode
   emptyHint?: string
   buildFooter?: (items: T[]) => ReactNode
+  groupKey?: (item: T) => string                  // 分组键（相同键的连续项归一组，组间分隔线）
+  groupLabel?: (key: string) => ReactNode | null  // 组标题（null 则只画分隔线）
 }
 
 export function makeSuggestionController<T>(opts: Options<T>) {
@@ -32,6 +34,8 @@ export function makeSuggestionController<T>(opts: Options<T>) {
         footer={opts.buildFooter?.(items)}
         onSelectIdx={(i) => { if (command && items[i]) command(items[i]) }}
         onHover={(i) => { sel = i; render() }}
+        groupKey={opts.groupKey}
+        groupLabel={opts.groupLabel}
       />,
     )
   }

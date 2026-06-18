@@ -43,13 +43,15 @@ export function buildSlashExtension(getItems: () => SlashMenuItem[]): Extension 
               const Icon = isCmd ? CommandIcon : Sparkles
               return (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, width: '100%' }}>
-                  <Icon size={13} />
-                  <span>{item.name}</span>
-                  <span style={{ color: 'var(--text-muted)', marginLeft: 'auto', fontSize: 11, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.desc}</span>
+                  <Icon size={13} style={{ flexShrink: 0 }} />
+                  <span style={{ fontWeight: 500, flexShrink: 0 }}>{item.name}</span>
+                  <span style={{ color: 'var(--text-muted)', marginLeft: 'auto', fontSize: 11, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.desc}</span>
                 </span>
               )
             },
             emptyHint: '无可用命令/技能',
+            groupKey: (item) => item.kind,
+            groupLabel: (key) => key === 'command' ? '命令' : '技能',
           }),
         },
       }
