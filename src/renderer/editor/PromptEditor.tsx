@@ -73,12 +73,19 @@ export function PromptEditor({ doc, placeholder, allSlashItems, getCwd, onDocCha
     },
   })
 
-  // 外部 doc 变化（切会话恢复）→ 同步进编辑器，避免 onUpdate 回环
+  // 外部 doc 变化（切会话恢复 / 发送后清空）→ 同步进编辑器，避免 onUpdate 回环。
+  // doc 为 null 时（发送后 reducer 把 draft.doc 置 null）也要清空 editor。
   useEffect(() => {
-    if (editor && doc) {
-      const cur = JSON.stringify(editor.getJSON())
-      if (cur !== JSON.stringify(doc)) editor.commands.setContent(doc, { emitUpdate: false })
+    if (!editor) return
+    if (!doc) {
+      // 发送后清空：仅当 editor 非空时才清，避免空 setContent 循环
+      if (editor.getText() !== '' || editor.getJSON().content?.length > 1) {
+        editor.commands.clearContent(false)
+      }
+      return
     }
+    const cur = JSON.stringify(editor.getJSON())
+    if (cur !== JSON.stringify(doc)) editor.commands.setContent(doc, { emitUpdate: false })
   }, [doc, editor])
 
   // 降级：editor 初始化失败 → 原生 textarea
