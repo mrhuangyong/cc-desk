@@ -13,7 +13,8 @@ const ITEMS: MenuItem[] = [
   { id: 'mcp', labelKey: 'settings.mcp' },
   { id: 'plugins', labelKey: 'settings.plugins' },
   { id: 'commands', labelKey: 'settings.commands' },
-  { id: 'hooks', labelKey: 'settings.hooks' }
+  { id: 'hooks', labelKey: 'settings.hooks' },
+  { id: 'archived', labelKey: 'settings.archived' }
 ]
 
 export function SettingsMenu() {
