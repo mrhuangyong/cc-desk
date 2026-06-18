@@ -1,4 +1,4 @@
-import { useState, useRef, type CSSProperties } from 'react'
+import { useState, useRef, type CSSProperties, type ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { FileText, Globe, SquareTerminal, FileDiff, Plus } from 'lucide-react'
 import { useStore } from '../state/store'
@@ -28,21 +28,41 @@ export function TabBar() {
   const fileTabRefs = useRef<Record<string, FileTabHandle | null>>({})
   const [confirmTabId, setConfirmTabId] = useState<string | null>(null)
 
-  const renderContent = () => {
-    const active = tabs.find(t => t.id === activeTabId)
-    if (!active) return <div style={{ display: 'grid', placeItems: 'center', flex: 1, color: 'var(--text-muted)' }}>暂无打开的面板</div>
-    if (active.type === 'file') {
-      return (
-        <FileTab
-          ref={(h: FileTabHandle | null) => { fileTabRefs.current[active.id] = h }}
-          tabId={active.id}
-          filePath={active.filePath}
-        />
-      )
+  // 渲染所有已打开 tab（常驻 DOM，靠 display 切显隐）。
+  // 关键：终端 tab 切换时不能卸载——否则 pty 进程被 kill、会话历史丢失。
+  // 故所有 tab 常驻，非激活的 display:none，激活的撑满。FileTab 的 Monaco
+  // 实例、TerminalTab 的 xterm+pty 因此在切 tab 时全部保留状态。
+  const renderAllTabs = () => {
+    if (tabs.length === 0) {
+      return <div style={{ display: 'grid', placeItems: 'center', flex: 1, color: 'var(--text-muted)' }}>暂无打开的面板</div>
     }
-    if (active.type === 'browser') return <BrowserTab />
-    if (active.type === 'review') return <ReviewTab />
-    return <TerminalTab tabId={active.id} cwd={active.cwd} />
+    return tabs.map(t => {
+      const isActive = t.id === activeTabId
+      const wrapperStyle: CSSProperties = isActive
+        ? { display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }
+        : { display: 'none' }
+      let body: ReactNode = null
+      if (t.type === 'file') {
+        body = (
+          <FileTab
+            ref={(h: FileTabHandle | null) => { fileTabRefs.current[t.id] = h }}
+            tabId={t.id}
+            filePath={t.filePath}
+          />
+        )
+      } else if (t.type === 'browser') {
+        body = <BrowserTab />
+      } else if (t.type === 'review') {
+        body = <ReviewTab />
+      } else {
+        body = <TerminalTab tabId={t.id} cwd={t.cwd} />
+      }
+      return (
+        <div key={t.id} style={wrapperStyle} data-active={isActive}>
+          {body}
+        </div>
+      )
+    })
   }
 
   // 终端 cwd：当前激活会话所属项目的 path，无则回退 settings.cwd
@@ -149,7 +169,7 @@ export function TabBar() {
             </div>
           </>
         )}
-      {renderContent()}
+      {renderAllTabs()}
     </div>
   )
 }

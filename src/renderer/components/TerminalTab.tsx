@@ -57,11 +57,15 @@ export function TerminalTab({ tabId, cwd }: Props) {
       })
     ]
 
-    // Resize handling
-    const resizeObserver = new ResizeObserver(() => {
-      fit.fit()
+    // Resize handling：容器从 display:none 切回可见时尺寸从 0 恢复，
+    // 此处 refit。隐藏期间（尺寸 0）跳过，避免 FitAddon 在 0 尺寸下抛错。
+    const safeFit = () => {
+      const el = containerRef.current
+      if (!el || el.clientWidth === 0 || el.clientHeight === 0) return
+      try { fit.fit() } catch { /* 容器尺寸异常，忽略 */ }
       window.api?.pty.resize({ tabId, cols: term.cols, rows: term.rows })
-    })
+    }
+    const resizeObserver = new ResizeObserver(safeFit)
     resizeObserver.observe(containerRef.current)
 
     // pty exit
