@@ -33,7 +33,7 @@ export function TaskCard({ tasks, folded, onToggleFold }: TaskCardProps) {
 
   return (
     <div style={{
-      background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+      background: 'var(--surface-1)',
       borderRadius: 10, boxShadow: 'var(--shadow-float)',
       fontSize: 12, overflow: 'hidden',
     }}>
@@ -53,7 +53,7 @@ export function TaskCard({ tasks, folded, onToggleFold }: TaskCardProps) {
         overflow: 'hidden',
         transition: 'max-height .2s ease, opacity .15s ease',
       }}>
-        <div style={{ padding: 4, borderTop: '1px solid var(--border)' }}>
+        <div style={{ padding: 4, borderTop: '1px solid var(--border-hair)' }}>
           {tasks.map(t => (
             <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 8px', borderRadius: 6 }}>
               <div style={{ marginTop: 1 }}><StatusIcon status={t.status} /></div>
