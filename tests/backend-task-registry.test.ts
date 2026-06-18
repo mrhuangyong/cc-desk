@@ -1,0 +1,272 @@
+import { describe, it, expect } from 'vitest'
+import { BackendTaskRegistry } from '../src/main/backend-task-registry'
+import type { BackendTask } from '../src/main/backend-task-registry'
+
+describe('BackendTaskRegistry', () => {
+  // ---- 1. CREATE: task_started(task_type=local_workflow) ----
+  it('task_started(task_type=local_workflow) 创建后台任务', () => {
+    const reg = new BackendTaskRegistry()
+    const task = reg.handleTaskStarted('session1', {
+      task_id: 'tid1',
+      description: '跑 pnpm dev',
+      task_type: 'local_workflow',
+    })
+
+    expect(task).not.toBeNull()
+    expect(task!.id).toBe('tid1')
+    expect(task!.localSessionId).toBe('session1')
+    expect(task!.command).toBe('跑 pnpm dev')
+    expect(task!.taskType).toBe('local_workflow')
+    expect(task!.status).toBe('running')
+    expect(typeof task!.startedAt).toBe('number')
+    expect(typeof task!.lastKnownAt).toBe('number')
+  })
+
+  // ---- 2. CREATE: command 回退到 prompt 字段 ----
+  it('command 回退到 prompt 字段', () => {
+    const reg = new BackendTaskRegistry()
+    const task = reg.handleTaskStarted('session1', {
+      task_id: 'tid2',
+      prompt: 'sleep 30',
+      task_type: 'local_workflow',
+      // 无 description
+    })
+
+    expect(task).not.toBeNull()
+    expect(task!.command).toBe('sleep 30')
+  })
+
+  it('command 回退到默认文本', () => {
+    const reg = new BackendTaskRegistry()
+    const task = reg.handleTaskStarted('session1', {
+      task_id: 'tid3',
+      task_type: 'local_workflow',
+      // 无 description 也无 prompt
+    })
+
+    expect(task).not.toBeNull()
+    expect(task!.command).toBe('(后台任务)')
+  })
+
+  // ---- 3. SKIP: 非 local_workflow 不创建 ----
+  it('task_started 无 task_type（普通 todo）不创建后端任务', () => {
+    const reg = new BackendTaskRegistry()
+    const task = reg.handleTaskStarted('session1', {
+      task_id: 'todo1',
+      description: '普通用户请求',
+      // 无 task_type
+    })
+
+    expect(task).toBeNull()
+    expect(reg.listBySession('session1')).toHaveLength(0)
+  })
+
+  it('task_started 非 local_workflow 的 task_type 不创建', () => {
+    const reg = new BackendTaskRegistry()
+    const task = reg.handleTaskStarted('session1', {
+      task_id: 'wt1',
+      description: 'write 调用',
+      task_type: 'tool',
+    })
+
+    expect(task).toBeNull()
+    expect(reg.listBySession('session1')).toHaveLength(0)
+  })
+
+  // ---- 4. task_notification(completed) ----
+  it('task_notification(completed) 标记 completed', () => {
+    const reg = new BackendTaskRegistry()
+    reg.handleTaskStarted('session1', {
+      task_id: 't1',
+      description: '构建任务',
+      task_type: 'local_workflow',
+    })
+
+    const updated = reg.handleTaskNotification('session1', {
+      task_id: 't1',
+      status: 'completed',
+    })
+
+    expect(updated).not.toBeNull()
+    expect(updated!.status).toBe('completed')
+    expect(updated!.lastKnownAt).toBeGreaterThanOrEqual(updated!.startedAt)
+
+    // 验证 registry 中的任务状态也已更新
+    expect(reg.isManaged('t1')).toBe(true)
+    const tasks = reg.listBySession('session1')
+    expect(tasks[0].status).toBe('completed')
+  })
+
+  // ---- 5. task_notification(failed/stopped) ----
+  it('task_notification(failed) 标记 failed', () => {
+    const reg = new BackendTaskRegistry()
+    reg.handleTaskStarted('session1', {
+      task_id: 't2',
+      description: '可能失败的任务',
+      task_type: 'local_workflow',
+    })
+
+    const updated = reg.handleTaskNotification('session1', {
+      task_id: 't2',
+      status: 'failed',
+    })
+
+    expect(updated).not.toBeNull()
+    expect(updated!.status).toBe('failed')
+  })
+
+  it('task_notification(stopped) 标记 stopped', () => {
+    const reg = new BackendTaskRegistry()
+    reg.handleTaskStarted('session1', {
+      task_id: 't3',
+      description: '被停止的任务',
+      task_type: 'local_workflow',
+    })
+
+    const updated = reg.handleTaskNotification('session1', {
+      task_id: 't3',
+      status: 'stopped',
+    })
+
+    expect(updated).not.toBeNull()
+    expect(updated!.status).toBe('stopped')
+  })
+
+  // ---- 6. task_notification 未知任务 ----
+  it('task_notification 未知任务不抛错，不创建', () => {
+    const reg = new BackendTaskRegistry()
+    // 对一个不存在的 task_id 调用不应抛异常
+    expect(() => {
+      const result = reg.handleTaskNotification('session1', {
+        task_id: 'unknown_task',
+        status: 'completed',
+      })
+      expect(result).toBeNull()
+    }).not.toThrow()
+
+    // 确认没有新任务被创建
+    expect(reg.listBySession('session1')).toHaveLength(0)
+    expect(reg.isManaged('unknown_task')).toBe(false)
+  })
+
+  // ---- 7. 会话隔离 ----
+  it('不同 localSessionId 互不干扰', () => {
+    const reg = new BackendTaskRegistry()
+
+    reg.handleTaskStarted('session_a', {
+      task_id: 'ta1',
+      description: '会话A的任务',
+      task_type: 'local_workflow',
+    })
+    reg.handleTaskStarted('session_b', {
+      task_id: 'tb1',
+      description: '会话B的任务',
+      task_type: 'local_workflow',
+    })
+
+    // 每个会话只看到自己的任务
+    const listA = reg.listBySession('session_a')
+    const listB = reg.listBySession('session_b')
+    expect(listA).toHaveLength(1)
+    expect(listA[0].id).toBe('ta1')
+    expect(listB).toHaveLength(1)
+    expect(listB[0].id).toBe('tb1')
+
+    // task_notification 跨会话不生效
+    const crossUpdate = reg.handleTaskNotification('session_a', {
+      task_id: 'tb1',
+      status: 'completed',
+    })
+    expect(crossUpdate).toBeNull()
+    // session_b 的任务状态应保持不变
+    expect(reg.listBySession('session_b')[0].status).toBe('running')
+  })
+
+  // ---- 8. isManaged ----
+  it('isManaged 正确判断 task_id 是否在 registry 中', () => {
+    const reg = new BackendTaskRegistry()
+    expect(reg.isManaged('nonexistent')).toBe(false)
+
+    reg.handleTaskStarted('session1', {
+      task_id: 'mid1',
+      description: '受管任务',
+      task_type: 'local_workflow',
+    })
+
+    expect(reg.isManaged('mid1')).toBe(true)
+    expect(reg.isManaged('nonexistent')).toBe(false)
+  })
+
+  // ---- 9. handleTaskUpdated: patch status 更新 ----
+  it('handleTaskUpdated patch status 更新', () => {
+    const reg = new BackendTaskRegistry()
+    reg.handleTaskStarted('session1', {
+      task_id: 'u1',
+      description: '更新测试',
+      task_type: 'local_workflow',
+    })
+
+    // completed 映射
+    const updated = reg.handleTaskUpdated('session1', {
+      task_id: 'u1',
+      patch: { status: 'completed' },
+    })
+    expect(updated!.status).toBe('completed')
+
+    // failed 映射
+    reg.handleTaskUpdated('session1', {
+      task_id: 'u1',
+      patch: { status: 'failed' },
+    })
+    expect(reg.isManaged('u1') && reg.listBySession('session1')[0].status).toBe('failed')
+
+    // killed → failed 映射
+    reg.handleTaskUpdated('session1', {
+      task_id: 'u1',
+      patch: { status: 'killed' },
+    })
+    expect(reg.listBySession('session1')[0].status).toBe('failed')
+
+    // stopped 映射
+    reg.handleTaskUpdated('session1', {
+      task_id: 'u1',
+      patch: { status: 'stopped' },
+    })
+    expect(reg.listBySession('session1')[0].status).toBe('stopped')
+
+    // 未知状态 → running
+    reg.handleTaskUpdated('session1', {
+      task_id: 'u1',
+      patch: { status: 'unknown_state' },
+    })
+    expect(reg.listBySession('session1')[0].status).toBe('running')
+  })
+
+  it('handleTaskUpdated 不存在的任务返回 null', () => {
+    const reg = new BackendTaskRegistry()
+    const result = reg.handleTaskUpdated('session1', {
+      task_id: 'nonexistent',
+      patch: { status: 'completed' },
+    })
+    expect(result).toBeNull()
+  })
+
+  // ---- 重复 task_id 不覆盖 ----
+  it('重复 task_id 不覆盖已有记录', () => {
+    const reg = new BackendTaskRegistry()
+    const first = reg.handleTaskStarted('session1', {
+      task_id: 'dup1',
+      description: '第一次',
+      task_type: 'local_workflow',
+    })
+    const second = reg.handleTaskStarted('session1', {
+      task_id: 'dup1',
+      description: '第二次（应被忽略）',
+      task_type: 'local_workflow',
+    })
+
+    // 第二次返回同一个对象
+    expect(second).toBe(first)
+    expect(second!.command).toBe('第一次')
+  })
+})
