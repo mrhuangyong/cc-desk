@@ -189,7 +189,8 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         tabsBySession: { ...state.tabsBySession, [activeSessionId]: [...tabs, newTab] },
-        activeTabIdBySession: { ...state.activeTabIdBySession, [activeSessionId]: newTab.id }
+        activeTabIdBySession: { ...state.activeTabIdBySession, [activeSessionId]: newTab.id },
+        lastFileOpenedSeq: state.lastFileOpenedSeq + 1
       }
     }
     case 'TAB_DIRTY': {
