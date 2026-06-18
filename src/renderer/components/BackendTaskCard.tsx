@@ -32,7 +32,7 @@ export function BackendTaskCard({ tasks, folded, onToggleFold, onKill, onRemove,
 
   return (
     <div style={{
-      background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+      background: 'var(--surface-1)',
       borderRadius: 10, boxShadow: 'var(--shadow-float)', fontSize: 12, overflow: 'hidden',
     }}>
       <button onClick={onToggleFold} style={{
@@ -52,7 +52,7 @@ export function BackendTaskCard({ tasks, folded, onToggleFold, onKill, onRemove,
         overflow: 'hidden',
         transition: 'max-height .2s ease, opacity .15s ease',
       }}>
-        <div style={{ padding: 4, borderTop: '1px solid var(--border)' }}>
+        <div style={{ padding: 4, borderTop: '1px solid var(--border-hair)' }}>
           {/* 运行中 */}
           {runningTasks.map(t => (
             <TaskRow key={t.id} t={t} onKill={onKill} onRemove={onRemove} />
@@ -60,7 +60,7 @@ export function BackendTaskCard({ tasks, folded, onToggleFold, onKill, onRemove,
           {/* 已结束分组 */}
           {finishedTasks.length > 0 && (
             <>
-              {runningTasks.length > 0 && <div style={{ height: 1, background: 'var(--border)', margin: '4px 8px' }} />}
+              {runningTasks.length > 0 && <div style={{ height: 1, background: 'var(--border-hair)', margin: '4px 8px' }} />}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 8px' }}>
                 <span style={{ color: 'var(--text-faint)', fontSize: 10 }}>已结束 · {finishedTasks.length}</span>
                 <button onClick={onClearFinished} title="清除已结束" style={{
@@ -108,8 +108,8 @@ function TaskRow({ t, onKill, onRemove }: {
       </div>
       {t.status === 'running' ? (
         <button onClick={() => onKill(t.id)} title="终止" style={{
-          padding: '2px 6px', color: 'var(--text-muted)', background: 'none',
-          border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', fontSize: 11,
+          padding: '2px 6px', color: 'var(--text-muted)', background: 'var(--surface-2)',
+          border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 11,
           display: 'inline-flex', alignItems: 'center',
         }}>
           <Square size={10} />
