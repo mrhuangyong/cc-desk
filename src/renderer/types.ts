@@ -94,6 +94,11 @@ export interface Session {
   archived?: boolean
   archivedAt?: number
   updatedAt?: number    // 最后活动时间戳（ms），用于自动归档判断
+  // 会话级权限/思考（持久化到 projects.json）；undefined 时用默认
+  permissionMode?: string          // '变更前确认' | '自动编辑' | '计划模式' | '完全访问'
+  thinking?: 'low' | 'medium' | 'high'   // SDK EffortLevel 子集
+  extraDirs?: string[]             // /add-dir 追加的可访问目录
+  notices?: SystemNotice[]         // 会话级系统提示（cost/status/compact 等固化通知）
 }
 
 // 项目：包含多个会话
@@ -197,7 +202,6 @@ export interface AppSettings {
   showBackendTask: boolean
   autoArchive: boolean
   archiveDays: string
-  dataPath: string
 
   // ===== 各设置子页 =====
   codePreview: CodePreviewSettings
