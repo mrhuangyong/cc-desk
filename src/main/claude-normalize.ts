@@ -58,9 +58,8 @@ export function extractToolResults(content: any[]): { toolUseId: string; content
 }
 
 // 从 tool_result block 提取 SDK 后台任务 id（Bash auto-background 场景）。
-// 走四条路径：顶层字段 → structuredContent → content 对象内部 → 文本 JSON。
-import { bgLog } from './bg-debug-log'
-
+// SDK 0.3.178 的 Bash 工具：后台命令的 backgroundTaskId 藏在 content 文本里
+// （"Command running in background with ID: xxx"），而非结构化字段。
 export function extractBackgroundTaskId(toolResultBlock: any): string | undefined {
   if (!toolResultBlock) return undefined
   // 1) tool_result 顶层字段
@@ -72,12 +71,15 @@ export function extractBackgroundTaskId(toolResultBlock: any): string | undefine
   // 3) content 是对象时
   const c = toolResultBlock.content
   if (c && typeof c === 'object' && !Array.isArray(c) && typeof c.backgroundTaskId === 'string' && c.backgroundTaskId) return c.backgroundTaskId
-  // 4) content 文本中 JSON 兜底
+  // 4) content 文本中提取（主路径）
   let text = ''
   if (typeof c === 'string') text = c
   else if (Array.isArray(c)) text = c.map((x: any) => x?.text ?? '').join('')
-  bgLog('extract_detail cKeys=' + JSON.stringify(c && typeof c === 'object' && !Array.isArray(c) ? Object.keys(c) : (typeof c === 'string' ? 'string' : 'array')) + ' topBg=' + JSON.stringify(topBg ?? null) + ' textHead=' + JSON.stringify(text.slice(0, 300)))
-  const m = text.match(/"backgroundTaskId"\s*:\s*"([^"]+)"/)
-  if (m) return m[1]
+  // 4a) 结构化 JSON 兜底
+  const m1 = text.match(/"backgroundTaskId"\s*:\s*"([^"]+)"/)
+  if (m1) return m1[1]
+  // 4b) Bash 后台命令的人类可读文本："Command running in background with ID: <id>"
+  const m2 = text.match(/background with ID:\s*([A-Za-z0-9_-]+)/)
+  if (m2) return m2[1]
   return undefined
 }
