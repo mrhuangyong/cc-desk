@@ -166,7 +166,7 @@ button {
   background: var(--surface-1); border-radius: 8px;
   color: var(--text-muted);
 }
-.md hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+.md hr { border: none; border-top: 1px solid var(--border-hair); margin: 14px 0; }
 /* 行内代码 */
 .md code:not(pre code) {
   font-family: var(--font-mono); font-size: 0.88em;
