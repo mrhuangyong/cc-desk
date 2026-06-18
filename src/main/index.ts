@@ -7,10 +7,13 @@ import { getSettings, saveSettings } from './settings-store'
 import { getModelProvidersConfig, saveModelProvidersConfig } from './cc-desk-store'
 import { getProjectsSnapshot, saveProjectsSnapshot } from './projects-store'
 import * as cc from './claude-config'
+import { BackendTaskRegistry } from './backend-task-registry'
 
 const isDev = !app.isPackaged
 
 const claude = new ClaudeService()
+const backendTaskRegistry = new BackendTaskRegistry()
+claude.setRegistry(backendTaskRegistry)
 const ptyManager = new PtyManager()
 
 function createWindow() {
@@ -100,6 +103,24 @@ function createWindow() {
   })
   ipcMain.handle('pty:kill', (_e, tabId) => {
     ptyManager.kill(tabId)
+  })
+
+  // 后台任务
+  ipcMain.handle('backend-task:list', (_e, localSessionId: string) => {
+    return backendTaskRegistry.listBySession(localSessionId)
+  })
+
+  ipcMain.handle('backend-task:kill', async (_e, localSessionId: string, taskId: string) => {
+    try {
+      await claude.stopTask(taskId)
+      backendTaskRegistry.handleTaskNotification(localSessionId, { task_id: taskId, status: 'stopped' })
+      const t = backendTaskRegistry.listBySession(localSessionId).find(x => x.id === taskId)
+      if (t) win.webContents.send('claude:backend-task', { localSessionId, op: 'update', task: t })
+      return { ok: true }
+    } catch (err) {
+      console.error('[backend-task] kill failed', taskId, err)
+      return { ok: false, error: String(err) }
+    }
   })
 
   // 开发态加载 dev server，生产态加载打包文件
