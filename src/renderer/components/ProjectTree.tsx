@@ -40,8 +40,6 @@ export function ProjectTree({ onOpenFiles, expandedProjects, onToggleExpand, tre
         if (q && filtered.length === 0) return null
 
         const sorted = [...filtered].sort((a, b) => {
-          if (a.id === activeSessionId) return -1
-          if (b.id === activeSessionId) return 1
           return (b.updatedAt ?? 0) - (a.updatedAt ?? 0)
         })
 
@@ -88,6 +86,7 @@ export function ProjectTree({ onOpenFiles, expandedProjects, onToggleExpand, tre
                 onMouseLeave={() => setHoveredSession(null)}
                 onClick={() => dispatch({ type: 'SELECT_SESSION', sessionId: session.id })}
                 style={{
+                  position: 'relative',
                   padding: '6px 12px 6px 30px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   fontSize: 'var(--font-size)',
                   color: active ? 'var(--text)' : 'var(--text-muted)',
@@ -96,6 +95,7 @@ export function ProjectTree({ onOpenFiles, expandedProjects, onToggleExpand, tre
                   cursor: 'pointer'
                 }}
               >
+                {active && <span data-testid="session-active-bar" style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: 'var(--accent)' }} />}
                 <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' }}>
                   <span style={{ width: 6, height: 6, borderRadius: 999, background: active ? 'var(--accent)' : 'transparent', flexShrink: 0 }} />
                   <MessageCircle size={13} style={{ flexShrink: 0 }} />
