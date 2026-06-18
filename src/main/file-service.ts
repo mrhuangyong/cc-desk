@@ -1,5 +1,5 @@
 // src/main/file-service.ts
-import { readdir, readFile, stat, writeFile, rename } from 'fs/promises'
+import { readdir, readFile, stat, writeFile, rename, unlink } from 'fs/promises'
 import { join } from 'path'
 import ignore from 'ignore'
 
@@ -52,7 +52,6 @@ export async function writeFileContent(filePath: string, content: string): Promi
 }
 
 async function rmQuiet(p: string): Promise<void> {
-  const { unlink } = await import('fs/promises')
   try { await unlink(p) } catch { /* noop */ }
 }
 
