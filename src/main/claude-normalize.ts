@@ -56,3 +56,22 @@ export function extractToolResults(content: any[]): { toolUseId: string; content
       return { toolUseId: b.tool_use_id, content: text, isError: !!b.is_error }
     })
 }
+
+// 从 tool_result block 提取 SDK 后台任务 id（Bash 自动后台化场景）。
+// 尝试多个可能位置：顶层 backgroundTaskId 字段、content 文本中的 JSON、structuredContent。
+export function extractBackgroundTaskId(toolResultBlock: any): string | undefined {
+  if (!toolResultBlock) return undefined
+  // 1) 顶层字段（SDK 可能把 backgroundTaskId 提升到 tool_result wrapper）
+  if (typeof toolResultBlock.backgroundTaskId === 'string' && toolResultBlock.backgroundTaskId) return toolResultBlock.backgroundTaskId
+  // 2) structuredContent（部分输出类型用此字段）
+  const sc = toolResultBlock.structuredContent
+  if (sc && typeof sc === 'object' && typeof sc.backgroundTaskId === 'string' && sc.backgroundTaskId) return sc.backgroundTaskId
+  // 3) content 文本中 JSON 兜底
+  let text = ''
+  const c = toolResultBlock.content
+  if (typeof c === 'string') text = c
+  else if (Array.isArray(c)) text = c.map((x: any) => x?.text ?? '').join('')
+  const m = text.match(/"backgroundTaskId"\s*:\s*"([^"]+)"/)
+  if (m) return m[1]
+  return undefined
+}

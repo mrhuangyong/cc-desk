@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { normalizeBetaBlocks, extractToolResults, mkNotice } from '../src/main/claude-normalize'
+import { normalizeBetaBlocks, extractToolResults, extractBackgroundTaskId, mkNotice } from '../src/main/claude-normalize'
 
 describe('normalizeBetaBlocks', () => {
   it('把 BetaMessage content blocks 映射为 ContentBlock[]', () => {
@@ -36,5 +36,32 @@ describe('mkNotice', () => {
     expect(n.text).toBe('运行中')
     expect(n.level).toBe('info')
     expect(typeof n.id).toBe('string')
+  })
+})
+
+describe('extractBackgroundTaskId', () => {
+  it('从顶层字段提取 backgroundTaskId', () => {
+    const block = { type: 'tool_result', tool_use_id: 'tu1', backgroundTaskId: 'bg_abc123', content: 'ok' }
+    expect(extractBackgroundTaskId(block)).toBe('bg_abc123')
+  })
+
+  it('从 structuredContent 提取', () => {
+    const block = { type: 'tool_result', tool_use_id: 'tu1', structuredContent: { backgroundTaskId: 'bg_def456' }, content: 'ok' }
+    expect(extractBackgroundTaskId(block)).toBe('bg_def456')
+  })
+
+  it('从 content 文本 JSON 提取', () => {
+    const block = { type: 'tool_result', tool_use_id: 'tu1', content: [{ type: 'text', text: '{"backgroundTaskId":"bg_ghi789"}' }] }
+    expect(extractBackgroundTaskId(block)).toBe('bg_ghi789')
+  })
+
+  it('无 backgroundTaskId 返回 undefined', () => {
+    const block = { type: 'tool_result', tool_use_id: 'tu1', content: 'just some output' }
+    expect(extractBackgroundTaskId(block)).toBeUndefined()
+  })
+
+  it('null block 返回 undefined', () => {
+    expect(extractBackgroundTaskId(null)).toBeUndefined()
+    expect(extractBackgroundTaskId(undefined)).toBeUndefined()
   })
 })
