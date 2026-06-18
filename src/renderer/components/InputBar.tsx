@@ -188,7 +188,7 @@ export function InputBar() {
   // 通用下拉菜单容器
   const menuStyle: React.CSSProperties = {
     position: 'absolute', bottom: '100%', left: 0, marginBottom: 4,
-    background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+    background: 'var(--surface-1)',
     borderRadius: 10, boxShadow: 'var(--shadow-float)',
     padding: 5, minWidth: 180, zIndex: 100,
   }
