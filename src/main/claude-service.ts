@@ -409,6 +409,7 @@ export class ClaudeService {
     const result = query({
       prompt,
       options: {
+        env: { ...process.env, ...buildSdkEnv(resolved, cfg.modelRoleMap, cfg.models) },
         model: resolved?.model.sdkModelId,
         cwd,
         maxTurns: cwd ? 8 : 1,
