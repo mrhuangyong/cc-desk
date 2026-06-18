@@ -515,6 +515,24 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'CLEAR_BACKEND_TASKS': {
       return { ...state, backendTasksBySession: { ...state.backendTasksBySession, [action.sessionId]: [] } }
     }
+    case 'ARCHIVE_SESSION': {
+      const projects = state.projects.map(p => ({
+        ...p,
+        sessions: p.sessions.map(s => s.id === action.sessionId ? { ...s, archived: true, archivedAt: Date.now() } : s),
+      }))
+      let activeSessionId = state.activeSessionId
+      if (state.activeSessionId === action.sessionId) {
+        activeSessionId = pickSurvivingSessionId(projects, action.sessionId) ?? state.activeSessionId
+      }
+      return { ...state, projects, activeSessionId }
+    }
+    case 'RESTORE_SESSION': {
+      const projects = state.projects.map(p => ({
+        ...p,
+        sessions: p.sessions.map(s => s.id === action.sessionId ? { ...s, archived: false, archivedAt: undefined } : s),
+      }))
+      return { ...state, projects }
+    }
     case 'SET_PANEL_FOLD': {
       return { ...state, panelFold: { ...state.panelFold, [action.panel]: action.folded } }
     }
