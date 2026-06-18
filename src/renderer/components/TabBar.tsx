@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useRef, type CSSProperties } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { FileText, Globe, SquareTerminal, FileDiff, Plus } from 'lucide-react'
 import { useStore } from '../state/store'
 import { FileTab } from './FileTab'
+import type { FileTabHandle } from './FileTab'
 import { BrowserTab } from './BrowserTab'
 import { TerminalTab } from './TerminalTab'
 import { ReviewTab } from './ReviewTab'
@@ -24,11 +25,21 @@ export function TabBar() {
   const tabs = state.tabsBySession[sessionId] ?? []
   const activeTabId = state.activeTabIdBySession[sessionId] ?? null
   const [menuOpen, setMenuOpen] = useState(false)
+  const fileTabRefs = useRef<Record<string, FileTabHandle | null>>({})
+  const [confirmTabId, setConfirmTabId] = useState<string | null>(null)
 
   const renderContent = () => {
     const active = tabs.find(t => t.id === activeTabId)
     if (!active) return <div style={{ display: 'grid', placeItems: 'center', flex: 1, color: 'var(--text-muted)' }}>暂无打开的面板</div>
-    if (active.type === 'file') return <FileTab tabId={active.id} filePath={active.filePath} />
+    if (active.type === 'file') {
+      return (
+        <FileTab
+          ref={(h: FileTabHandle | null) => { fileTabRefs.current[active.id] = h }}
+          tabId={active.id}
+          filePath={active.filePath}
+        />
+      )
+    }
     if (active.type === 'browser') return <BrowserTab />
     if (active.type === 'review') return <ReviewTab />
     return <TerminalTab tabId={active.id} cwd={active.cwd} />
@@ -63,7 +74,22 @@ export function TabBar() {
           >
             <span style={{ display: 'inline-flex', alignItems: 'center' }}>{(() => { const Icon = TAB_ICON[t.type]; return <Icon size={14} />; })()}</span>
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</span>
-            <button onClick={(e) => { e.stopPropagation(); dispatch({ type: 'CLOSE_TAB', tabId: t.id }) }} style={{ fontSize: 14, opacity: 0.6, lineHeight: 1 }} aria-label="关闭标签">×</button>
+            {state.dirtyTabIds[t.id] && (
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />
+            )}
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                const isDirty = !!state.dirtyTabIds[t.id]
+                if (!isDirty) {
+                  dispatch({ type: 'CLOSE_TAB', tabId: t.id })
+                  return
+                }
+                setConfirmTabId(t.id)
+              }}
+              style={{ fontSize: 14, opacity: 0.6, lineHeight: 1 }}
+              aria-label="关闭标签"
+            >×</button>
           </div>
         ))}
         {/* + 按钮：点击展开类型选择下拉菜单 */}
@@ -95,7 +121,38 @@ export function TabBar() {
           </>
         )}
       </div>
+        {confirmTabId && (
+          <>
+            <div onClick={() => setConfirmTabId(null)} style={{ position: 'fixed', inset: 0, zIndex: 90 }} />
+            <div style={{
+              position: 'absolute', top: 36, left: '50%', transform: 'translateX(-50%)', zIndex: 100,
+              background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+              borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-float)', padding: 14,
+              display: 'flex', flexDirection: 'column', gap: 10, minWidth: 220
+            }}>
+              <div style={{ fontSize: 13, color: 'var(--text)' }}>该文件有未保存的改动，是否保存？</div>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button onClick={() => { dispatch({ type: 'CLOSE_TAB', tabId: confirmTabId }); setConfirmTabId(null) }} style={btnStyle}>不保存</button>
+                <button onClick={() => setConfirmTabId(null)} style={btnStyle}>取消</button>
+                <button onClick={async () => {
+                  const handle = fileTabRefs.current[confirmTabId]
+                  const ok = handle ? await handle.save() : false
+                  if (ok) {
+                    dispatch({ type: 'CLOSE_TAB', tabId: confirmTabId })
+                  }
+                  setConfirmTabId(null)
+                }} style={{ ...btnStyle, background: 'var(--accent)', color: '#fff', border: 'none' }}>保存</button>
+              </div>
+            </div>
+          </>
+        )}
       {renderContent()}
     </div>
   )
+}
+
+const btnStyle: CSSProperties = {
+  padding: '5px 12px', fontSize: 12, cursor: 'pointer',
+  background: 'transparent', border: '1px solid var(--border)', color: 'var(--text)',
+  borderRadius: 'var(--radius)'
 }
