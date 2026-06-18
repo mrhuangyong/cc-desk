@@ -58,4 +58,48 @@ describe('ProjectTree', () => {
     // 会话被收起
     expect(screen.queryByText(/重构登录流程/)).toBeNull()
   })
+
+  it('会话按 updatedAt 倒序，激活会话置顶', () => {
+    const { container } = renderWithProvider(<ProjectTree {...defaultProps} />)
+    fireEvent.click(screen.getByText('重构登录流程'))
+    const sessionTexts = ['重构登录流程', '修样式 bug', '优化首屏', '接入埋点', '国际化', '单元测试补全', 'CI 配置']
+    // 按文档顺序收集会话行标题：仅取叶子 span（无子 span），其 textContent 恰好等于一个会话标题
+    const titleSpans = Array.from(container.querySelectorAll('span')).filter(span => {
+      if (span.querySelector('span')) return false
+      const txt = (span.textContent ?? '').trim()
+      return sessionTexts.includes(txt)
+    })
+    const order = titleSpans.map(span => sessionTexts.indexOf((span.textContent ?? '').trim()))
+    // 激活会话（重构登录流程，idx 0）置顶
+    expect(order[0]).toBe(0)
+    // 其余按 updatedAt 倒序：CI 配置(6) > 单元测试补全(5) > 国际化(4) > 接入埋点(3)
+    expect(order.slice(1)).toEqual([6, 5, 4, 3])
+  })
+
+  it('默认只显示最近 5 条，出现"展开更多"按钮', () => {
+    renderWithProvider(<ProjectTree {...defaultProps} />)
+    expect(screen.queryByText('修样式 bug')).toBeNull()
+    expect(screen.queryByText(/展开更多.*2/)).not.toBeNull()
+  })
+
+  it('点击展开更多后显示全部会话，按钮变为收起', () => {
+    renderWithProvider(<ProjectTree {...defaultProps} />)
+    fireEvent.click(screen.getByText(/展开更多/))
+    expect(screen.queryByText('修样式 bug')).not.toBeNull()
+    expect(screen.queryByText('收起')).not.toBeNull()
+    expect(screen.queryByText(/展开更多/)).toBeNull()
+  })
+
+  it('点击收起后回到默认 5 条', () => {
+    renderWithProvider(<ProjectTree {...defaultProps} />)
+    fireEvent.click(screen.getByText(/展开更多/))
+    fireEvent.click(screen.getByText('收起'))
+    expect(screen.queryByText('修样式 bug')).toBeNull()
+    expect(screen.queryByText(/展开更多.*2/)).not.toBeNull()
+  })
+
+  it('会话数 ≤ 5 的项目不显示展开更多按钮', () => {
+    renderWithProvider(<ProjectTree {...defaultProps} />)
+    expect(screen.queryAllByText(/展开更多/)).toHaveLength(1)
+  })
 })
