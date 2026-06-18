@@ -36,10 +36,12 @@ export function PromptEditor({ doc, placeholder, allSlashItems, getCwd, onDocCha
   const getCwdRef = useRef(getCwd)
   const onSendRef = useRef(onSend)
   const onBuiltinRunRef = useRef(onBuiltinRun)
+  const onEditorReadyRef = useRef(onEditorReady)
   useEffect(() => { slashItemsRef.current = allSlashItems }, [allSlashItems])
   useEffect(() => { getCwdRef.current = getCwd }, [getCwd])
   useEffect(() => { onSendRef.current = onSend }, [onSend])
   useEffect(() => { onBuiltinRunRef.current = onBuiltinRun }, [onBuiltinRun])
+  useEffect(() => { onEditorReadyRef.current = onEditorReady }, [onEditorReady])
 
   const editor = useEditor({
     extensions: [
@@ -93,7 +95,7 @@ export function PromptEditor({ doc, placeholder, allSlashItems, getCwd, onDocCha
   }, [doc, editor])
 
   // editor 初始化后回调一次（暴露给父组件用于插文本等）
-  useEffect(() => { if (editor) onEditorReady?.(editor) }, [editor, onEditorReady])
+  useEffect(() => { if (editor) onEditorReadyRef.current?.(editor) }, [editor])
 
   // 降级：editor 初始化失败 → 原生 textarea
   if (!editor) {
