@@ -26,6 +26,8 @@ export interface AppState {
   claudeSessionMap: Record<string, string>
   // 待处理的用户对话请求（AskUserQuestion 等），Task 10 使用
   pendingDialog: { reqId: string; dialogKind: string; payload: any; toolUseId?: string } | null
+  // 脏 tab 记录：key = tabId，value = true（未保存改动）。FileTab 上报，TabBar 读取消耗。
+  dirtyTabIds: Record<string, boolean>
 }
 
 // TODO: idCounter is module-level mutable state — non-deterministic IDs. Acceptable for prototype; thread through state if persistence/time-travel needed later.
@@ -180,6 +182,12 @@ export function reducer(state: AppState, action: Action): AppState {
         activeTabIdBySession: { ...state.activeTabIdBySession, [activeSessionId]: newTab.id }
       }
     }
+    case 'TAB_DIRTY': {
+      const dirtyTabIds = { ...state.dirtyTabIds }
+      if (action.dirty) dirtyTabIds[action.tabId] = true
+      else delete dirtyTabIds[action.tabId]
+      return { ...state, dirtyTabIds }
+    }
     case 'CLOSE_TAB': {
       const activeSessionId = state.activeSessionId
       const tabs = (state.tabsBySession[activeSessionId] ?? []).filter(t => t.id !== action.tabId)
@@ -188,10 +196,13 @@ export function reducer(state: AppState, action: Action): AppState {
       if (currentActive === action.tabId) {
         activeTabIdBySession[activeSessionId] = tabs.length > 0 ? tabs[tabs.length - 1].id : null
       }
+      const dirtyTabIds = { ...state.dirtyTabIds }
+      delete dirtyTabIds[action.tabId]
       return {
         ...state,
         tabsBySession: { ...state.tabsBySession, [activeSessionId]: tabs },
-        activeTabIdBySession
+        activeTabIdBySession,
+        dirtyTabIds
       }
     }
     case 'SELECT_TAB': {
