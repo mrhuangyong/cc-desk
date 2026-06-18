@@ -59,21 +59,31 @@ describe('ProjectTree', () => {
     expect(screen.queryByText(/重构登录流程/)).toBeNull()
   })
 
-  it('会话按 updatedAt 倒序，激活会话置顶', () => {
+  it('会话纯按 updatedAt 倒序，点击激活不改变顺序', () => {
     const { container } = renderWithProvider(<ProjectTree {...defaultProps} />)
-    fireEvent.click(screen.getByText('重构登录流程'))
     const sessionTexts = ['重构登录流程', '修样式 bug', '优化首屏', '接入埋点', '国际化', '单元测试补全', 'CI 配置']
-    // 按文档顺序收集会话行标题：仅取叶子 span（无子 span），其 textContent 恰好等于一个会话标题
-    const titleSpans = Array.from(container.querySelectorAll('span')).filter(span => {
+    const titleSpans = () => Array.from(container.querySelectorAll('span')).filter(span => {
       if (span.querySelector('span')) return false
       const txt = (span.textContent ?? '').trim()
       return sessionTexts.includes(txt)
     })
-    const order = titleSpans.map(span => sessionTexts.indexOf((span.textContent ?? '').trim()))
-    // 激活会话（重构登录流程，idx 0）置顶
-    expect(order[0]).toBe(0)
-    // 其余按 updatedAt 倒序：CI 配置(6) > 单元测试补全(5) > 国际化(4) > 接入埋点(3)
-    expect(order.slice(1)).toEqual([6, 5, 4, 3])
+    const orderOf = () => titleSpans().map(span => sessionTexts.indexOf((span.textContent ?? '').trim()))
+
+    // 激活前：纯 updatedAt 倒序，默认 5 条可见 = CI 配置(6) > 单元测试补全(5) > 国际化(4) > 接入埋点(3) > 优化首屏(2)
+    expect(orderOf()).toEqual([6, 5, 4, 3, 2])
+
+    // 点击"优化首屏"(idx 2) 激活它——激活不应改变排序顺序
+    fireEvent.click(screen.getByText('优化首屏'))
+    expect(orderOf()).toEqual([6, 5, 4, 3, 2])
+  })
+
+  it('选中会话行渲染左侧强调色竖条', () => {
+    const { container } = renderWithProvider(<ProjectTree {...defaultProps} />)
+    // 默认 5 条中第一条（CI 配置，updatedAt 最大）未被激活，不应有竖条
+    // 点击激活"优化首屏"
+    fireEvent.click(screen.getByText('优化首屏'))
+    // 激活行应有 data-active 标记的竖条节点
+    expect(container.querySelector('[data-testid="session-active-bar"]')).not.toBeNull()
   })
 
   it('默认只显示最近 5 条，出现"展开更多"按钮', () => {

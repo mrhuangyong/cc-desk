@@ -32,14 +32,14 @@ describe('LeftPanel 顶部新建会话', () => {
 
   it('展开/折叠按钮切换所有项目会话的显隐', () => {
     renderWithProvider(<LeftPanel collapsed={false} />)
-    // 初始全部展开：会话可见
-    expect(screen.queryByText(/重构登录流程/)).not.toBeNull()
+    // 初始全部展开：会话可见（用默认可见的"CI 配置"，updatedAt 最大排在折叠 5 条内）
+    expect(screen.queryByText(/CI 配置/)).not.toBeNull()
     // 点"展开/折叠"——全展开时变全收起
     fireEvent.click(screen.getByRole('button', { name: '展开/折叠' }))
-    expect(screen.queryByText(/重构登录流程/)).toBeNull()
+    expect(screen.queryByText(/CI 配置/)).toBeNull()
     // 再点——全收起时变全展开
     fireEvent.click(screen.getByRole('button', { name: '展开/折叠' }))
-    expect(screen.queryByText(/重构登录流程/)).not.toBeNull()
+    expect(screen.queryByText(/CI 配置/)).not.toBeNull()
   })
 
   it('顶部"搜索"按钮打开搜索弹窗', () => {
