@@ -128,6 +128,11 @@ function createWindow() {
     }
   })
 
+  // 会话归档：杀持久进程
+  ipcMain.handle('session:archive', async (_e, localSessionId: string) => {
+    await claude.closeSession(localSessionId)
+  })
+
   // 开发态加载 dev server，生产态加载打包文件
   if (isDev && process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(process.env['ELECTRON_RENDERER_URL'])

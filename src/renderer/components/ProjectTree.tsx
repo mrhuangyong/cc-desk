@@ -108,7 +108,10 @@ export function ProjectTree({ onOpenFiles, expandedProjects, onToggleExpand, tre
                     position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)',
                     opacity: hovered ? 1 : 0, pointerEvents: hovered ? 'auto' : 'none', transition: 'opacity .15s',
                   }}>
-                    <DeleteConfirmIcon onConfirm={() => dispatch({ type: 'DELETE_SESSION', projectId: project.id, sessionId: session.id })} />
+                    <DeleteConfirmIcon onConfirm={() => {
+                      dispatch({ type: 'ARCHIVE_SESSION', sessionId: session.id })
+                      void window.api.session.archive(session.id)
+                    }} />
                   </span>
                 </span>
               </div>

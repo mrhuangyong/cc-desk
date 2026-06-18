@@ -83,6 +83,9 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.on('pty:exit', (_, data) => cb(data))
     }
   },
+  session: {
+    archive: (localSessionId: string) => ipcRenderer.invoke('session:archive', localSessionId),
+  },
   backendTask: {
     list: (localSessionId: string) => ipcRenderer.invoke('backend-task:list', localSessionId),
     kill: (localSessionId: string, taskId: string) => ipcRenderer.invoke('backend-task:kill', localSessionId, taskId),
