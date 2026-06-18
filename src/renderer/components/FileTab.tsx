@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import Editor from '@monaco-editor/react'
 import type { editor } from 'monaco-editor'
 import type MonacoNS from 'monaco-editor'
+import { Eye, Pencil } from 'lucide-react'
 import { useStore } from '../state/store'
 import { monacoThemeFor, monacoLanguageFor } from '../editor/monacoEnv'
+import { MarkdownRenderer } from './markdown/MarkdownRenderer'
 
 export interface FileTabHandle {
   // 保存当前编辑器内容到磁盘；成功返回 true。供关闭确认流程调用。
@@ -15,12 +18,20 @@ interface Props {
   filePath?: string
 }
 
+// 是否为 markdown 文件（决定是否提供预览模式）
+function isMarkdown(filePath?: string): boolean {
+  if (!filePath) return false
+  return /\.(md|markdown|mdown|mkd)$/i.test(filePath)
+}
+
 export const FileTab = forwardRef<FileTabHandle, Props>(function FileTab({ tabId, filePath }, ref) {
   const { state, dispatch } = useStore()
   const codePreview = state.settings.codePreview
   const [content, setContent] = useState<string>('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // 视图模式：markdown 默认预览，其它默认编辑
+  const [viewMode, setViewMode] = useState<'preview' | 'edit'>(() => isMarkdown(filePath) ? 'preview' : 'edit')
   const contentRef = useRef<string>('')   // 编辑器当前值，保存时读取，避免闭包过期
   const loadedRef = useRef<string>('')    // 上次落盘（或加载）的内容，作为脏标基准
   // tabId / filePath 同步到 ref：Cmd+S 在挂载时只注册一次，回调通过 ref 读最新值
@@ -81,8 +92,18 @@ export const FileTab = forwardRef<FileTabHandle, Props>(function FileTab({ tabId
   const handleChange = (value: string | undefined) => {
     const v = value ?? ''
     contentRef.current = v
+    setContent(v)   // 同步到 state，供预览模式实时反映编辑改动
     // 与已落盘内容比较，决定脏标
     dispatch({ type: 'TAB_DIRTY', tabId: tabIdRef.current, dirty: v !== loadedRef.current })
+  }
+
+  // 预览模式下没有 Monaco 实例，Cmd+S 靠容器 keydown 兜底；
+  // 编辑模式下 Monaco 的 addCommand 先拦截，这里不会重复触发。
+  const onKeyDown = (e: ReactKeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+      e.preventDefault()
+      void doSave()
+    }
   }
 
   // 无文件 / 加载 / 错误态
@@ -96,26 +117,46 @@ export const FileTab = forwardRef<FileTabHandle, Props>(function FileTab({ tabId
     return <div style={{ padding: 12, color: 'var(--text-muted)' }}>{error}</div>
   }
 
+  const showMdToggle = isMarkdown(filePath)
+
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }} onKeyDown={onKeyDown}>
       {error && (
         <div style={{ padding: '6px 10px', background: 'rgba(220,38,38,.12)', color: 'var(--danger, #dc2626)', fontSize: 12 }}>{error}</div>
       )}
-      <Editor
-        language={monacoLanguageFor(filePath)}
-        theme={monacoThemeFor(state.theme)}
-        value={content}
-        onChange={handleChange}
-        onMount={handleMount}
-        options={{
-          fontSize: codePreview.fontSize,
-          wordWrap: codePreview.wordWrap ? 'on' : 'off',
-          lineNumbers: codePreview.showLineNumbers ? 'on' : 'off',
-          minimap: { enabled: false },
-          automaticLayout: true,
-          scrollBeyondLastLine: false,
-        }}
-      />
+      {showMdToggle && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '4px 8px', borderBottom: '1px solid var(--border)' }}>
+          <button
+            onClick={() => setViewMode(m => m === 'preview' ? 'edit' : 'preview')}
+            title={viewMode === 'preview' ? '切换到编辑' : '切换到预览'}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px', fontSize: 12, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 'var(--radius)' }}
+          >
+            {viewMode === 'preview' ? <Pencil size={13} /> : <Eye size={13} />}
+            {viewMode === 'preview' ? '编辑' : '预览'}
+          </button>
+        </div>
+      )}
+      {showMdToggle && viewMode === 'preview' ? (
+        <div style={{ flex: 1, overflow: 'auto', padding: 12 }}>
+          <MarkdownRenderer text={content} />
+        </div>
+      ) : (
+        <Editor
+          language={monacoLanguageFor(filePath)}
+          theme={monacoThemeFor(state.theme)}
+          value={content}
+          onChange={handleChange}
+          onMount={handleMount}
+          options={{
+            fontSize: codePreview.fontSize,
+            wordWrap: codePreview.wordWrap ? 'on' : 'off',
+            lineNumbers: codePreview.showLineNumbers ? 'on' : 'off',
+            minimap: { enabled: false },
+            automaticLayout: true,
+            scrollBeyondLastLine: false,
+          }}
+        />
+      )}
     </div>
   )
 })
