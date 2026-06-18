@@ -133,13 +133,10 @@ describe('getCommands 含内置命令', () => {
     expect(init!.builtinAction).toBeDefined()
     expect(init!.builtinAction!.type).toBe('init-project')
   })
-  it('内置命令排在插件/用户命令之前', async () => {
+  it('内置命令排在返回数组最前（前 17 条全是 builtin）', async () => {
     const cmds = await getCommands()
-    const initIdx = cmds.findIndex(c => c.name === '/init')
-    // 找一个非 builtin 的命令索引（如果有）
-    const nonBuiltinIdx = cmds.findIndex(c => c.kind !== 'builtin')
-    if (nonBuiltinIdx !== -1) {
-      expect(initIdx).toBeLessThan(nonBuiltinIdx)
-    }
+    // 17 = BUILTIN_COMMANDS.length，全部应在数组头部连续出现
+    const first17 = cmds.slice(0, 17)
+    expect(first17.every(c => c.kind === 'builtin')).toBe(true)
   })
 })
