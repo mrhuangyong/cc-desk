@@ -227,11 +227,12 @@ export class ClaudeService {
               if (t) {
                 webContents.send('claude:backend-task', { localSessionId: lsid, op: 'update', task: t })
               }
+            } else {
+              webContents.send('claude:task', {
+                localSessionId: lsid, kind: 'updated',
+                taskId: tm.task_id, patch: tm.patch ?? {},
+              })
             }
-            webContents.send('claude:task', {
-              localSessionId: lsid, kind: 'updated',
-              taskId: tm.task_id, patch: tm.patch ?? {},
-            })
             break
           }
           case 'task_progress':
