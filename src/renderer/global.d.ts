@@ -71,6 +71,12 @@ interface PtyAPI {
   onExit(cb: (data: { tabId: string; code: number }) => void): void
 }
 
+interface BackendTaskAPI {
+  list(localSessionId: string): Promise<any[]>
+  kill(localSessionId: string, taskId: string): Promise<{ ok: boolean; error?: string }>
+  onEvent(cb: (data: any) => void): void
+}
+
 interface DialogAPI {
   openDirectory(): Promise<string | null>
 }
@@ -115,6 +121,7 @@ declare global {
       projects: ProjectsAPI
       fs: FsAPI
       pty: PtyAPI
+      backendTask: BackendTaskAPI
       dialog: DialogAPI
       cc: ClaudeConfigAPI
       onArchiveTick: MiscAPI['onArchiveTick']

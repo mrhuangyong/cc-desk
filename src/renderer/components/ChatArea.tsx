@@ -100,6 +100,8 @@ export function ChatArea() {
   useEffect(() => { settingsRef.current = state.settings }, [state.settings])
   const tasksRef = useRef(state.tasksBySession)
   useEffect(() => { tasksRef.current = state.tasksBySession }, [state.tasksBySession])
+  const backendTasksRef = useRef(state.backendTasksBySession)
+  useEffect(() => { backendTasksRef.current = state.backendTasksBySession }, [state.backendTasksBySession])
 
   // 注册 IPC 监听器：归一化后的新通道（delta/blocks/notice/result/error/aborted）
   useEffect(() => {
@@ -160,6 +162,12 @@ export function ChatArea() {
         if (existing) {
           dispatch({ type: 'UPSERT_TASK', sessionId: sid, task: { ...existing, ...data.patch } })
         }
+      }
+    })
+    window.api.backendTask.onEvent((data: any) => {
+      if (!data || !data.task) return
+      if (data.op === 'create' || data.op === 'update') {
+        dispatch({ type: 'UPSERT_BACKEND_TASK', sessionId: data.localSessionId, task: data.task })
       }
     })
     api.onResult((data: any) => {
