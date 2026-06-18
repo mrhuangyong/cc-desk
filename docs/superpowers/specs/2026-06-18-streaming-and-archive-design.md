@@ -161,9 +161,13 @@ async iterateTask(sq: SessionQuery, onEvent) {
 
 重建仍失败 → `claude:error` 明确告知「会话进程已断开」。
 
-### resume 行为（待实现期验证）
+### resume 行为（已验证 2026-06-18）
 
-首次 `ensureSession` 带 `resume: resumeId`（来自 `claudeSessionMap`）。Task 0 未测 resume，实现时第一个验证点：用 resume 恢复旧会话，确认 Claude 能看到历史上下文。若 streaming 模式下 resume 行为异常，回退方案：不带 resume，由 cc-desk 把历史消息序列化拼进首条 prompt。
+首次 `ensureSession` 带 `resume: resumeId`（来自 `claudeSessionMap`）。
+
+**实验结论（`scripts/probe-resume-only.mjs`，已跑）：streaming 模式下首次带 `resume: sessionId` 能正确恢复历史上下文。** 两轮实验——第一轮让 Claude 记住密码 `banana7749`，第二轮用 resume 恢复并询问，Claude 正确回忆出密码。**方案成立，无需回退。**
+
+> 注意：实验中 qwen 模型（本地代理）未发 stream_event delta，答案在 `result.result` 里。cc-desk 的 buildQuery 带 `includePartialMessages: true`，正常模型会走 stream_event delta；result 里的兜底不影响 cc-desk（它两路都处理）。
 
 ## 特性 B 详细设计：会话归档系统
 
