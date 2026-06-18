@@ -31,7 +31,7 @@ export function BackendTaskPanel({
           aria-label="展开面板"
           style={{
             width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+            background: 'var(--surface-1)',
             borderRadius: 8, cursor: 'pointer', color: 'var(--text-muted)',
             boxShadow: 'var(--shadow-float)',
           }}>
@@ -53,7 +53,7 @@ export function BackendTaskPanel({
           aria-label="收起面板"
           style={{
             width: 26, height: 26, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+            background: 'var(--surface-1)',
             borderRadius: 6, cursor: 'pointer', color: 'var(--text-muted)',
           }}>
           <PanelRightClose size={14} />
