@@ -2,6 +2,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
+import { ExternalLink } from 'lucide-react'
 import { useStore } from '../../state/store'
 import { CodeBlock } from './CodeBlock'
 import { MermaidBlock } from './MermaidBlock'
@@ -15,10 +16,10 @@ function langFromClassName(className?: string): string {
 
 // remark 插件：自动识别文本中的 bare URL，转换为链接节点。
 // 不依赖 unist-util-visit，递归遍历 AST，仅处理 text 类型节点（跳过已有的 link/code 节点）。
-// 排除 CJK 标点避免吃掉 URL 后的中文；西文尾部标点（. , ; : ! ? )）用 cleanUrl 修剪。
-const URL_RE = /https?:\/\/[^\s<>)\]"'`，。、；：！？）】》]+/g
-// 修剪 URL 尾部常见西文标点（URL 内部的 . 不修剪，但末尾孤立的 . , ; : ! ? ) 要剪掉）
-const TRAIL_PUNCT = /[.,;:!?)]+$/
+// 排除 CJK 标点避免吃掉 URL 后的中文；西文尾部标点用 cleanUrl 修剪。
+const URL_RE = /https?:\/\/[^\s<>)\]"'`，。、；：！？）】》*]+/g
+// 修剪 URL 尾部常见标点（URL 内部的 . 不修剪，但末尾孤立标点要剪掉）
+const TRAIL_PUNCT = /[.,;:!?)*]+$/
 function cleanUrl(url: string): string {
   return url.replace(TRAIL_PUNCT, '')
 }
@@ -64,11 +65,35 @@ function walkAndLinkify(node: any) {
   }
 }
 
+// 链接组件：显示 URL 文本 + 打开按钮，点击打开按钮在内置浏览器中打开。
+// 不用 <a> 包裹整个链接（避免 markdown 格式符号 ** _ 等干扰点击区域）。
+function LinkWithOpenButton({ href, children }: { href?: string; children: React.ReactNode }) {
+  const { dispatch } = useStore()
+  if (!href) return <span>{children}</span>
+  const open = () => dispatch({ type: 'OPEN_TAB', tabType: 'browser', url: href })
+  return (
+    <span style={{ display: 'inline', alignItems: 'baseline', gap: 4 }}>
+      <span style={{ color: 'var(--accent)', textDecoration: 'underline', textDecorationColor: 'color-mix(in srgb, var(--accent) 40%, transparent)', cursor: 'default' }}>
+        {children}
+      </span>
+      <span
+        role="button"
+        tabIndex={0}
+        onClick={(e) => { e.stopPropagation(); open() }}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); open() } }}
+        title="在内置浏览器打开"
+        style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', color: 'var(--accent)', marginLeft: 2, opacity: 0.7, verticalAlign: 'middle' }}
+      >
+        <ExternalLink size={12} />
+      </span>
+    </span>
+  )
+}
+
 // 对话区 Markdown 渲染：GFM + 数学公式 + shiki 代码高亮 + mermaid 图表。
-// 自动识别 bare URL 为链接。链接点击用内置浏览器（dispatch OPEN_TAB）。
+// 自动识别 bare URL 为链接，显示 URL 文本 + 打开按钮。
 // className="md" 让 index.css 的 .md 样式生效。
 export function MarkdownRenderer({ text }: { text: string }) {
-  const { dispatch } = useStore()
   return (
     <div className="md">
       <ReactMarkdown
@@ -88,21 +113,9 @@ export function MarkdownRenderer({ text }: { text: string }) {
             }
             return <CodeBlock code={raw} lang={lang} />
           },
-          // 链接：内置浏览器打开（不再走系统浏览器）
+          // 链接：显示 URL 文本 + 打开按钮（内置浏览器），不用 <a> 包裹避免格式干扰
           a({ href, children }) {
-            return (
-              <a
-                href={href}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => {
-                  e.preventDefault()
-                  if (href) dispatch({ type: 'OPEN_TAB', tabType: 'browser', url: href })
-                }}
-              >
-                {children}
-              </a>
-            )
+            return <LinkWithOpenButton href={href}>{children}</LinkWithOpenButton>
           },
         }}
       >
