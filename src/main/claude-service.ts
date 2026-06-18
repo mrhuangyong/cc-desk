@@ -7,6 +7,7 @@ import { getSettings } from './settings-store'
 import { getModelProvidersConfig, resolveActiveProviderModel, buildSdkEnv } from './cc-desk-store'
 import { getGeneralConfig } from './claude-config'
 import { normalizeBetaBlocks, extractToolResults, extractBackgroundTaskId, mkNotice } from './claude-normalize'
+import { getPermissionMode } from './builtin-commands'
 
 /**
  * ClaudeService：渲染端 ↔ SessionQueryManager 的桥。
@@ -70,9 +71,12 @@ export class ClaudeService {
     sessionId?: string
     localSessionId?: string
     cwd?: string
+    permission?: string        // 中文标签，主进程翻译
+    thinking?: 'low' | 'medium' | 'high'
+    extraDirs?: string[]
     webContents: WebContents
   }): Promise<void> {
-    const { prompt, sessionId, localSessionId, cwd, webContents } = opts
+    const { prompt, sessionId, localSessionId, cwd, permission, thinking, extraDirs, webContents } = opts
     // 本次流绑定的渲染端会话 id。所有事件载荷带上它，渲染端据此路由到正确会话，
     // 避免「在 A 发送后切到 B，A 的流式输出串到 B」。
     const lsid = localSessionId ?? ''
@@ -121,7 +125,10 @@ export class ClaudeService {
           model: resolved.model.sdkModelId,
           cwd: cwd || settings.cwd || process.cwd(),
           resume: sessionId,
-          permissionMode: 'auto',
+          permissionMode: getPermissionMode(permission) as 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions' | 'auto',   // 中文标签 → SDK permissionMode（未知回退 'default'）
+          effort: thinking ?? 'medium',                    // SDK EffortLevel，控制思考强度
+          thinking: { type: 'adaptive' },                  // 配合 effort 自适应思考
+          additionalDirectories: extraDirs?.length ? extraDirs : undefined,
           maxTurns: 20,
           // Required to receive incremental stream_event deltas.
           includePartialMessages: true,
