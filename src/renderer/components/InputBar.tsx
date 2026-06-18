@@ -1,16 +1,17 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Paperclip, Check, ShieldCheck, ChevronDown, ArrowUp, Square } from 'lucide-react'
 import { useStore } from '../state/store'
 import { useI18n } from '../i18n/useI18n'
 import { AttachmentChip } from './AttachmentChip'
 import { PromptEditor } from '../editor/PromptEditor'
 import { serializeForPrompt } from '../editor/serialize'
+import { runBuiltin } from './builtinCommands'
 import type { SlashMenuItem } from '../editor/types'
 
 type MenuId = 'permission' | 'model' | 'thinking'
 
 const PERMISSIONS = ['变更前确认', '自动编辑', '计划模式', '完全访问']
-const THINKINGS = ['minimal', 'standard', 'thorough']
+const THINKINGS: Array<'low' | 'medium' | 'high'> = ['low', 'medium', 'high']
 
 export function InputBar() {
   const { state, dispatch } = useStore()
@@ -36,6 +37,13 @@ export function InputBar() {
   // @ 菜单的 cwd 基点：当前会话所属项目的 path，回退 settings.cwd
   const project = state.projects.find(p => p.sessions.some(s => s.id === state.activeSessionId))
   const getCwd = () => project?.path || state.settings?.cwd || ''
+
+  // 会话级权限/思考：读会话字段，undefined 时用默认
+  const activeSession = state.projects
+    .flatMap(p => p.sessions)
+    .find(s => s.id === state.activeSessionId)
+  const permission = activeSession?.permissionMode ?? '变更前确认'
+  const thinking: 'low' | 'medium' | 'high' = activeSession?.thinking ?? 'medium'
 
   // 粘贴/拖拽的图片/文件 → 走附件通道
   const onPasteFiles = (files: File[]) => {
@@ -79,8 +87,7 @@ export function InputBar() {
   }, [])
 
   const [openMenu, setOpenMenu] = useState<MenuId | null>(null)
-  const [permission, setPermission] = useState('变更前确认')
-  const [thinking, setThinking] = useState('standard')
+  const [editorRef, setEditorRef] = useState<any>(null)
 
   // 序列化 doc 得到纯文本预览：canSend 与 doSend 都用它
   const promptPreview = serializeForPrompt(state.draft.doc)
@@ -121,7 +128,7 @@ export function InputBar() {
     dispatch({ type: 'SEND_MESSAGE' })
     dispatch({ type: 'DEQUEUE_MESSAGE', sessionId: state.activeSessionId, queueId: next.id })
     dispatch({ type: 'STREAM_START', sessionId: state.activeSessionId })
-    window.api?.claude?.send({ prompt: next.prompt, localSessionId: state.activeSessionId, sessionId: claudeSessionId || undefined, cwd })
+    window.api?.claude?.send({ prompt: next.prompt, localSessionId: state.activeSessionId, sessionId: claudeSessionId || undefined, cwd, permission, thinking, extraDirs: activeSession?.extraDirs })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isStreaming, queue.length])
 
@@ -138,7 +145,7 @@ export function InputBar() {
       dispatch({ type: 'SET_DRAFT_DOC', doc })
       dispatch({ type: 'SEND_MESSAGE' })
       dispatch({ type: 'STREAM_START', sessionId: state.activeSessionId })
-      window.api?.claude?.send({ prompt: qm.prompt, localSessionId: state.activeSessionId, sessionId: claudeSessionId || undefined, cwd })
+      window.api?.claude?.send({ prompt: qm.prompt, localSessionId: state.activeSessionId, sessionId: claudeSessionId || undefined, cwd, permission, thinking, extraDirs: activeSession?.extraDirs })
     }, 200)
   }
 
@@ -156,6 +163,9 @@ export function InputBar() {
       localSessionId: state.activeSessionId,
       sessionId: claudeSessionId || undefined,
       cwd,
+      permission,
+      thinking,
+      extraDirs: activeSession?.extraDirs,
     })
   }
 
@@ -174,6 +184,21 @@ export function InputBar() {
   }
 
   const toggleMenu = (id: MenuId) => setOpenMenu(prev => (prev === id ? null : id))
+
+  // builtin-result 回填：主进程 compact 完成后通过 IPC 推回 summary。
+  // preload 的 onBuiltinResult 用 ipcRenderer.on，无去重——用 ref + mount-only effect 避免累积 listener。
+  const builtinResultHandlerRef = useRef<(data: any) => void>(() => {})
+  builtinResultHandlerRef.current = (data: any) => {
+    if (data.localSessionId !== state.activeSessionId) return
+    if (data.op === 'compact' && data.summary && data.keepRecent) {
+      dispatch({ type: 'COMPACT_DONE', sessionId: data.localSessionId, summary: data.summary, keepRecent: data.keepRecent })
+    }
+    // add-dir 的 ADD_SESSION_DIR 已在 runBuiltin 里发，这里不重复
+  }
+  useEffect(() => {
+    const handler = (data: any) => builtinResultHandlerRef.current(data)
+    window.api?.claude?.onBuiltinResult(handler)
+  }, [])
 
   // 模型列表来自 cc-desk 多供应商配置（仅 enabled）；当前模型即 activeModelId
   const enabledModels = modelCfg?.models ?? []
@@ -202,6 +227,11 @@ export function InputBar() {
     border: 'none', color: 'var(--text-muted)', fontSize: 11, cursor: 'pointer',
     display: 'inline-flex', alignItems: 'center', gap: 4,
   }
+
+  // 流式时过滤掉 compact（压缩进行中会破坏流）；其他命令照常
+  const slashItems = isStreaming
+    ? allSlashItems.filter(i => !(i.kind === 'builtin' && i.builtinAction?.type === 'compact'))
+    : allSlashItems
 
   return (
     <div style={{
@@ -254,11 +284,21 @@ export function InputBar() {
         <PromptEditor
           doc={state.draft.doc}
           placeholder={t('input.placeholder')}
-          allSlashItems={allSlashItems}
+          allSlashItems={slashItems}
           getCwd={getCwd}
           onDocChange={(doc) => dispatch({ type: 'SET_DRAFT_DOC', doc })}
           onPasteFiles={onPasteFiles}
           onSend={onSendClick}
+          onEditorReady={setEditorRef}
+          onBuiltinRun={(item) => runBuiltin(item, {
+            dispatch,
+            sessionId: state.activeSessionId,
+            cwd: getCwd(),
+            modelName,
+            claudeSessionId: state.claudeSessionMap?.[state.activeSessionId],
+            toggleMenu,
+            editor: editorRef,
+          })}
         />
       </div>
 
@@ -296,7 +336,7 @@ export function InputBar() {
                       ...itemStyle,
                       background: p === permission ? 'var(--bg-hover)' : 'transparent',
                     }}
-                    onClick={() => { setPermission(p); setOpenMenu(null) }}
+                    onClick={() => { dispatch({ type: 'SET_SESSION_PERMISSION', sessionId: state.activeSessionId, permissionMode: p }); setOpenMenu(null) }}
                     onMouseEnter={e => { if (p !== permission) e.currentTarget.style.background = 'var(--bg-hover)' }}
                     onMouseLeave={e => { if (p !== permission) e.currentTarget.style.background = 'transparent' }}
                   >
@@ -360,7 +400,7 @@ export function InputBar() {
                       ...itemStyle,
                       background: t === thinking ? 'var(--bg-hover)' : 'transparent',
                     }}
-                    onClick={() => { setThinking(t); setOpenMenu(null) }}
+                    onClick={() => { dispatch({ type: 'SET_SESSION_THINKING', sessionId: state.activeSessionId, thinking: t }); setOpenMenu(null) }}
                     onMouseEnter={e => { if (t !== thinking) e.currentTarget.style.background = 'var(--bg-hover)' }}
                     onMouseLeave={e => { if (t !== thinking) e.currentTarget.style.background = 'transparent' }}
                   >
