@@ -50,15 +50,15 @@ describe('MarkdownRenderer', () => {
     expect(container.querySelector('.katex')).toBeTruthy()
   })
 
-  it('链接渲染为 URL 文本 + 打开按钮（非 a 标签，避免 markdown 格式干扰）', () => {
+  it('链接渲染为卡片式按钮（图标+URL+域名+打开）', () => {
     const { container } = renderMd('[官网](https://example.com)')
-    // 不再用 <a> 包裹整个链接（避免 ** _ 等 markdown 格式符号干扰点击区域）
-    // 链接文本用 span 渲染，旁边有打开按钮（ExternalLink 图标）
+    // 卡片式按钮：不用 <a>，用 role="button" 的 span 卡片
     expect(container.querySelector('a')).toBeNull()
-    const spans = container.querySelectorAll('span')
-    const urlSpan = Array.from(spans).find(s => s.textContent?.includes('官网'))
-    expect(urlSpan).toBeTruthy()
-    const openBtn = Array.from(spans).find(s => s.getAttribute('role') === 'button')
-    expect(openBtn).toBeTruthy()
+    const card = container.querySelector('span[role="button"]')
+    expect(card).toBeTruthy()
+    // 卡片内含域名副标题
+    expect(card?.textContent).toContain('example.com')
+    // 卡片内含"打开"文字
+    expect(card?.textContent).toContain('打开')
   })
 })
