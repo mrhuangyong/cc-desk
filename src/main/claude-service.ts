@@ -1,5 +1,6 @@
 // src/main/claude-service.ts
 import { query, AbortError } from '@anthropic-ai/claude-agent-sdk'
+import type { BackendTaskRegistry } from './backend-task-registry'
 import type { WebContents } from 'electron'
 import { getSettings } from './settings-store'
 import { getModelProvidersConfig, resolveActiveProviderModel, buildSdkEnv } from './cc-desk-store'
@@ -29,6 +30,8 @@ export class ClaudeService {
   // Pending onUserDialog resolvers keyed by reqId. The renderer answers via
   // the `claude:dialog-response` IPC handler -> resolveDialog().
   private dialogResolvers = new Map<string, (r: { behavior: 'completed'; result: unknown } | { behavior: 'cancelled' }) => void>()
+  private streamRef: Awaited<ReturnType<typeof query>> | null = null
+  private registry: BackendTaskRegistry | null = null
 
   /**
    * Bridge the SDK's blocking `onUserDialog` callback to a renderer-side dialog
@@ -72,6 +75,8 @@ export class ClaudeService {
       fn(result)
     }
   }
+
+  setRegistry(r: BackendTaskRegistry): void { this.registry = r }
 
   async send(opts: {
     prompt: string
@@ -131,6 +136,7 @@ export class ClaudeService {
           },
         },
       })
+      this.streamRef = stream
 
       for await (const message of stream) {
         console.log('[cc-stream] [4] message', message.type, (message as any).subtype ?? '')
@@ -191,30 +197,64 @@ export class ClaudeService {
             break
           }
           case 'task_started': {
-            // 结构化 task 事件：推到 claude:task，渲染端维护 task 面板
             const tm = message as any
-            webContents.send('claude:task', {
-              localSessionId: lsid,
-              kind: 'started',
-              taskId: tm.task_id,
-              description: tm.description ?? '',
-              taskType: tm.task_type ?? '',
-            })
+            if (tm.task_type === 'local_workflow' && this.registry) {
+              const t = this.registry.handleTaskStarted(lsid, {
+                task_id: tm.task_id,
+                description: tm.description ?? '',
+                prompt: tm.prompt ?? '',
+                task_type: tm.task_type,
+                subagent_type: tm.subagent_type,
+              })
+              if (t) {
+                webContents.send('claude:backend-task', { localSessionId: lsid, op: 'create', task: t })
+              }
+            } else {
+              webContents.send('claude:task', {
+                localSessionId: lsid, kind: 'started',
+                taskId: tm.task_id, description: tm.description ?? '', taskType: tm.task_type ?? '',
+              })
+            }
             break
           }
           case 'task_updated': {
             const tm = message as any
+            if (this.registry?.isManaged(tm.task_id)) {
+              const t = this.registry.handleTaskUpdated(lsid, {
+                task_id: tm.task_id,
+                patch: tm.patch ?? {},
+              })
+              if (t) {
+                webContents.send('claude:backend-task', { localSessionId: lsid, op: 'update', task: t })
+              }
+            }
             webContents.send('claude:task', {
-              localSessionId: lsid,
-              kind: 'updated',
-              taskId: tm.task_id,
-              patch: tm.patch ?? {},
+              localSessionId: lsid, kind: 'updated',
+              taskId: tm.task_id, patch: tm.patch ?? {},
             })
             break
           }
           case 'task_progress':
-          case 'task_notification':
             webContents.send('claude:notice', { ...mkNotice('task', `任务事件：${message.type}`, 'info'), localSessionId: lsid }); break
+          case 'task_notification': {
+            const tm = message as any
+            if (this.registry?.isManaged(tm.task_id)) {
+              const t = this.registry.handleTaskNotification(lsid, {
+                task_id: tm.task_id,
+                status: tm.status ?? 'completed',
+              })
+              if (t) {
+                webContents.send('claude:backend-task', { localSessionId: lsid, op: 'update', task: t })
+              }
+            } else {
+              webContents.send('claude:task', {
+                localSessionId: lsid, kind: 'updated',
+                taskId: tm.task_id,
+                patch: { status: tm.status ?? 'completed' },
+              })
+            }
+            break
+          }
           case 'keep_alive':
           case 'worker_shutting_down':
           case 'commands_changed':
@@ -231,10 +271,15 @@ export class ClaudeService {
       }
     } finally {
       this.abortController = null
+      this.streamRef = null
     }
   }
 
   abort(): void {
     this.abortController?.abort()
+  }
+
+  async stopTask(taskId: string): Promise<void> {
+    await this.streamRef?.stopTask(taskId)
   }
 }
