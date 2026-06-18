@@ -12,6 +12,7 @@ const TAB_ICON: Record<TabType, LucideIcon> = { file: FileText, browser: Globe, 
 
 // 新增 tab 的可选类型（点 + 后下拉菜单展示）
 const ADD_OPTIONS: { type: TabType; label: string; icon: LucideIcon }[] = [
+  { type: 'terminal', label: '终端', icon: SquareTerminal },
   { type: 'browser', label: '浏览器', icon: Globe },
   { type: 'review', label: '审查', icon: FileDiff },
   { type: 'file', label: '文件', icon: FileText }
@@ -30,11 +31,19 @@ export function TabBar() {
     if (active.type === 'file') return <FileTab filePath={active.filePath} />
     if (active.type === 'browser') return <BrowserTab />
     if (active.type === 'review') return <ReviewTab />
-    return <TerminalTab tabId={active.id} />
+    return <TerminalTab tabId={active.id} cwd={active.cwd} />
+  }
+
+  // 终端 cwd：当前激活会话所属项目的 path，无则回退 settings.cwd
+  const resolveTerminalCwd = (s: typeof state): string | undefined => {
+    const project = s.projects.find(p => p.sessions.some(sess => sess.id === s.activeSessionId))
+    return project?.path || s.settings.cwd || undefined
   }
 
   const addTab = (type: TabType) => {
-    dispatch({ type: 'OPEN_TAB', tabType: type })
+    // terminal：优先落当前会话所属项目目录，回退全局 cwd
+    const cwd = type === 'terminal' ? resolveTerminalCwd(state) : undefined
+    dispatch({ type: 'OPEN_TAB', tabType: type, ...(cwd ? { cwd } : {}) })
     setMenuOpen(false)
   }
 
