@@ -28,7 +28,9 @@ export function ChipView({ kind, label, onRemove, selected }: Props) {
       <span style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
       {onRemove && (
         <button
-          onClick={(e) => { e.stopPropagation(); onRemove() }}
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove() }}
           aria-label="移除"
           title="移除"
           style={{ fontSize: 12, lineHeight: 1, padding: 0, cursor: 'pointer',

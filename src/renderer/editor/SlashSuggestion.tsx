@@ -26,11 +26,12 @@ export function buildSlashExtension(getItems: () => SlashMenuItem[]): Extension 
           // 通过 getter 读最新列表，避免闭包捕获初始空数组。
           items: ({ query }: { query: string }) => filterSlashItems(getItems(), query),
           command: ({ editor, range, props }: { editor: any; range: any; props: SlashMenuItem }) => {
-            editor.chain().focus().deleteRange(range).run()
+            // 单次 chain：删触发符 + 插内容，避免两次 run() 间光标/placeholder 状态异常
+            const chain = editor.chain().focus().deleteRange(range)
             if (props.kind === 'command') {
-              editor.chain().focus().insertContent(props.name + ' ').run()
+              chain.insertContent(props.name + ' ').run()
             } else {
-              editor.chain().focus().insertContent({
+              chain.insertContent({
                 type: 'skillChip',
                 attrs: { refId: props.id, label: props.name.replace(/^\//, '') },
               }).insertContent(' ').run()
