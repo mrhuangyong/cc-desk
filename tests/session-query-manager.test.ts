@@ -68,6 +68,20 @@ describe('SessionQueryManager', () => {
     expect(sq1).toBe(sq2)
   })
 
+  it('ensureSession 复用时更新 onEvent 到最新', () => {
+    const fakeQuery = makeFakeQuery()
+    const mgr = new SessionQueryManager()
+    const wc = {} as WebContents
+    let calls1 = 0
+    let calls2 = 0
+    const sq1 = mgr.ensureSession({ localSessionId: 's1', webContents: wc, onEvent: () => { calls1++ }, onError: () => {}, buildQuery: () => fakeQuery as any })
+    const sq2 = mgr.ensureSession({ localSessionId: 's1', webContents: wc, onEvent: () => { calls2++ }, onError: () => {}, buildQuery: () => fakeQuery as any })
+    expect(sq1).toBe(sq2)
+    sq2.onEvent({})  // simulate event
+    expect(calls2).toBe(1)
+    expect(calls1).toBe(0)  // old callback not called
+  })
+
   it('不同 localSessionId 创建不同 session', () => {
     const fakeQuery = makeFakeQuery()
     const mgr = new SessionQueryManager()
