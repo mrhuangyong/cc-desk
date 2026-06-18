@@ -5,6 +5,9 @@
   --bg-elevated: #ffffff;
   --bg-sidebar: #fafafa;
   --bg-hover: #f0f0f2;
+  --surface-1: #f7f7f8;
+  --surface-2: #efeff1;
+  --border-hair: rgba(0,0,0,0.06);
   --border: #ececee;
   --text: #1d1d1f;
   --text-muted: #86868b;
@@ -27,6 +30,9 @@
   --bg-elevated: #ffffff;
   --bg-sidebar: #f6f4f0;
   --bg-hover: #eee9e2;
+  --surface-1: #f3efe9;
+  --surface-2: #eae3da;
+  --border-hair: rgba(42,37,32,0.06);
   --border: #e8e3dc;
   --text: #2a2520;
   --text-muted: #8a8076;
@@ -46,6 +52,9 @@
   --bg-elevated: #ffffff;
   --bg-sidebar: #f4f6f9;
   --bg-hover: #e9edf2;
+  --surface-1: #eef2f6;
+  --surface-2: #e3e9f0;
+  --border-hair: rgba(26,34,48,0.06);
   --border: #e2e6ec;
   --text: #1a2230;
   --text-muted: #6b7785;
@@ -65,6 +74,9 @@
   --bg-elevated: #fffefb;
   --bg-sidebar: #f1ede4;
   --bg-hover: #e8e2d4;
+  --surface-1: #f1ecdf;
+  --surface-2: #e6dfcd;
+  --border-hair: rgba(44,40,32,0.06);
   --border: #ddd6c8;
   --text: #2c2820;
   --text-muted: #7a7264;
@@ -115,6 +127,9 @@ button {
   --bg-elevated: #232428;
   --bg-sidebar: #161719;
   --bg-hover: #2c2e33;
+  --surface-1: #202124;
+  --surface-2: #2a2c31;
+  --border-hair: rgba(255,255,255,0.06);
   --border: #34363c;
   --text: #e6e6e8;
   --text-muted: #9a9ca3;
