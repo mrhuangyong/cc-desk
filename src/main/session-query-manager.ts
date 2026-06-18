@@ -19,6 +19,8 @@ export interface EnsureSessionOpts {
   resumeId?: string
   webContents: WebContents
   onEvent: (msg: any) => void
+  // iterate 抛错时回调（在 handleCrash 清理之前触发），用于通知渲染端清掉 streaming 状态。
+  onError: (err: unknown) => void
   buildQuery: (controller: PushController<SDKUserMessage>) => Query
 }
 
@@ -80,7 +82,7 @@ export class SessionQueryManager {
       localSessionId: opts.localSessionId,
       query: q,
       controller,
-      iterateTask: this.runIterate(opts.localSessionId, q, opts.onEvent),
+      iterateTask: this.runIterate(opts.localSessionId, q, opts.onEvent, opts.onError),
     }
     this.sessions.set(opts.localSessionId, sq)
     return sq
@@ -96,12 +98,19 @@ export class SessionQueryManager {
     })
   }
 
-  private async runIterate(localSessionId: string, q: Query, onEvent: (msg: any) => void): Promise<void> {
+  private async runIterate(
+    localSessionId: string,
+    q: Query,
+    onEvent: (msg: any) => void,
+    onError: (err: unknown) => void,
+  ): Promise<void> {
     try {
       for await (const message of q) {
         onEvent(message)
       }
     } catch (err) {
+      // 先通知渲染端（清掉 streaming 状态、显示错误），再做本地清理。
+      onError(err)
       this.handleCrash(localSessionId, err)
     }
   }

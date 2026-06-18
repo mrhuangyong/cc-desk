@@ -48,8 +48,10 @@ function createWindow() {
   ipcMain.handle('claude:send', (_e, opts) => {
     return claude.send({ ...opts, webContents: win.webContents })
   })
-  ipcMain.handle('claude:stop', (_e, localSessionId: string) => {
-    return claude.interrupt(localSessionId)
+  ipcMain.handle('claude:stop', async (_e, localSessionId: string) => {
+    await claude.interrupt(localSessionId)
+    // 兜底：interrupt 不保证 SDK 一定再吐 result，主动发 aborted 让渲染端清 streaming 状态。
+    win.webContents.send('claude:aborted', { localSessionId })
   })
   ipcMain.handle('claude:dialog-response', (_e, { reqId, result }) => {
     claude.resolveDialog(reqId, result)
