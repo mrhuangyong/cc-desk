@@ -15,9 +15,10 @@ contextBridge.exposeInMainWorld('api', {
     onError: (cb: (data: { error: string }) => void) => { ipcRenderer.on('claude:error', (_, data) => cb(data)) },
     onAborted: (cb: (data: any) => void) => { ipcRenderer.on('claude:aborted', (_, data) => cb(data)) },
     onDialogRequest: (cb: (data: any) => void) => { ipcRenderer.on('claude:dialog-request', (_, data) => cb(data)) },
+    onBuiltinResult: (cb: (data: any) => void) => { ipcRenderer.on('claude:builtin-result', (_, data) => cb(data)) },
     dialogResponse: (payload: { reqId: string; result: any }) => ipcRenderer.invoke('claude:dialog-response', payload),
     removeAllListeners: () => {
-      ['claude:system', 'claude:delta', 'claude:blocks', 'claude:notice', 'claude:task', 'claude:result', 'claude:error', 'claude:aborted', 'claude:dialog-request', 'claude:backend-task']
+      ['claude:system', 'claude:delta', 'claude:blocks', 'claude:notice', 'claude:task', 'claude:result', 'claude:error', 'claude:aborted', 'claude:dialog-request', 'claude:backend-task', 'claude:builtin-result']
         .forEach(ch => ipcRenderer.removeAllListeners(ch))
     },
   },
@@ -57,6 +58,12 @@ contextBridge.exposeInMainWorld('api', {
     general: {
       get: () => ipcRenderer.invoke('cc:general:get'),
       save: (cfg: any) => ipcRenderer.invoke('cc:general:save', cfg),
+    },
+    builtin: {
+      compact: (localSessionId: string) => ipcRenderer.invoke('cc:builtin:compact', localSessionId),
+      init: (opts: { cwd: string }) => ipcRenderer.invoke('cc:builtin:init', opts),
+      exportSession: (localSessionId: string) => ipcRenderer.invoke('cc:builtin:export', localSessionId),
+      addDir: (opts: { localSessionId: string; dir: string }) => ipcRenderer.invoke('cc:builtin:add-dir', opts),
     },
   },
   fs: {
