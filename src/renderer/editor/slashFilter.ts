@@ -11,8 +11,9 @@ export function filterSlashItems(items: SlashMenuItem[], query: string): SlashMe
         const desc = it.desc.toLowerCase()
         return name.includes(q) || desc.includes(q)
       })
-  // 命令在前，技能在后；各自保持原顺序
+  // 顺序：内置 → 命令 → 技能；各自保持原顺序
   return [
+    ...filtered.filter(i => i.kind === 'builtin'),
     ...filtered.filter(i => i.kind === 'command'),
     ...filtered.filter(i => i.kind === 'skill'),
   ]
