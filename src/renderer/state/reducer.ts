@@ -544,6 +544,73 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'SET_PANEL_FOLD': {
       return { ...state, panelFold: { ...state.panelFold, [action.panel]: action.folded } }
     }
+    case 'CLEAR_SESSION_MESSAGES': {
+      const projects = state.projects.map(p => ({
+        ...p,
+        sessions: p.sessions.map(s =>
+          s.id === action.sessionId ? { ...s, messages: [] } : s
+        ),
+      }))
+      return { ...state, projects }
+    }
+    case 'SET_SESSION_PERMISSION': {
+      const projects = state.projects.map(p => ({
+        ...p,
+        sessions: p.sessions.map(s =>
+          s.id === action.sessionId ? { ...s, permissionMode: action.permissionMode } : s
+        ),
+      }))
+      return { ...state, projects }
+    }
+    case 'SET_SESSION_THINKING': {
+      const projects = state.projects.map(p => ({
+        ...p,
+        sessions: p.sessions.map(s =>
+          s.id === action.sessionId ? { ...s, thinking: action.thinking } : s
+        ),
+      }))
+      return { ...state, projects }
+    }
+    case 'ADD_SESSION_DIR': {
+      const projects = state.projects.map(p => ({
+        ...p,
+        sessions: p.sessions.map(s =>
+          s.id === action.sessionId
+            ? { ...s, extraDirs: [...(s.extraDirs ?? []), action.dir] }
+            : s
+        ),
+      }))
+      return { ...state, projects }
+    }
+    case 'SHOW_COST': {
+      const projects = state.projects.map(p => ({
+        ...p,
+        sessions: p.sessions.map(s => {
+          if (s.id !== action.sessionId) return s
+          let text = action.text
+          if (!text) {
+            const total = s.messages.reduce((sum, m) => sum + (m.costUSD ?? 0), 0)
+            const turns = s.messages.reduce((sum, m) => sum + (m.turns ?? 0), 0)
+            text = total > 0 ? `本会话累计：$${total.toFixed(4)} / ${turns} turns` : '暂无费用统计'
+          }
+          const notice: SystemNotice = { id: `n${Date.now()}`, kind: 'status', text, level: 'info' }
+          return { ...s, notices: [...(s.notices ?? []), notice] }
+        }),
+      }))
+      return { ...state, projects }
+    }
+    case 'COMPACT_DONE': {
+      const notice: SystemNotice = { id: `n${Date.now()}`, kind: 'compact', text: action.summary, level: 'info' }
+      const projects = state.projects.map(p => ({
+        ...p,
+        sessions: p.sessions.map(s => {
+          if (s.id !== action.sessionId) return s
+          const kept = s.messages.slice(-action.keepRecent)
+          return { ...s, messages: kept, notices: [...(s.notices ?? []), notice] }
+        }),
+      }))
+      return { ...state, projects }
+    }
     default:
       return state
   }

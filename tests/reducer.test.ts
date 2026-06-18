@@ -419,6 +419,74 @@ describe('reducer', () => {
   })
 })
 
+describe('builtin-cmd reducer actions', () => {
+  it('CLEAR_SESSION_MESSAGES 清空消息保留 session', () => {
+    const s = initialState()
+    const withMsg = reducer(s, { type: 'ADD_MESSAGE', sessionId: 's1', message: { id: 'm1', role: 'user', content: [{ type: 'text', text: 'hi' }] } })
+    const cleared = reducer(withMsg, { type: 'CLEAR_SESSION_MESSAGES', sessionId: 's1' })
+    const sess = cleared.projects.flatMap(p => p.sessions).find(x => x.id === 's1')!
+    expect(sess.messages).toHaveLength(0)
+    expect(sess.id).toBe('s1')
+  })
+
+  it('SET_SESSION_PERMISSION 写会话 permissionMode', () => {
+    const s = initialState()
+    const r = reducer(s, { type: 'SET_SESSION_PERMISSION', sessionId: 's1', permissionMode: '计划模式' })
+    expect(r.projects.flatMap(p => p.sessions).find(x => x.id === 's1')!.permissionMode).toBe('计划模式')
+  })
+
+  it('SET_SESSION_THINKING 写会话 thinking', () => {
+    const s = initialState()
+    const r = reducer(s, { type: 'SET_SESSION_THINKING', sessionId: 's1', thinking: 'high' })
+    expect(r.projects.flatMap(p => p.sessions).find(x => x.id === 's1')!.thinking).toBe('high')
+  })
+
+  it('ADD_SESSION_DIR 追加目录到 extraDirs', () => {
+    const s = initialState()
+    const r = reducer(s, { type: 'ADD_SESSION_DIR', sessionId: 's1', dir: '/tmp/x' })
+    const r2 = reducer(r, { type: 'ADD_SESSION_DIR', sessionId: 's1', dir: '/tmp/y' })
+    expect(r2.projects.flatMap(p => p.sessions).find(x => x.id === 's1')!.extraDirs).toEqual(['/tmp/x', '/tmp/y'])
+  })
+
+  it('SHOW_COST text 非空时直接插入 notice', () => {
+    const s = initialState()
+    const r = reducer(s, { type: 'SHOW_COST', sessionId: 's1', text: '总费用 $0.5' })
+    const sess = r.projects.flatMap(p => p.sessions).find(x => x.id === 's1')!
+    expect(sess.notices?.some(n => n.kind === 'status' && n.text.includes('0.5'))).toBe(true)
+  })
+
+  it('SHOW_COST text 空时聚合会话 costUSD', () => {
+    const s = initialState()
+    // 先塞一条带 costUSD 的助手消息（注意 costUSD 在 Message 上）
+    const withMsg = reducer(s, {
+      type: 'ADD_MESSAGE', sessionId: 's1',
+      message: { id: 'm1', role: 'assistant', content: [{ type: 'text', text: 'ok' }], costUSD: 0.1234, turns: 5 },
+    })
+    const r = reducer(withMsg, { type: 'SHOW_COST', sessionId: 's1', text: '' })
+    const sess = r.projects.flatMap(p => p.sessions).find(x => x.id === 's1')!
+    expect(sess.notices?.some(n => n.kind === 'status' && n.text.includes('0.1234'))).toBe(true)
+  })
+
+  it('SHOW_COST 无费用数据时显示暂无统计', () => {
+    const s = initialState()
+    const r = reducer(s, { type: 'SHOW_COST', sessionId: 's1', text: '' })
+    const sess = r.projects.flatMap(p => p.sessions).find(x => x.id === 's1')!
+    expect(sess.notices?.some(n => n.text.includes('暂无费用统计'))).toBe(true)
+  })
+
+  it('COMPACT_DONE 用摘要替换历史保留最近 N 条', () => {
+    const s = initialState()
+    let cur = s
+    for (let i = 0; i < 10; i++) {
+      cur = reducer(cur, { type: 'ADD_MESSAGE', sessionId: 's1', message: { id: `m${i}`, role: 'user', content: [{ type: 'text', text: `msg${i}` }] } })
+    }
+    const r = reducer(cur, { type: 'COMPACT_DONE', sessionId: 's1', summary: '已压缩', keepRecent: 6 })
+    const sess = r.projects.flatMap(p => p.sessions).find(x => x.id === 's1')!
+    expect(sess.messages.length).toBeLessThanOrEqual(6)
+    expect(sess.notices?.some(n => n.kind === 'compact')).toBe(true)
+  })
+})
+
 // HYDRATE：启动时从主进程注入持久化快照。单独 describe，因 setIdCounter 改模块级状态，
 // 用例前后重置以隔离对其他测试的影响。
 describe('reducer HYDRATE 持久化恢复', () => {

@@ -70,3 +70,10 @@ export type Action =
   | { type: 'RESTORE_SESSION'; sessionId: string }
   // 右上角 Panel 折叠状态（三层独立）
   | { type: 'SET_PANEL_FOLD'; panel: 'root' | 'taskCard' | 'backendTaskCard'; folded: boolean }
+  // 内置命令相关
+  | { type: 'CLEAR_SESSION_MESSAGES'; sessionId: string }
+  | { type: 'SET_SESSION_PERMISSION'; sessionId: string; permissionMode: string }
+  | { type: 'SET_SESSION_THINKING'; sessionId: string; thinking: 'low' | 'medium' | 'high' }
+  | { type: 'ADD_SESSION_DIR'; sessionId: string; dir: string }
+  | { type: 'SHOW_COST'; sessionId: string; text: string }
+  | { type: 'COMPACT_DONE'; sessionId: string; summary: string; keepRecent: number }
