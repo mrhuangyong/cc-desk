@@ -174,6 +174,10 @@ function startArchiveTimer() {
   archiveTimer = setInterval(tick, 30 * 60 * 1000)
 }
 
+app.on('before-quit', async () => {
+  await sessionQueryManager.closeAll()
+})
+
 app.on('window-all-closed', () => {
   ptyManager.killAll()
   if (process.platform !== 'darwin') app.quit()
