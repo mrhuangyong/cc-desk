@@ -196,6 +196,7 @@ export function InputBar() {
           getCwd={getCwd}
           onDocChange={(doc) => dispatch({ type: 'SET_DRAFT_DOC', doc })}
           onPasteFiles={onPasteFiles}
+          onSend={onSendClick}
         />
       </div>
 
