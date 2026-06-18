@@ -1,9 +1,13 @@
 diff --git a/dist/index.js b/dist/index.js
+index afafa77..071aedc 100644
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -208,6 +208,8 @@
+@@ -208,6 +208,8 @@ function createSuggestionState({
+      * Apply changes to the plugin state from a view transaction.
       */
      apply(transaction, prev, _oldState, state) {
 +      // Patched: viewport plugin dispatches during editor init when `editor` is undefined.
 +      if (!editor) return prev;
        const { isEditable } = editor;
+       const { composing } = editor.view;
+       const { selection } = transaction;
