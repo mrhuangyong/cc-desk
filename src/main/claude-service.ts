@@ -272,7 +272,6 @@ export class ClaudeService {
       }
     } finally {
       this.abortController = null
-      this.streamRef = null
     }
   }
 
