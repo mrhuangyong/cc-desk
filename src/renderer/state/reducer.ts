@@ -67,7 +67,7 @@ function isEmptySession(s: Session): boolean {
 // 删除后，找一个存活的会话 id 作为新的 activeSessionId
 function pickSurvivingSessionId(projects: Project[], excludedId: string): string | null {
   for (const p of projects) {
-    const found = p.sessions.find(s => s.id !== excludedId)
+    const found = p.sessions.find(s => s.id !== excludedId && !s.archived)
     if (found) return found.id
   }
   return null
