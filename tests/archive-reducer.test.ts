@@ -54,6 +54,19 @@ describe('会话归档 reducer', () => {
     expect(sess.archivedAt).toBeUndefined()
   })
 
+  it('ARCHIVE_SESSION 当所有其他会话都已归档时，激活会话保持不变', () => {
+    // s1 active, pre-archive all other sessions (s2..s8, s3)
+    const s = makeState()
+    const allOtherIds = ['s2', 's3', 's4', 's5', 's6', 's7', 's8']
+    let st = s
+    for (const sid of allOtherIds) {
+      st = reducer(st, { type: 'ARCHIVE_SESSION', sessionId: sid })
+    }
+    // now archive s1 (active) — all others are archived, no non-archived survivor
+    const next = reducer(st, { type: 'ARCHIVE_SESSION', sessionId: 's1' })
+    expect(next.activeSessionId).toBe('s1')
+  })
+
   it('DELETE_SESSION 真删除（用于已归档会话）', () => {
     const archived = reducer(makeState(), { type: 'ARCHIVE_SESSION', sessionId: 's1' })
     const deleted = reducer(archived, { type: 'DELETE_SESSION', projectId: 'p1', sessionId: 's1' })
