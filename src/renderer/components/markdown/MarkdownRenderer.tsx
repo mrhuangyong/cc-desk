@@ -65,33 +65,58 @@ function walkAndLinkify(node: any) {
   }
 }
 
-// 链接组件：显示 URL 文本 + 打开按钮，点击打开按钮在内置浏览器中打开。
-// 不用 <a> 包裹整个链接（避免 markdown 格式符号 ** _ 等干扰点击区域）。
-function LinkWithOpenButton({ href, children }: { href?: string; children: React.ReactNode }) {
+// 链接组件：卡片式按钮，类似文件列表风格。
+// 左侧链接图标 + URL 标题 + 右侧"打开"按钮。点击按钮在内置浏览器打开。
+function LinkCard({ href, children }: { href?: string; children: React.ReactNode }) {
   const { dispatch } = useStore()
   if (!href) return <span>{children}</span>
+  // 从 children 提取显示文本（可能是 ReactNode，取 textContent）
+  const label = typeof children === 'string' ? children : href
+  // 截断过长 URL
+  const display = label.length > 80 ? label.slice(0, 77) + '...' : label
+  // 提取域名作为副标题
+  let domain = ''
+  try { domain = new URL(href).hostname } catch { /* noop */ }
   const open = () => dispatch({ type: 'OPEN_TAB', tabType: 'browser', url: href })
   return (
-    <span style={{ display: 'inline', alignItems: 'baseline', gap: 4 }}>
-      <span style={{ color: 'var(--accent)', textDecoration: 'underline', textDecorationColor: 'color-mix(in srgb, var(--accent) 40%, transparent)', cursor: 'default' }}>
-        {children}
+    <span
+      role="button"
+      tabIndex={0}
+      onClick={open}
+      onKeyDown={(e) => { if (e.key === 'Enter') open() }}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 10,
+        padding: '8px 12px', margin: '4px 0',
+        background: 'var(--bg-elevated, var(--bg))',
+        border: '1px solid var(--border)', borderRadius: 'var(--radius)',
+        cursor: 'pointer', fontSize: 13, lineHeight: 1.4,
+        transition: 'background .15s, border-color .15s',
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--bg-hover, var(--bg))' }}
+      onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--bg-elevated, var(--bg))' }}
+    >
+      <span style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--accent)', flexShrink: 0 }}>
+        <ExternalLink size={16} />
       </span>
-      <span
-        role="button"
-        tabIndex={0}
-        onClick={(e) => { e.stopPropagation(); open() }}
-        onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); open() } }}
-        title="在内置浏览器打开"
-        style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', color: 'var(--accent)', marginLeft: 2, opacity: 0.7, verticalAlign: 'middle' }}
-      >
-        <ExternalLink size={12} />
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)' }}>
+          {display}
+        </span>
+        {domain && (
+          <span style={{ display: 'block', fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>
+            {domain}
+          </span>
+        )}
+      </span>
+      <span style={{ flexShrink: 0, fontSize: 12, color: 'var(--accent)', whiteSpace: 'nowrap' }}>
+        打开 ▼
       </span>
     </span>
   )
 }
 
 // 对话区 Markdown 渲染：GFM + 数学公式 + shiki 代码高亮 + mermaid 图表。
-// 自动识别 bare URL 为链接，显示 URL 文本 + 打开按钮。
+// 自动识别 bare URL 为链接，以卡片式按钮呈现（图标+URL+域名+打开按钮）。
 // className="md" 让 index.css 的 .md 样式生效。
 export function MarkdownRenderer({ text }: { text: string }) {
   return (
@@ -113,9 +138,9 @@ export function MarkdownRenderer({ text }: { text: string }) {
             }
             return <CodeBlock code={raw} lang={lang} />
           },
-          // 链接：显示 URL 文本 + 打开按钮（内置浏览器），不用 <a> 包裹避免格式干扰
+          // 链接：卡片式按钮（内置浏览器打开），不用 <a> 包裹避免格式干扰
           a({ href, children }) {
-            return <LinkWithOpenButton href={href}>{children}</LinkWithOpenButton>
+            return <LinkCard href={href}>{children}</LinkCard>
           },
         }}
       >
