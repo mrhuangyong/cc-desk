@@ -196,8 +196,17 @@ export class ClaudeService {
           effort: thinking ?? 'medium',                    // SDK EffortLevel，控制思考强度
           thinking: { type: 'adaptive' },                  // 配合 effort 自适应思考
           additionalDirectories: extraDirs?.length ? extraDirs : undefined,
-          // 模型输出语言跟随界面国际化设置（zh-CN → chinese，en → english）。
-          // SDK Settings.language：Preferred language for Claude responses。
+          // 模型输出语言跟随界面国际化设置。
+          // 用 preset:'claude_code' 保留 SDK 完整默认系统提示，append 追加语言约束——
+          // 对任意模型（含经第三方代理的 GLM）都生效，比 settings.language 可靠
+          // （settings.language 对经代理的非 Anthropic 模型常被忽略）。
+          systemPrompt: {
+            type: 'preset',
+            preset: 'claude_code',
+            append: settings.lang === 'en'
+              ? 'Always respond in English, regardless of the language of the user message.'
+              : '始终用简体中文回复，无论用户消息使用何种语言。',
+          },
           settings: { language: settings.lang === 'en' ? 'english' : 'chinese' },
           maxTurns: 20,
           // Required to receive incremental stream_event deltas.
