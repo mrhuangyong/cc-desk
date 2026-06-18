@@ -188,14 +188,9 @@ export class ClaudeService {
             if (Array.isArray(rawContent)) {
               for (const b of rawContent) {
                 if (b?.type !== 'tool_result') continue
-                const toolUse = this.toolUseInputs.get(b.tool_use_id)
-                if (toolUse?.name === 'Bash' && toolUse.input?.run_in_background) {
-                  // debug: dump 完整 tool_result 结构，确认 backgroundTaskId 真实位置
-                  console.log('[cc-stream] [bg-probe] tool_result keys:', Object.keys(b))
-                  console.log('[cc-stream] [bg-probe] full block:', JSON.stringify(b, null, 2).slice(0, 2000))
-                }
                 const bgId = extractBackgroundTaskId(b)
                 if (!bgId || !this.registry) continue
+                const toolUse = this.toolUseInputs.get(b.tool_use_id)
                 if (!toolUse || toolUse.name !== 'Bash') continue
                 // 用 backgroundTaskId 作主键创建 backend task（非 task_started 路径）
                 const cmd = toolUse.input.command ?? toolUse.input.prompt ?? '(后台命令)'
