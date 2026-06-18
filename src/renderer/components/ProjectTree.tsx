@@ -72,7 +72,7 @@ export function ProjectTree({ onOpenFiles, expandedProjects, onToggleExpand, tre
                   onClick={(e) => { e.stopPropagation(); onOpenFiles(project.id) }}
                   style={{ opacity: hoveredProject === project.id ? 0.85 : 0, transition: 'opacity .1s', pointerEvents: hoveredProject === project.id ? 'auto' : 'none', display: 'inline-flex', alignItems: 'center' }}><FolderTree size={13} /></button>
                 <span style={{ opacity: hoveredProject === project.id ? 1 : 0, pointerEvents: hoveredProject === project.id ? 'auto' : 'none', transition: 'opacity .1s' }} onClick={e => e.stopPropagation()}>
-                  <DeleteConfirmIcon onConfirm={() => dispatch({ type: 'DELETE_PROJECT', projectId: project.id })} />
+                  <DeleteConfirmIcon variant="delete" onConfirm={() => dispatch({ type: 'DELETE_PROJECT', projectId: project.id })} />
                 </span>
               </span>
             </div>

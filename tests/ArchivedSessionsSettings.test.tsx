@@ -37,4 +37,33 @@ describe('ArchivedSessionsSettings', () => {
     const { container } = render(<ArchivedSessionsSettings projects={projects} dispatch={() => {}} />)
     expect(container.textContent).toContain('暂无')
   })
+
+  it('按项目分组，每组带项目名 + 计数', () => {
+    const projects = [
+      { id: 'p1', name: 'Alpha', sessions: [
+        { id: 's1', title: 'A1', messages: [], archived: true, archivedAt: 1 },
+        { id: 's2', title: 'A2', messages: [], archived: true, archivedAt: 1 },
+      ] },
+      { id: 'p2', name: 'Beta', sessions: [
+        { id: 's3', title: 'B1', messages: [], archived: true, archivedAt: 1 },
+      ] },
+    ] as any
+    render(<ArchivedSessionsSettings projects={projects} dispatch={() => {}} />)
+    // 分组 header：「项目名 · 数量」
+    expect(screen.getByText('Alpha · 2')).toBeTruthy()
+    expect(screen.getByText('Beta · 1')).toBeTruthy()
+    expect(screen.getByText('A1')).toBeTruthy()
+    expect(screen.getByText('A2')).toBeTruthy()
+    expect(screen.getByText('B1')).toBeTruthy()
+  })
+
+  it('无已归档会话的项目不显示分组', () => {
+    const projects = [
+      { id: 'p1', name: 'Alpha', sessions: [{ id: 's1', title: 'A1', messages: [], archived: true, archivedAt: 1 }] },
+      { id: 'p2', name: 'EmptyProj', sessions: [{ id: 's2', title: 'B1', messages: [] }] },
+    ] as any
+    render(<ArchivedSessionsSettings projects={projects} dispatch={() => {}} />)
+    expect(screen.getByText('Alpha · 1')).toBeTruthy()
+    expect(screen.queryByText('EmptyProj')).toBeNull()
+  })
 })
