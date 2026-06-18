@@ -50,10 +50,15 @@ describe('MarkdownRenderer', () => {
     expect(container.querySelector('.katex')).toBeTruthy()
   })
 
-  it('链接渲染为 a 标签并阻止默认导航', () => {
+  it('链接渲染为 URL 文本 + 打开按钮（非 a 标签，避免 markdown 格式干扰）', () => {
     const { container } = renderMd('[官网](https://example.com)')
-    const a = container.querySelector('a')
-    expect(a?.getAttribute('href')).toBe('https://example.com')
-    expect(a?.target).toBe('_blank')
+    // 不再用 <a> 包裹整个链接（避免 ** _ 等 markdown 格式符号干扰点击区域）
+    // 链接文本用 span 渲染，旁边有打开按钮（ExternalLink 图标）
+    expect(container.querySelector('a')).toBeNull()
+    const spans = container.querySelectorAll('span')
+    const urlSpan = Array.from(spans).find(s => s.textContent?.includes('官网'))
+    expect(urlSpan).toBeTruthy()
+    const openBtn = Array.from(spans).find(s => s.getAttribute('role') === 'button')
+    expect(openBtn).toBeTruthy()
   })
 })

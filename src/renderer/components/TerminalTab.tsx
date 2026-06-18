@@ -45,8 +45,8 @@ export function TerminalTab({ tabId, cwd }: Props) {
     window.api?.pty.create({ tabId, cols: term.cols, rows: term.rows, cwd })
 
     // 链接检测：终端中的 URL 可点击，用内置浏览器打开（非系统浏览器）。
-    const URL_RE = /https?:\/\/[^\s<>)\]"'`，。、；：！？）】》]+/g
-    const TRAIL_PUNCT = /[.,;:!?)]+$/
+    const URL_RE = /https?:\/\/[^\s<>)\]"'`，。、；：！？）】》*]+/g
+    const TRAIL_PUNCT = /[.,;:!?)*]+$/
     const linkProvider = term.registerLinkProvider({
       provideLinks(bufferLineNumber, callback) {
         const line = term.buffer.active.getLine(bufferLineNumber - 1)
