@@ -211,7 +211,7 @@ export function InputBar() {
     }}>
       {/* 排队消息列表（queue 模式，AI 流式中发送的消息在此等待） */}
       {queue.length > 0 && (
-        <div style={{ padding: '6px 16px', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 120, overflowY: 'auto' }}>
+        <div style={{ padding: '6px 16px', borderBottom: '1px solid var(--border-hair)', display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 120, overflowY: 'auto' }}>
           {queue.map((qm, i) => (
             <div key={qm.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', background: 'var(--bg-hover)', borderRadius: 6, fontSize: 12 }}>
               <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>#{i + 1}</span>
