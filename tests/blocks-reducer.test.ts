@@ -24,7 +24,7 @@ function initialState(): AppState {
     },
     claudeSessionMap: {},
     pendingDialog: null,
-    dirtyTabIds: {}, queueBySession: {}, tasksBySession: {},
+    dirtyTabIds: {}, lastFileOpenedSeq: 0, queueBySession: {}, tasksBySession: {},
   }
 }
 
