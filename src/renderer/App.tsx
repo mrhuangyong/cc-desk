@@ -45,6 +45,24 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [state.currentView, dispatch])
 
+  // 应用级快捷键：Cmd+B（macOS）/ Ctrl+B 切换右栏，Cmd+E / Ctrl+E 切换左栏。
+  // setState 的 setter 引用稳定，无需进依赖数组。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return
+      const k = e.key.toLowerCase()
+      if (k === 'b') {
+        e.preventDefault()
+        setRightCollapsed(c => !c)
+      } else if (k === 'e') {
+        e.preventDefault()
+        setLeftCollapsed(c => !c)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   // 界面缩放：zoom 只作用于内容区（TitleBar 之外），避免缩放自定义 titleBar
   // 导致其按钮与 macOS 原生红绿灯（不受 CSS zoom 影响）错位。
   const zoomFactor = (() => {
