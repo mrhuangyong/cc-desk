@@ -13,7 +13,7 @@ contextBridge.exposeInMainWorld('api', {
     onTask: (cb: (data: any) => void) => { ipcRenderer.on('claude:task', (_, data) => cb(data)) },
     onResult: (cb: (data: any) => void) => { ipcRenderer.on('claude:result', (_, data) => cb(data)) },
     onError: (cb: (data: { error: string }) => void) => { ipcRenderer.on('claude:error', (_, data) => cb(data)) },
-    onAborted: (cb: () => void) => { ipcRenderer.on('claude:aborted', () => cb()) },
+    onAborted: (cb: (data: any) => void) => { ipcRenderer.on('claude:aborted', (_, data) => cb(data)) },
     onDialogRequest: (cb: (data: any) => void) => { ipcRenderer.on('claude:dialog-request', (_, data) => cb(data)) },
     dialogResponse: (payload: { reqId: string; result: any }) => ipcRenderer.invoke('claude:dialog-response', payload),
     removeAllListeners: () => {

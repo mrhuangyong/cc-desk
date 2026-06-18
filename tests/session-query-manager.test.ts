@@ -63,8 +63,8 @@ describe('SessionQueryManager', () => {
     const mgr = new SessionQueryManager()
     const wc = {} as WebContents
     const buildQuery = () => fakeQuery as any
-    const sq1 = mgr.ensureSession({ localSessionId: 's1', webContents: wc, onEvent: () => {}, buildQuery })
-    const sq2 = mgr.ensureSession({ localSessionId: 's1', webContents: wc, onEvent: () => {}, buildQuery })
+    const sq1 = mgr.ensureSession({ localSessionId: 's1', webContents: wc, onEvent: () => {}, onError: () => {}, buildQuery })
+    const sq2 = mgr.ensureSession({ localSessionId: 's1', webContents: wc, onEvent: () => {}, onError: () => {}, buildQuery })
     expect(sq1).toBe(sq2)
   })
 
@@ -73,8 +73,8 @@ describe('SessionQueryManager', () => {
     const mgr = new SessionQueryManager()
     const wc = {} as WebContents
     const buildQuery = () => fakeQuery as any
-    const sq1 = mgr.ensureSession({ localSessionId: 's1', webContents: wc, onEvent: () => {}, buildQuery })
-    const sq2 = mgr.ensureSession({ localSessionId: 's2', webContents: wc, onEvent: () => {}, buildQuery })
+    const sq1 = mgr.ensureSession({ localSessionId: 's1', webContents: wc, onEvent: () => {}, onError: () => {}, buildQuery })
+    const sq2 = mgr.ensureSession({ localSessionId: 's2', webContents: wc, onEvent: () => {}, onError: () => {}, buildQuery })
     expect(sq1).not.toBe(sq2)
   })
 
@@ -82,7 +82,7 @@ describe('SessionQueryManager', () => {
     const fakeQuery = makeFakeQuery()
     const mgr = new SessionQueryManager()
     const wc = {} as WebContents
-    mgr.ensureSession({ localSessionId: 's1', webContents: wc, onEvent: () => {}, buildQuery: () => fakeQuery as any })
+    mgr.ensureSession({ localSessionId: 's1', webContents: wc, onEvent: () => {}, onError: () => {}, buildQuery: () => fakeQuery as any })
     mgr.pushMessage('s1', 'hello')
     expect(mgr.sessions.get('s1')!.controller.isClosed()).toBe(false)
   })
@@ -91,7 +91,7 @@ describe('SessionQueryManager', () => {
     const fakeQuery = makeFakeQuery()
     const mgr = new SessionQueryManager()
     const wc = {} as WebContents
-    mgr.ensureSession({ localSessionId: 's1', webContents: wc, onEvent: () => {}, buildQuery: () => fakeQuery as any })
+    mgr.ensureSession({ localSessionId: 's1', webContents: wc, onEvent: () => {}, onError: () => {}, buildQuery: () => fakeQuery as any })
     await mgr.interrupt('s1')
     expect(fakeQuery._interruptCalled()).toBe(true)
   })
@@ -105,7 +105,7 @@ describe('SessionQueryManager', () => {
     const fakeQuery = makeFakeQuery()
     const mgr = new SessionQueryManager()
     const wc = {} as WebContents
-    mgr.ensureSession({ localSessionId: 's1', webContents: wc, onEvent: () => {}, buildQuery: () => fakeQuery as any })
+    mgr.ensureSession({ localSessionId: 's1', webContents: wc, onEvent: () => {}, onError: () => {}, buildQuery: () => fakeQuery as any })
     await mgr.closeSession('s1')
     expect(fakeQuery._returnCalled()).toBe(true)
     expect(mgr.sessions.has('s1')).toBe(false)
@@ -116,8 +116,8 @@ describe('SessionQueryManager', () => {
     const mgr = new SessionQueryManager()
     const wc = {} as WebContents
     const buildQuery = () => { const f = makeFakeQuery(); queries.push(f); return f as any }
-    mgr.ensureSession({ localSessionId: 's1', webContents: wc, onEvent: () => {}, buildQuery })
-    mgr.ensureSession({ localSessionId: 's2', webContents: wc, onEvent: () => {}, buildQuery })
+    mgr.ensureSession({ localSessionId: 's1', webContents: wc, onEvent: () => {}, onError: () => {}, buildQuery })
+    mgr.ensureSession({ localSessionId: 's2', webContents: wc, onEvent: () => {}, onError: () => {}, buildQuery })
     await mgr.closeAll()
     expect(mgr.sessions.size).toBe(0)
     expect(queries.every(q => q._returnCalled())).toBe(true)
@@ -129,7 +129,7 @@ describe('SessionQueryManager', () => {
     fakeQuery.stopTask = async (id: string) => { stoppedTask = id }
     const mgr = new SessionQueryManager()
     const wc = {} as WebContents
-    mgr.ensureSession({ localSessionId: 's1', webContents: wc, onEvent: () => {}, buildQuery: () => fakeQuery as any })
+    mgr.ensureSession({ localSessionId: 's1', webContents: wc, onEvent: () => {}, onError: () => {}, buildQuery: () => fakeQuery as any })
     await mgr.stopTask('s1', 'task_xyz')
     expect(stoppedTask).toBe('task_xyz')
   })

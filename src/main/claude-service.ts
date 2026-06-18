@@ -96,10 +96,13 @@ export class ClaudeService {
       ? { HTTP_PROXY: general.proxy, HTTPS_PROXY: general.proxy, http_proxy: general.proxy, https_proxy: general.proxy }
       : {}
 
-    // 每个会话首次 send 时记录一份 toolUseInputs（manager 复用 query，map 跨轮累积）
-    this.toolUseInputs.clear()
-
+    // toolUseInputs 按 tool_use id 累积，跨轮持久（一轮的 tool_use 可能在下一轮的
+    // tool_result 阶段才被读取）。id 全局唯一，故不在此清空；每个 entry 体量很小，
+    // 长会话下增长有限，已知可接受。每次 send 复用 manager 的持久 query，故不清。
     const onEvent = (message: any) => this.forwardEvent(message, lsid, webContents)
+    const onError = (err: unknown) => {
+      webContents.send('claude:error', { localSessionId: lsid, error: String(err) })
+    }
 
     // ensureSession 复用已有持久 query（同 localSessionId），否则用 buildQuery 新建。
     // prompt 作为新的 user turn 通过 pushMessage 注入 controller.iterable。
@@ -108,6 +111,7 @@ export class ClaudeService {
       resumeId: sessionId,
       webContents,
       onEvent,
+      onError,
       buildQuery: (controller: PushController<SDKUserMessage>) => query({
         prompt: controller.iterable,
         options: {
