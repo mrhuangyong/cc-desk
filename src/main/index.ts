@@ -2,7 +2,7 @@ import { app, BrowserWindow, shell, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { ClaudeService } from './claude-service'
 import { PtyManager } from './pty-manager'
-import { readDirTree, readFileContent } from './file-service'
+import { readDirTree, readFileContent, searchFiles } from './file-service'
 import { getSettings, saveSettings } from './settings-store'
 import { getModelProvidersConfig, saveModelProvidersConfig } from './cc-desk-store'
 import { getProjectsSnapshot, saveProjectsSnapshot } from './projects-store'
@@ -78,6 +78,7 @@ function createWindow() {
   // File System
   ipcMain.handle('fs:read-tree', async (_e, dirPath: string) => readDirTree(dirPath))
   ipcMain.handle('fs:read-file', async (_e, filePath: string) => readFileContent(filePath))
+  ipcMain.handle('fs:search-files', async (_e, dirPath: string) => searchFiles(dirPath))
   ipcMain.handle('dialog:open-directory', async () => {
     const result = await dialog.showOpenDialog(win, {
       properties: ['openDirectory'],
