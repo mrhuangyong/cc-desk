@@ -10,6 +10,7 @@ export type Action =
   | { type: 'OPEN_FILE_TAB'; filePath: string; fileName: string }
   | { type: 'OPEN_TAB'; tabType: TabType; cwd?: string }
   | { type: 'CLOSE_TAB'; tabId: string }
+  | { type: 'TAB_DIRTY'; tabId: string; dirty: boolean }
   | { type: 'SELECT_TAB'; tabId: string }
   | { type: 'SET_THEME'; theme: ThemeId }
   // 草稿：TipTap doc JSON + 上方 chip 栏附件

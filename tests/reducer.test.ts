@@ -26,6 +26,7 @@ function initialState(): AppState {
     },
     claudeSessionMap: {},
     pendingDialog: null,
+    dirtyTabIds: {},
   }
 }
 
@@ -357,6 +358,25 @@ describe('reducer', () => {
     const newProjects = structuredClone(seedProjects).slice(0, 1)
     const next = reducer(state, { type: 'INIT_SESSIONS', projects: newProjects })
     expect(next.projects).toBe(newProjects)
+  })
+
+  it('TAB_DIRTY 标记与清除 dirtyTabIds', () => {
+    const state = initialState()
+    const a = reducer(state, { type: 'OPEN_FILE_TAB', filePath: 'a.ts', fileName: 'a.ts' })
+    const tabId = a.activeTabIdBySession['s1']!
+    const dirty = reducer(a, { type: 'TAB_DIRTY', tabId, dirty: true })
+    expect(dirty.dirtyTabIds[tabId]).toBe(true)
+    const clean = reducer(dirty, { type: 'TAB_DIRTY', tabId, dirty: false })
+    expect(clean.dirtyTabIds[tabId]).toBeFalsy()
+  })
+
+  it('CLOSE_TAB 清理对应 dirty 记录', () => {
+    const state = initialState()
+    const a = reducer(state, { type: 'OPEN_FILE_TAB', filePath: 'a.ts', fileName: 'a.ts' })
+    const tabId = a.activeTabIdBySession['s1']!
+    const dirty = reducer(a, { type: 'TAB_DIRTY', tabId, dirty: true })
+    const closed = reducer(dirty, { type: 'CLOSE_TAB', tabId })
+    expect(closed.dirtyTabIds[tabId]).toBeUndefined()
   })
 
   it('SET_CLAUDE_SESSION_ID 建立 local→claude sessionId 映射', () => {
