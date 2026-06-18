@@ -25,7 +25,10 @@ export function InputBar() {
       window.api?.cc?.skills?.get() ?? Promise.resolve([]),
     ]).then(([cmds, skills]) => {
       const cmdItems: SlashMenuItem[] = (cmds ?? []).map((c: any) => ({
-        kind: 'command', id: c.id, name: c.name, desc: c.desc ?? '',
+        // 内置命令保留 kind='builtin' + builtinAction；插件/用户命令默认 'command'
+        kind: c.kind === 'builtin' ? 'builtin' : 'command',
+        id: c.id, name: c.name, desc: c.desc ?? '',
+        ...(c.builtinAction ? { builtinAction: c.builtinAction } : {}),
       }))
       const skillItems: SlashMenuItem[] = (skills ?? []).map((s: any) => ({
         kind: 'skill', id: s.id, name: s.name, desc: s.desc ?? '',
