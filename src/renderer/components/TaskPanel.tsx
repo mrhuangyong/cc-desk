@@ -47,7 +47,12 @@ export function TaskCard({ tasks, folded, onToggleFold }: TaskCardProps) {
           {running} 进行 · {done} 完成 · 共 {tasks.length}
         </span>
       </button>
-      {!folded && (
+      <div style={{
+        maxHeight: folded ? 0 : 600,
+        opacity: folded ? 0 : 1,
+        overflow: 'hidden',
+        transition: 'max-height .2s ease, opacity .15s ease',
+      }}>
         <div style={{ padding: 4, borderTop: '1px solid var(--border)' }}>
           {tasks.map(t => (
             <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 8px', borderRadius: 6 }}>
@@ -59,7 +64,7 @@ export function TaskCard({ tasks, folded, onToggleFold }: TaskCardProps) {
             </div>
           ))}
         </div>
-      )}
+      </div>
     </div>
   )
 }

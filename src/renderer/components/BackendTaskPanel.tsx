@@ -1,3 +1,4 @@
+import { PanelRightOpen, PanelRightClose } from 'lucide-react'
 import { TaskCard } from './TaskPanel'
 import { BackendTaskCard } from './BackendTaskCard'
 import type { TaskItem, BackendTask } from '../types'
@@ -21,16 +22,20 @@ export function BackendTaskPanel({
   const bgVisible = showBackendTask && backendTasks.length > 0
   if (!taskVisible && !bgVisible) return null
 
+  // 折叠态：单个圆形小图标，不遮挡内容
   if (folded.root) {
     return (
       <div style={{ position: 'absolute', top: 12, right: 16, zIndex: 50 }}>
         <button onClick={() => dispatch({ type: 'SET_PANEL_FOLD', panel: 'root', folded: false })}
+          title="展开面板"
+          aria-label="展开面板"
           style={{
+            width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             background: 'var(--bg-elevated)', border: '1px solid var(--border)',
-            borderRadius: 8, padding: '6px 10px', cursor: 'pointer',
-            color: 'var(--text-muted)', fontSize: 12,
+            borderRadius: 8, cursor: 'pointer', color: 'var(--text-muted)',
+            boxShadow: 'var(--shadow-float)',
           }}>
-          面板
+          <PanelRightOpen size={15} />
         </button>
       </div>
     )
@@ -44,11 +49,14 @@ export function BackendTaskPanel({
     }}>
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <button onClick={() => dispatch({ type: 'SET_PANEL_FOLD', panel: 'root', folded: true })}
+          title="收起面板"
+          aria-label="收起面板"
           style={{
-            background: 'none', border: 'none', cursor: 'pointer',
-            color: 'var(--text-muted)', fontSize: 11,
+            width: 26, height: 26, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+            borderRadius: 6, cursor: 'pointer', color: 'var(--text-muted)',
           }}>
-          收起
+          <PanelRightClose size={14} />
         </button>
       </div>
       {taskVisible && (
@@ -56,9 +64,14 @@ export function BackendTaskPanel({
           onToggleFold={() => dispatch({ type: 'SET_PANEL_FOLD', panel: 'taskCard', folded: !folded.taskCard })} />
       )}
       {bgVisible && (
-        <BackendTaskCard tasks={backendTasks} folded={folded.backendTaskCard}
+        <BackendTaskCard
+          tasks={backendTasks}
+          folded={folded.backendTaskCard}
           onToggleFold={() => dispatch({ type: 'SET_PANEL_FOLD', panel: 'backendTaskCard', folded: !folded.backendTaskCard })}
-          onKill={(taskId) => { void window.api.backendTask.kill(activeSessionId, taskId) }} />
+          onKill={(taskId) => { void window.api.backendTask.kill(activeSessionId, taskId) }}
+          onRemove={(taskId) => dispatch({ type: 'REMOVE_BACKEND_TASK', sessionId: activeSessionId, taskId })}
+          onClearFinished={() => dispatch({ type: 'CLEAR_FINISHED_BACKEND_TASKS', sessionId: activeSessionId })}
+        />
       )}
     </div>
   )

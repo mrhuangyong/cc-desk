@@ -515,6 +515,14 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'CLEAR_BACKEND_TASKS': {
       return { ...state, backendTasksBySession: { ...state.backendTasksBySession, [action.sessionId]: [] } }
     }
+    case 'REMOVE_BACKEND_TASK': {
+      const list = state.backendTasksBySession[action.sessionId] ?? []
+      return { ...state, backendTasksBySession: { ...state.backendTasksBySession, [action.sessionId]: list.filter(t => t.id !== action.taskId) } }
+    }
+    case 'CLEAR_FINISHED_BACKEND_TASKS': {
+      const list = state.backendTasksBySession[action.sessionId] ?? []
+      return { ...state, backendTasksBySession: { ...state.backendTasksBySession, [action.sessionId]: list.filter(t => t.status === 'running') } }
+    }
     case 'ARCHIVE_SESSION': {
       const projects = state.projects.map(p => ({
         ...p,

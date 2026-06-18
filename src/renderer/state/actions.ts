@@ -64,6 +64,8 @@ export type Action =
   // 后台任务（悬浮面板）
   | { type: 'UPSERT_BACKEND_TASK'; sessionId: string; task: import('../types').BackendTask }
   | { type: 'CLEAR_BACKEND_TASKS'; sessionId: string }
+  | { type: 'REMOVE_BACKEND_TASK'; sessionId: string; taskId: string }
+  | { type: 'CLEAR_FINISHED_BACKEND_TASKS'; sessionId: string }
   | { type: 'ARCHIVE_SESSION'; sessionId: string }
   | { type: 'RESTORE_SESSION'; sessionId: string }
   // 右上角 Panel 折叠状态（三层独立）
