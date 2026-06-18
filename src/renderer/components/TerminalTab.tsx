@@ -10,7 +10,7 @@ interface Props {
 }
 
 export function TerminalTab({ tabId, cwd }: Props) {
-  const { state } = useStore()
+  const { state, dispatch } = useStore()
   const terminalFont = state.settings.terminalFont || '"Cascadia Code", "Fira Code", monospace'
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
@@ -44,6 +44,34 @@ export function TerminalTab({ tabId, cwd }: Props) {
     // Create pty
     window.api?.pty.create({ tabId, cols: term.cols, rows: term.rows, cwd })
 
+    // 链接检测：终端中的 URL 可点击，用内置浏览器打开（非系统浏览器）。
+    const URL_RE = /https?:\/\/[^\s<>)\]"'`]*/g
+    const linkProvider = term.registerLinkProvider({
+      provideLinks(bufferLineNumber, callback) {
+        const line = term.buffer.active.getLine(bufferLineNumber - 1)
+        if (!line) { callback(undefined); return }
+        const text = line.translateToString(true)
+        const links: Array<{ range: { start: { x: number; y: number }; end: { x: number; y: number } }; text: string; activate: (e: MouseEvent, t: string) => void }> = []
+        let m: RegExpExecArray | null
+        URL_RE.lastIndex = 0
+        while ((m = URL_RE.exec(text)) !== null) {
+          const startX = m.index + 1  // xterm buffer 1-indexed
+          const endX = m.index + m[0].length
+          links.push({
+            range: {
+              start: { x: startX, y: bufferLineNumber },
+              end: { x: endX, y: bufferLineNumber }
+            },
+            text: m[0],
+            activate: (_e: MouseEvent, url: string) => {
+              dispatch({ type: 'OPEN_TAB', tabType: 'browser', url })
+            }
+          })
+        }
+        callback(links.length > 0 ? links : undefined)
+      }
+    })
+
     // pty output → terminal
     const onOutput = ({ tabId: id, data }: { tabId: string; data: string }) => {
       if (id === tabId) term.write(data)
@@ -76,11 +104,12 @@ export function TerminalTab({ tabId, cwd }: Props) {
 
     return () => {
       resizeObserver.disconnect()
+      linkProvider.dispose()
       disposables.forEach((d) => d.dispose())
       term.dispose()
       window.api?.pty.kill(tabId)
     }
-  }, [tabId, cwd, terminalFont])
+  }, [tabId, cwd, terminalFont, dispatch])
 
   return <div ref={containerRef} style={{ width: '100%', height: '100%', padding: 4 }} />
 }

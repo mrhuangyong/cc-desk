@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { MarkdownRenderer } from '../markdown/MarkdownRenderer'
 
 const TRUNC_LINES = 30
 const TRUNC_CHARS = 2000
@@ -20,7 +21,9 @@ export function ToolUseCard({ block }: {
       <div style={{ marginTop: 6 }}>
         <div style={{ color: 'var(--text-muted)' }}>输入：{JSON.stringify(block.input, null, 2)}</div>
         {block.result && (
-          <pre style={{ marginTop: 6, whiteSpace: 'pre-wrap', color: block.result.isError ? '#ef4444' : 'var(--text)' }}>{shown}</pre>
+          <div style={{ marginTop: 6, whiteSpace: 'pre-wrap', color: block.result.isError ? '#ef4444' : 'var(--text)' }}>
+            <MarkdownRenderer text={shown} />
+          </div>
         )}
         {overLong && !full && (
           <button onClick={() => setFull(true)} style={{ fontSize: 11, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>展开查看全部</button>
