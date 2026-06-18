@@ -102,4 +102,9 @@ describe('ProjectTree', () => {
     renderWithProvider(<ProjectTree {...defaultProps} />)
     expect(screen.queryAllByText(/展开更多/)).toHaveLength(1)
   })
+
+  it('会话行默认显示时间标签，hover 后切换为删除按钮', () => {
+    const { container } = renderWithProvider(<ProjectTree {...defaultProps} />)
+    expect(container.querySelector('[data-testid="session-time"]')).not.toBeNull()
+  })
 })

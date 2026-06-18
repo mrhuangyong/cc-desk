@@ -102,7 +102,7 @@ export function ProjectTree({ onOpenFiles, expandedProjects, onToggleExpand, tre
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.title}</span>
                 </span>
                 <span style={{ position: 'relative', minWidth: 40, display: 'inline-flex', justifyContent: 'flex-end', flexShrink: 0 }}>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)', opacity: hovered ? 0 : 1, transition: 'opacity .15s' }}>
+                  <span data-testid="session-time" style={{ fontSize: 11, color: 'var(--text-muted)', opacity: hovered ? 0 : 1, transition: 'opacity .15s' }}>
                     {formatSessionTime(session.updatedAt ?? 0)}
                   </span>
                   <span style={{
