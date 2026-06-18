@@ -67,6 +67,7 @@ export function RightPanel({ collapsed }: Props) {
       <div style={{
         display: 'flex', flexDirection: 'column', flex: 1,
         width: animating ? originalWidthRef.current : undefined,
+        minWidth: 0,  // flex 子项默认 min-width:auto 会被内容撑住，导致外层缩小时内容不跟着缩
         overflow: 'hidden',
       }}>
         <TabBar />
