@@ -3,7 +3,6 @@ import Editor from '@monaco-editor/react'
 import type { editor } from 'monaco-editor'
 import { useStore } from '../state/store'
 import { monacoThemeFor, monacoLanguageFor } from '../editor/monacoEnv'
-import '../editor/monacoEnv'
 
 export interface FileTabHandle {
   // 保存当前编辑器内容到磁盘；成功返回 true。供关闭确认流程调用。
