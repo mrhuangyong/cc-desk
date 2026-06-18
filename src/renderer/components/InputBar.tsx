@@ -90,17 +90,58 @@ export function InputBar() {
   const handleSend = () => {
     // 空 prompt 且无附件：不发
     if (!promptPreview.trim() && state.draft.attachments.length === 0) return
-    // 交互行为：流式中，interrupt 模式先中断当前再发送；queue 模式等待（不发送）
+    // 流式中：按 queueMode 处理
     if (isStreaming) {
       if (state.settings.queueMode === 'interrupt') {
+        // 引导模式：立即中断当前任务并发送
         window.api?.claude?.stop()
-        // 中断后稍候重发（让 STREAM_ABORTED 清理完成）
         setTimeout(() => doSend(), 200)
+      } else {
+        // 队列模式：消息进排队列表，AI 完成后自动发送
+        dispatch({ type: 'ENQUEUE_MESSAGE', sessionId: state.activeSessionId, prompt: promptPreview, attachments: state.draft.attachments })
+        dispatch({ type: 'CLEAR_DRAFT' })
       }
       return
     }
     doSend()
   }
+
+  // 队列：当前会话的排队消息
+  const queue = state.queueBySession[state.activeSessionId] ?? []
+  // 队列自动消费：当前会话非流式 + 队列非空 → 自动发送队首
+  useEffect(() => {
+    if (isStreaming || queue.length === 0) return
+    const next = queue[0]
+    const claudeSessionId = state.claudeSessionMap?.[state.activeSessionId]
+    const cwd = project?.path || state.settings?.cwd || undefined
+    const doc = next.prompt
+      ? { type: 'doc' as const, content: [{ type: 'paragraph' as const, content: [{ type: 'text' as const, text: next.prompt }] }] }
+      : null
+    dispatch({ type: 'SET_DRAFT_DOC', doc })
+    dispatch({ type: 'SEND_MESSAGE' })
+    dispatch({ type: 'DEQUEUE_MESSAGE', sessionId: state.activeSessionId, queueId: next.id })
+    dispatch({ type: 'STREAM_START', sessionId: state.activeSessionId })
+    window.api?.claude?.send({ prompt: next.prompt, localSessionId: state.activeSessionId, sessionId: claudeSessionId || undefined, cwd })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isStreaming, queue.length])
+
+  // 立即发送指定排队项：中断当前 → 移除该项 → 发送
+  const sendQueuedNow = (queueId: string) => {
+    const qm = queue.find(q => q.id === queueId)
+    if (!qm) return
+    window.api?.claude?.stop()
+    dispatch({ type: 'DEQUEUE_MESSAGE', sessionId: state.activeSessionId, queueId })
+    setTimeout(() => {
+      const claudeSessionId = state.claudeSessionMap?.[state.activeSessionId]
+      const cwd = project?.path || state.settings?.cwd || undefined
+      const doc = qm.prompt ? { type: 'doc' as const, content: [{ type: 'paragraph' as const, content: [{ type: 'text' as const, text: qm.prompt }] }] } : null
+      dispatch({ type: 'SET_DRAFT_DOC', doc })
+      dispatch({ type: 'SEND_MESSAGE' })
+      dispatch({ type: 'STREAM_START', sessionId: state.activeSessionId })
+      window.api?.claude?.send({ prompt: qm.prompt, localSessionId: state.activeSessionId, sessionId: claudeSessionId || undefined, cwd })
+    }, 200)
+  }
+
   const doSend = () => {
     const prompt = serializeForPrompt(state.draft.doc)
     if (!prompt.trim() && state.draft.attachments.length === 0) return
@@ -168,6 +209,27 @@ export function InputBar() {
       boxShadow: 'var(--shadow-float)',
       // 不用 overflow:hidden——否则向上展开的下拉菜单会被裁掉
     }}>
+      {/* 排队消息列表（queue 模式，AI 流式中发送的消息在此等待） */}
+      {queue.length > 0 && (
+        <div style={{ padding: '6px 16px', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 120, overflowY: 'auto' }}>
+          {queue.map((qm, i) => (
+            <div key={qm.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', background: 'var(--bg-hover)', borderRadius: 6, fontSize: 12 }}>
+              <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>#{i + 1}</span>
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)' }}>{qm.prompt || '(空消息)'}</span>
+              <button
+                onClick={() => sendQueuedNow(qm.id)}
+                title="中断当前任务并立即发送"
+                style={{ padding: '2px 8px', fontSize: 11, cursor: 'pointer', border: '1px solid var(--accent)', borderRadius: 4, background: 'var(--accent)', color: 'var(--accent-text)' }}
+              >立即</button>
+              <button
+                onClick={() => dispatch({ type: 'DEQUEUE_MESSAGE', sessionId: state.activeSessionId, queueId: qm.id })}
+                title="取消排队"
+                style={{ padding: '0 6px', fontSize: 13, lineHeight: 1, cursor: 'pointer', border: 'none', background: 'transparent', color: 'var(--text-muted)' }}
+              >×</button>
+            </div>
+          ))}
+        </div>
+      )}
       {/* 上方 chip 栏：粘贴/拖拽的附件 */}
       {state.draft.attachments.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '8px 16px 0' }}>

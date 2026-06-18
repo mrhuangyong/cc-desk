@@ -28,6 +28,7 @@ function makeInitialState(seedProjects?: Project[]): AppState {
       claudeSessionMap: {},
       pendingDialog: null,
       dirtyTabIds: {},
+      queueBySession: {},
     }
   }
   return {
@@ -51,6 +52,7 @@ function makeInitialState(seedProjects?: Project[]): AppState {
     claudeSessionMap: {},
     pendingDialog: null,
     dirtyTabIds: {},
+    queueBySession: {},
   }
 }
 

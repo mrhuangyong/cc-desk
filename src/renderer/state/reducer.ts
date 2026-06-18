@@ -28,6 +28,8 @@ export interface AppState {
   pendingDialog: { reqId: string; dialogKind: string; payload: any; toolUseId?: string } | null
   // 脏 tab 记录：key = tabId，value = true（未保存改动）。FileTab 上报，TabBar 读取消耗。
   dirtyTabIds: Record<string, boolean>
+  // 消息排队（queue 模式）：按会话隔离的待发送队列
+  queueBySession: Record<string, import('../types').QueuedMessage[]>
 }
 
 // TODO: idCounter is module-level mutable state — non-deterministic IDs. Acceptable for prototype; thread through state if persistence/time-travel needed later.
@@ -463,6 +465,20 @@ export function reducer(state: AppState, action: Action): AppState {
     }
     case 'ANSWER_DIALOG': {
       return { ...state, pendingDialog: null }
+    }
+    case 'ENQUEUE_MESSAGE': {
+      const q = state.queueBySession[action.sessionId] ?? []
+      const item: import('../types').QueuedMessage = {
+        id: nextId('q'), prompt: action.prompt, attachments: action.attachments,
+      }
+      return { ...state, queueBySession: { ...state.queueBySession, [action.sessionId]: [...q, item] } }
+    }
+    case 'DEQUEUE_MESSAGE': {
+      const q = state.queueBySession[action.sessionId] ?? []
+      return { ...state, queueBySession: { ...state.queueBySession, [action.sessionId]: q.filter(m => m.id !== action.queueId) } }
+    }
+    case 'CLEAR_QUEUE': {
+      return { ...state, queueBySession: { ...state.queueBySession, [action.sessionId]: [] } }
     }
     default:
       return state

@@ -58,6 +58,13 @@ export interface Draft {
   attachments: DraftAttachment[]
 }
 
+// 排队消息（queue 模式：AI 流式中发送的消息先排队，完成后自动发送）
+export interface QueuedMessage {
+  id: string
+  prompt: string
+  attachments: DraftAttachment[]
+}
+
 // 会话：归属于某个项目
 export interface Session {
   id: string
