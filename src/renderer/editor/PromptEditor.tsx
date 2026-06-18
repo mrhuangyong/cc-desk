@@ -26,13 +26,16 @@ interface Props {
   getCwd: () => string
   onDocChange: (doc: TipTapDocJSON) => void
   onPasteFiles?: (files: File[]) => void
+  onSend?: () => void            // Enter（无 Shift）触发发送
 }
 
-export function PromptEditor({ doc, placeholder, allSlashItems, getCwd, onDocChange, onPasteFiles }: Props) {
+export function PromptEditor({ doc, placeholder, allSlashItems, getCwd, onDocChange, onPasteFiles, onSend }: Props) {
   const slashItemsRef = useRef(allSlashItems)
   const getCwdRef = useRef(getCwd)
+  const onSendRef = useRef(onSend)
   useEffect(() => { slashItemsRef.current = allSlashItems }, [allSlashItems])
   useEffect(() => { getCwdRef.current = getCwd }, [getCwd])
+  useEffect(() => { onSendRef.current = onSend }, [onSend])
 
   const editor = useEditor({
     extensions: [
@@ -49,6 +52,17 @@ export function PromptEditor({ doc, placeholder, allSlashItems, getCwd, onDocCha
         const files = Array.from(event.clipboardData?.files ?? [])
         if (files.length > 0) {
           onPasteFiles?.(files)
+          return true
+        }
+        return false
+      },
+      handleKeyDown: (_view, event) => {
+        // Enter（无 Shift）发送；Shift+Enter 换行。
+        // suggestion 菜单打开时，suggestion 的 onKeyDown 会先消费 Enter 并返回 true，
+        // 不会走到这里，所以菜单里按 Enter 是确认选项而非发送。
+        if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+          event.preventDefault()
+          onSendRef.current?.()
           return true
         }
         return false
