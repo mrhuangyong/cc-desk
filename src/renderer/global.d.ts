@@ -77,6 +77,10 @@ interface BackendTaskAPI {
   onEvent(cb: (data: any) => void): () => void
 }
 
+interface SessionAPI {
+  archive(localSessionId: string): Promise<void>
+}
+
 interface DialogAPI {
   openDirectory(): Promise<string | null>
 }
@@ -122,6 +126,7 @@ declare global {
       fs: FsAPI
       pty: PtyAPI
       backendTask: BackendTaskAPI
+      session: SessionAPI
       dialog: DialogAPI
       cc: ClaudeConfigAPI
       onArchiveTick: MiscAPI['onArchiveTick']
