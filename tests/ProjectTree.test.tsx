@@ -77,13 +77,12 @@ describe('ProjectTree', () => {
     expect(orderOf()).toEqual([6, 5, 4, 3, 2])
   })
 
-  it('选中会话行渲染左侧强调色竖条', () => {
+  it('选中会话行标记为 active（高亮背景）', () => {
     const { container } = renderWithProvider(<ProjectTree {...defaultProps} />)
-    // 默认 5 条中第一条（CI 配置，updatedAt 最大）未被激活，不应有竖条
     // 点击激活"优化首屏"
     fireEvent.click(screen.getByText('优化首屏'))
-    // 激活行应有 data-active 标记的竖条节点
-    expect(container.querySelector('[data-testid="session-active-bar"]')).not.toBeNull()
+    // 激活行带 data-active 属性
+    expect(container.querySelector('[data-active]')).not.toBeNull()
   })
 
   it('默认只显示最近 5 条，出现"展开更多"按钮', () => {
