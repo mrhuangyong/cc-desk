@@ -168,6 +168,8 @@ export class ClaudeService {
               webContents.send('claude:blocks', { localSessionId: lsid, op: 'tool_use_start', block: { type: 'tool_use', id: tb.id, name: tb.name, input: tb.input, status: 'running' } })
               // 记录所有 tool_use 的 input，供 tool_result 阶段提取 auto-background 信息
               if (tb.name === 'Bash' || tb.name === 'Task') {
+                const flag = tb.input?.run_in_background ? 'bg' : 'fg'
+                console.log('[bg] record tool_use:', tb.id, tb.name, flag, 'cmd=', String(tb.input?.command ?? tb.input?.prompt ?? '').slice(0, 60))
                 this.toolUseInputs.set(tb.id, { name: tb.name, input: tb.input })
               }
             }
@@ -185,12 +187,17 @@ export class ClaudeService {
             }
             // 检测 auto-background 命令：Bash tool_result 带 backgroundTaskId → 建 backend task
             const rawContent = (message as any).message?.content || []
+            console.log('[bg] user case rawContent count:', Array.isArray(rawContent) ? rawContent.length : 'not-array')
             if (Array.isArray(rawContent)) {
               for (const b of rawContent) {
+                console.log('[bg] user block type:', b?.type, 'tool_use_id:', b?.tool_use_id)
                 if (b?.type !== 'tool_result') continue
+                console.log('[bg] tool_result detected, tool_use_id:', b.tool_use_id)
                 const bgId = extractBackgroundTaskId(b)
+                console.log('[bg] extractBackgroundTaskId result:', bgId ?? 'NOT FOUND', 'registry:', !!this.registry)
                 if (!bgId || !this.registry) continue
                 const toolUse = this.toolUseInputs.get(b.tool_use_id)
+                console.log('[bg] toolUseInputs lookup:', toolUse ? 'FOUND name=' + toolUse.name : 'NOT FOUND', 'map size:', this.toolUseInputs.size)
                 if (!toolUse || toolUse.name !== 'Bash') continue
                 // 用 backgroundTaskId 作主键创建 backend task（非 task_started 路径）
                 const cmd = toolUse.input.command ?? toolUse.input.prompt ?? '(后台命令)'
@@ -202,6 +209,7 @@ export class ClaudeService {
                   task_type: 'local_workflow',
                 })
                 if (t) {
+                  console.log('[bg] backend task CREATED:', t.id, t.command)
                   webContents.send('claude:backend-task', { localSessionId: lsid, op: 'create', task: t })
                 }
               }

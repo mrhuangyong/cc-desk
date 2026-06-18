@@ -57,24 +57,29 @@ export function extractToolResults(content: any[]): { toolUseId: string; content
     })
 }
 
-// 从 tool_result block 提取 SDK 后台任务 id。
-// Bash 工具返回的 BashOutput 对象直接被放进 tool_result.content，因此 backgroundTaskId
-// 可能在 b.content 对象内部，而非 tool_result 顶层。
+// 从 tool_result block 提取 SDK 后台任务 id（Bash auto-background 场景）。
+// 走四条路径：顶层字段 → structuredContent → content 对象内部 → 文本 JSON。
 export function extractBackgroundTaskId(toolResultBlock: any): string | undefined {
   if (!toolResultBlock) return undefined
   // 1) tool_result 顶层字段
-  if (typeof toolResultBlock.backgroundTaskId === 'string' && toolResultBlock.backgroundTaskId) return toolResultBlock.backgroundTaskId
+  const topBg = toolResultBlock.backgroundTaskId
+  console.log('[bg] extract try 1(top):', 'exists=', topBg !== undefined, 'type=', typeof topBg, 'val=', String(topBg ?? ''))
+  if (typeof topBg === 'string' && topBg) return topBg
   // 2) structuredContent
   const sc = toolResultBlock.structuredContent
+  console.log('[bg] extract try 2(strucContent):', 'exists=', sc !== undefined)
   if (sc && typeof sc === 'object' && typeof sc.backgroundTaskId === 'string' && sc.backgroundTaskId) return sc.backgroundTaskId
-  // 3) content 是对象时（BashOutput 等工具返回结构体），直接从 content 里取
+  // 3) content 是对象时
   const c = toolResultBlock.content
+  console.log('[bg] extract try 3(content obj):', 'type=', typeof c, 'isArray=', Array.isArray(c), 'keys=', c && typeof c === 'object' && !Array.isArray(c) ? Object.keys(c).join(',') : 'n/a')
   if (c && typeof c === 'object' && !Array.isArray(c) && typeof c.backgroundTaskId === 'string' && c.backgroundTaskId) return c.backgroundTaskId
   // 4) content 文本中 JSON 兜底
   let text = ''
   if (typeof c === 'string') text = c
   else if (Array.isArray(c)) text = c.map((x: any) => x?.text ?? '').join('')
+  if (text) console.log('[bg] extract try 4(text):', text.slice(0, 200))
   const m = text.match(/"backgroundTaskId"\s*:\s*"([^"]+)"/)
   if (m) return m[1]
+  console.log('[bg] extract: ALL FAILED')
   return undefined
 }
