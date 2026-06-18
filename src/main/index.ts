@@ -1,6 +1,7 @@
 import { app, BrowserWindow, shell, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { ClaudeService } from './claude-service'
+import { SessionQueryManager } from './session-query-manager'
 import { PtyManager } from './pty-manager'
 import { readDirTree, readFileContent, searchFiles, writeFileContent } from './file-service'
 import { getSettings, saveSettings } from './settings-store'
@@ -14,6 +15,8 @@ const isDev = !app.isPackaged
 const claude = new ClaudeService()
 const backendTaskRegistry = new BackendTaskRegistry()
 claude.setRegistry(backendTaskRegistry)
+const sessionQueryManager = new SessionQueryManager()
+claude.setManager(sessionQueryManager)
 const ptyManager = new PtyManager()
 
 function createWindow() {
@@ -45,8 +48,8 @@ function createWindow() {
   ipcMain.handle('claude:send', (_e, opts) => {
     return claude.send({ ...opts, webContents: win.webContents })
   })
-  ipcMain.handle('claude:stop', () => {
-    claude.abort()
+  ipcMain.handle('claude:stop', (_e, localSessionId: string) => {
+    return claude.interrupt(localSessionId)
   })
   ipcMain.handle('claude:dialog-response', (_e, { reqId, result }) => {
     claude.resolveDialog(reqId, result)
@@ -112,7 +115,7 @@ function createWindow() {
 
   ipcMain.handle('backend-task:kill', async (_e, localSessionId: string, taskId: string) => {
     try {
-      await claude.stopTask(taskId)
+      await claude.stopTask(localSessionId, taskId)
       backendTaskRegistry.handleTaskNotification(localSessionId, { task_id: taskId, status: 'stopped' })
       const t = backendTaskRegistry.listBySession(localSessionId).find(x => x.id === taskId)
       if (t) win.webContents.send('claude:backend-task', { localSessionId, op: 'update', task: t })

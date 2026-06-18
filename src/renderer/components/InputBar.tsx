@@ -94,7 +94,7 @@ export function InputBar() {
     if (isStreaming) {
       if (state.settings.queueMode === 'interrupt') {
         // 引导模式：立即中断当前任务并发送
-        window.api?.claude?.stop()
+        window.api?.claude?.stop(state.activeSessionId)
         setTimeout(() => doSend(), 200)
       } else {
         // 队列模式：消息进排队列表，AI 完成后自动发送
@@ -129,7 +129,7 @@ export function InputBar() {
   const sendQueuedNow = (queueId: string) => {
     const qm = queue.find(q => q.id === queueId)
     if (!qm) return
-    window.api?.claude?.stop()
+    window.api?.claude?.stop(state.activeSessionId)
     dispatch({ type: 'DEQUEUE_MESSAGE', sessionId: state.activeSessionId, queueId })
     setTimeout(() => {
       const claudeSessionId = state.claudeSessionMap?.[state.activeSessionId]
@@ -161,7 +161,7 @@ export function InputBar() {
 
   // 停止：IPC 中断主进程的 Claude 调用
   const handleStop = () => {
-    window.api?.claude?.stop()
+    window.api?.claude?.stop(state.activeSessionId)
   }
 
   const onSendClick = () => {
