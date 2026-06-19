@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { MarkdownRenderer } from '../markdown/MarkdownRenderer'
 import type { CSSProperties } from 'react'
-import type { ContentBlock } from '../../types'
 
 // 工具调用卡片：Codex 桌面端风格的紧凑横向行。
 // 左侧状态色点 + 工具名（mono）+ 参数摘要，点击展开输入/结果。
@@ -26,14 +25,12 @@ interface Props {
   }
   // 在 ToolGroup 内渲染时为 true：去掉自身的 borderTop（组级已提供分隔）。
   inGroup?: boolean
-  // 该 Task tool_use 触发的 subagent 的累积输出（来自 subagentOutputByToolUseId[block.id]）
-  subagentBlocks?: ContentBlock[]
 }
 
 const TRUNC_LINES = 30
 const TRUNC_CHARS = 2000
 
-export function ToolUseCard({ block, inGroup, subagentBlocks }: Props) {
+export function ToolUseCard({ block, inGroup }: Props) {
   const [open, setOpen] = useState(false)
   const [full, setFull] = useState(false)
 
@@ -139,26 +136,6 @@ export function ToolUseCard({ block, inGroup, subagentBlocks }: Props) {
                   展开全部 ↓
                 </button>
               )}
-            </div>
-          )}
-          {/* Task 工具触发的 subagent 对话输出：从主流折叠分离，默认折叠 */}
-          {block.name === 'Task' && subagentBlocks && subagentBlocks.length > 0 && (
-            <div>
-              <div style={{ color: 'var(--text-faint)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>子代理输出 · {subagentBlocks.length} 条</div>
-              <details>
-                <summary style={{ cursor: 'pointer', color: 'var(--text-muted)', fontSize: 11, userSelect: 'none' }}>展开查看</summary>
-                <div style={{ marginTop: 4 }}>
-                  {subagentBlocks.map((b, i) => (
-                    <div key={i} style={{ fontSize: 11, color: 'var(--text-muted)', padding: '2px 0', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                      {b.type === 'text' ? b.text
-                        : b.type === 'thinking' ? `(思考) ${b.text}`
-                        : b.type === 'tool_use' ? `[工具] ${b.name}`
-                        : b.type === 'tool_result' ? `[结果] ${(b.content ?? '').slice(0, 80)}`
-                        : ''}
-                    </div>
-                  ))}
-                </div>
-              </details>
             </div>
           )}
         </div>

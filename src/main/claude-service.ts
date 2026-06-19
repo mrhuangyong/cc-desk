@@ -419,6 +419,7 @@ export class ClaudeService {
       prompt: tm.prompt ?? '',
       task_type: tm.task_type,
       subagent_type: tm.subagent_type,
+      tool_use_id: tm.tool_use_id,
     })
     if (t) {
       webContents.send('claude:backend-task', { localSessionId: lsid, op: 'create', task: t })
