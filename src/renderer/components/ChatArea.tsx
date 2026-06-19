@@ -160,11 +160,15 @@ export function ChatArea() {
             : td.status === 'in_progress' ? 'running'
             : td.status === 'failed' ? 'failed'
             : 'pending',
+          details: td.content ?? '',
+          activeForm: td.activeForm ?? '',
+          createdAt: Date.now(),
         }))
         dispatch({ type: 'SET_TASKS', sessionId: sid, tasks })
       } else if (data.kind === 'started') {
         dispatch({ type: 'UPSERT_TASK', sessionId: sid, task: {
           id: data.taskId, description: data.description ?? '', taskType: data.taskType ?? '', status: 'running',
+          subject: data.subject, details: data.details, activeForm: data.activeForm, createdAt: data.createdAt,
         } })
       } else if (data.kind === 'updated') {
         // 合并 patch：需读当前 task 再更新状态字段

@@ -217,6 +217,10 @@ export class ClaudeService {
 
     // ensureSession 复用已有持久 query（同 localSessionId），否则用 buildQuery 新建。
     // prompt 作为新的 user turn 通过 pushMessage 注入 controller.iterable。
+    // 记录会话是否已存在：复用时 buildQuery 不再执行，permissionMode 只在 buildQuery 里
+    // 声明，故必须在复用路径里用 setPermissionMode control request 实时切换，否则下拉框
+    // 改权限会被忽略（首个权限被首条消息锁死）。新建会话由 buildQuery 内 permissionMode 直接生效。
+    const sessionExisted = this.manager.sessions.has(lsid)
     this.manager.ensureSession({
       localSessionId: lsid,
       resumeId: sessionId,
@@ -277,6 +281,12 @@ export class ClaudeService {
       })
       }
     })
+
+    // 复用会话时，buildQuery 不会重跑，permissionMode 也不会更新。
+    // 用 control request 把本次权限实时推给已存在的 query，使下拉框切换即时生效。
+    if (sessionExisted && permission) {
+      await this.setPermissionMode(lsid, permission)
+    }
 
     this.manager.pushMessage(lsid, prompt)
   }
@@ -550,9 +560,10 @@ export class ClaudeService {
     const toolUse = this.toolUseInputs.get(toolUseId)
     if (!toolUse || toolUse.name !== 'TaskCreate') return
     const input = toolUse.input || {}
-    const description = typeof input.subject === 'string' && input.subject
-      ? input.subject
-      : (typeof input.description === 'string' ? input.description : '')
+    const subject = typeof input.subject === 'string' ? input.subject : ''
+    const details = typeof input.description === 'string' ? input.description : ''
+    const activeForm = typeof input.activeForm === 'string' ? input.activeForm : ''
+    const description = subject || details || ''
     // 解析 "Task #N created successfully"（兼容中英文 SDK 输出）
     const m = /Task\s*#(\d+)/i.exec(resultText || '')
     const taskId = m ? m[1] : toolUseId
@@ -562,6 +573,10 @@ export class ClaudeService {
       taskId,
       description,
       taskType: 'task',
+      subject,
+      details,
+      activeForm,
+      createdAt: Date.now(),
     })
   }
 

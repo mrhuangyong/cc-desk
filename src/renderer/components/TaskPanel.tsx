@@ -23,9 +23,10 @@ interface TaskCardProps {
   tasks: TaskItem[]
   folded: boolean
   onToggleFold: () => void
+  onClickTask?: (task: TaskItem) => void
 }
 
-export function TaskCard({ tasks, folded, onToggleFold }: TaskCardProps) {
+export function TaskCard({ tasks, folded, onToggleFold, onClickTask }: TaskCardProps) {
   if (tasks.length === 0) return null
 
   const running = tasks.filter(t => t.status === 'running').length
@@ -55,7 +56,12 @@ export function TaskCard({ tasks, folded, onToggleFold }: TaskCardProps) {
       }}>
         <div style={{ padding: 4, borderTop: '1px solid var(--border-hair)' }}>
           {tasks.map(t => (
-            <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 8px', borderRadius: 6 }}>
+            <div
+              key={t.id}
+              onClick={onClickTask ? () => onClickTask(t) : undefined}
+              className="cc-task-row"
+              style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 8px', borderRadius: 6, cursor: onClickTask ? 'pointer' : 'default' }}
+            >
               <div style={{ marginTop: 1 }}><StatusIcon status={t.status} /></div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.description || '(无描述)'}</div>

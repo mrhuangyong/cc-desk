@@ -282,3 +282,8 @@ button {
 .cc-pulse {
   animation: cc-pulse 1.4s ease-in-out infinite;
 }
+
+/* ===== 任务卡片行 hover 反馈（点击查看详情）===== */
+.cc-task-row:hover {
+  background: var(--bg-hover);
+}

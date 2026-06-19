@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { SubagentDetailDrawer } from './SubagentDetailDrawer'
+import { TaskDetailDrawer } from './TaskDetailDrawer'
 import { TaskCard } from './TaskPanel'
 import { BackendTaskCard } from './BackendTaskCard'
 import { SubagentCard } from './SubagentCard'
@@ -23,6 +24,7 @@ export function BackendTaskPanel({
   tasks, backendTasks, showTodo, showBackendTask, folded, activeSessionId, subagentOutputByToolUseId, dispatch,
 }: Props) {
   const [activeSubagent, setActiveSubagent] = useState<BackendTask | null>(null)
+  const [activeTask, setActiveTask] = useState<TaskItem | null>(null)
   const subagents = backendTasks.filter(t => t.kind === 'subagent')
   const backends = backendTasks.filter(t => t.kind !== 'subagent')
   const taskVisible = showTodo && tasks.length > 0
@@ -47,7 +49,8 @@ export function BackendTaskPanel({
       }}>
         {taskVisible && (
           <TaskCard tasks={tasks} folded={folded.taskCard}
-            onToggleFold={() => dispatch({ type: 'SET_PANEL_FOLD', panel: 'taskCard', folded: !folded.taskCard })} />
+            onToggleFold={() => dispatch({ type: 'SET_PANEL_FOLD', panel: 'taskCard', folded: !folded.taskCard })}
+            onClickTask={(task) => setActiveTask(task)} />
         )}
         {subagentVisible && (
           <SubagentCard
@@ -84,6 +87,10 @@ export function BackendTaskPanel({
         task={activeSubagent}
         outputByToolUseId={subagentOutputByToolUseId ?? {}}
         onClose={() => setActiveSubagent(null)}
+      />
+      <TaskDetailDrawer
+        task={activeTask}
+        onClose={() => setActiveTask(null)}
       />
     </div>
   )
