@@ -57,6 +57,47 @@ describe('claude-config 写操作真实落盘', () => {
     expect(data.mcpServers.m.command).toBe('c')
   })
 
+  it('saveMcpServers：禁用 MCP 时从 mcpServers 移除并可读回为 disabled', async () => {
+    const { mod, fakeHome } = await withFakeHome()
+    await mod.saveMcpServers([
+      { id: 'enabled-one', name: 'enabled-one', transport: 'stdio', command: 'node', args: 'ok.js', env: '', enabled: true, scope: '用户' },
+      { id: 'disabled-one', name: 'disabled-one', transport: 'stdio', command: 'node', args: 'off.js', env: 'K=V', enabled: false, scope: '用户' },
+    ])
+
+    const global = await readJsonFile(join(fakeHome, '.claude.json'))
+    expect(global.mcpServers['enabled-one']).toBeDefined()
+    expect(global.mcpServers['disabled-one']).toBeUndefined()
+
+    const settings = await readJsonFile(join(fakeHome, '.claude', 'settings.json'))
+    expect(settings.ccDeskDisabledMcpServers['disabled-one']).toEqual({
+      command: 'node',
+      args: ['off.js'],
+      env: { K: 'V' },
+    })
+
+    const back = await mod.getMcpServers()
+    expect(back.find(s => s.name === 'enabled-one')?.enabled).toBe(true)
+    expect(back.find(s => s.name === 'disabled-one')?.enabled).toBe(false)
+  })
+
+  it('saveMcpServers：重新启用暂存 MCP 时写回 mcpServers 并清理 disabled stash', async () => {
+    const { mod, fakeHome } = await withFakeHome()
+    await writeFile(join(fakeHome, '.claude', 'settings.json'), JSON.stringify({
+      ccDeskDisabledMcpServers: {
+        stashed: { command: 'node', args: ['stashed.js'] },
+      },
+    }))
+
+    await mod.saveMcpServers([
+      { id: 'stashed', name: 'stashed', transport: 'stdio', command: 'node', args: 'stashed.js', env: '', enabled: true, scope: '用户' },
+    ])
+
+    const global = await readJsonFile(join(fakeHome, '.claude.json'))
+    expect(global.mcpServers.stashed.command).toBe('node')
+    const settings = await readJsonFile(join(fakeHome, '.claude', 'settings.json'))
+    expect(settings.ccDeskDisabledMcpServers).toEqual({})
+  })
+
   it('saveModelConfig：写 settings.json 的 env + model', async () => {
     const { mod, fakeHome } = await withFakeHome()
     await mod.saveModelConfig({ apiKey: 'sk-1', baseUrl: 'http://x', opusModel: 'glm-5.2', model: 'glm-5.2' })
