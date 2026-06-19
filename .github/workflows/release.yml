@@ -122,11 +122,12 @@ jobs:
         run: pnpm build
 
       # 版本号已由 prepare job 的 npm version 回写到 package.json，electron-builder 自动读取；
-      # 不要传 -c.productVersion（非合法配置项，electron-builder 26 会报 unknown property）
+      # electron-builder 已是 devDependency，用 pnpm exec 调用已装版本，避免 npx 临时下载
+      # 触发 GitHub runner 网络抖动（曾遇 ECONNRESET）
       - name: Package app
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder --${{ matrix.target }}
+        run: pnpm exec electron-builder --${{ matrix.target }}
 
       # macOS 产物在 release/，Windows 在 release/，Linux 在 release/
       - name: Upload build artifacts
