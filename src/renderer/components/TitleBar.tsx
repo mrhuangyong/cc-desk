@@ -11,6 +11,28 @@ type DragStyle = CSSProperties & { WebkitAppRegion?: 'drag' | 'no-drag' }
 const drag: DragStyle = { WebkitAppRegion: 'drag' }
 const noDrag: DragStyle = { WebkitAppRegion: 'no-drag' }
 
+// ghost 图标按钮：Codex 式，默认淡，hover 才浮出底色
+function GhostButton({ children, title, onClick, ariaLabel }: {
+  children: React.ReactNode; title: string; onClick: () => void; ariaLabel?: string
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      aria-label={ariaLabel ?? title}
+      style={{
+        width: 26, height: 26, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        borderRadius: 6, color: 'var(--text-muted)', lineHeight: 1,
+        transition: 'background .12s, color .12s', ...noDrag,
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; e.currentTarget.style.color = 'var(--text)' }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)' }}
+    >
+      {children}
+    </button>
+  )
+}
+
 interface Props {
   projectName: string
   leftCollapsed: boolean
@@ -25,39 +47,37 @@ export function TitleBar({ projectName, leftCollapsed, rightCollapsed, onToggleL
   return (
     <div style={{
       display: 'flex', alignItems: 'center', height: 36, padding: '0 8px',
-      background: 'var(--bg)', borderBottom: '1px solid var(--border)',
+      background: 'var(--bg)', borderBottom: '1px solid var(--border-hair)',
       ...drag
     }}>
-      {/* 左侧：macOS 原生红绿灯由系统渲染在左上角，给它预留宽度避免与折叠钮重叠；
-          非 macOS 这里为空，窗口控制由系统或后续补。 */}
+      {/* 左侧：macOS 原生红绿灯预留；非 macOS 留窄边 */}
       <div style={{ width: 70, flexShrink: 0, ...noDrag }} />
-      {/* 左栏折叠按钮 */}
-      <button
-        onClick={onToggleLeft}
-        title={leftCollapsed ? '展开左栏' : '收起左栏'}
-        aria-label={leftCollapsed ? '展开左栏' : '收起左栏'}
-        style={{ padding: '4px 8px', color: 'var(--text-muted)', lineHeight: 1, display: 'inline-flex', alignItems: 'center', ...noDrag }}
-      >
-        {leftCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
-      </button>
 
-      <span style={{ flex: 1, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+      {/* 左栏折叠 */}
+      <GhostButton title={leftCollapsed ? '展开左栏' : '收起左栏'} onClick={onToggleLeft} ariaLabel={leftCollapsed ? '展开左栏' : '收起左栏'}>
+        {leftCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
+      </GhostButton>
+
+      {/* 项目名：mono 小字，居中 */}
+      <span style={{
+        flex: 1, textAlign: 'center', color: 'var(--text-faint)',
+        fontSize: 12, fontFamily: 'var(--font-mono)',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '0 8px',
+        ...drag
+      }}>
         {projectName}
       </span>
 
-      <div style={{ display: 'flex', gap: 8, marginRight: 8, ...noDrag }}>
-        <button title={t('title.settings')} onClick={() => dispatch({ type: 'SET_SETTINGS_SECTION', section: 'general' })} style={{ padding: '4px 8px', lineHeight: 1, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center' }}><Settings size={17} /></button>
+      {/* 右侧工具组 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 2, ...noDrag }}>
+        <GhostButton title={t('title.settings')} onClick={() => dispatch({ type: 'SET_SETTINGS_SECTION', section: 'general' })}>
+          <Settings size={15} />
+        </GhostButton>
         <ThemeSwitcher />
+        <GhostButton title={rightCollapsed ? '展开右栏' : '收起右栏'} onClick={onToggleRight} ariaLabel={rightCollapsed ? '展开右栏' : '收起右栏'}>
+          {rightCollapsed ? <PanelRightOpen size={15} /> : <PanelRightClose size={15} />}
+        </GhostButton>
       </div>
-      {/* 右栏折叠按钮 */}
-      <button
-        onClick={onToggleRight}
-        title={rightCollapsed ? '展开右栏' : '收起右栏'}
-        aria-label={rightCollapsed ? '展开右栏' : '收起右栏'}
-        style={{ padding: '4px 8px', color: 'var(--text-muted)', lineHeight: 1, display: 'inline-flex', alignItems: 'center', ...noDrag }}
-      >
-        {rightCollapsed ? <PanelRightOpen size={16} /> : <PanelRightClose size={16} />}
-      </button>
     </div>
   )
 }

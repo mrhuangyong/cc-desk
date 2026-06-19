@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>cc-desk 图标定稿预览</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,600&family=JetBrains+Mono:wght@400;600&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0c0d10;
+    color: #e8e6e1;
+    font-family: 'Fraunces', serif;
+    min-height: 100vh;
+    padding: 64px 48px;
+    background-image:
+      radial-gradient(circle at 80% 10%, rgba(232,168,87,0.06), transparent 40%),
+      radial-gradient(circle at 10% 90%, rgba(60,90,140,0.08), transparent 40%);
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 {
+    font-weight: 300; font-size: 50px; letter-spacing: -0.02em; line-height: 1.05; margin-bottom: 6px;
+  }
+  h1 em { font-style: italic; font-weight: 600; color: #e8a857; }
+  .sub { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #6b6862; letter-spacing: 0.04em; margin-bottom: 64px; text-transform: uppercase; }
+
+  .hero { display: flex; gap: 56px; align-items: center; margin-bottom: 72px; }
+  .hero-icon { width: 360px; height: 360px; flex-shrink: 0; }
+  .hero-icon svg { width: 100%; height: 100%; filter: drop-shadow(0 40px 80px rgba(0,0,0,0.6)); }
+  .hero-text { flex: 1; }
+  .hero-name { font-size: 42px; font-weight: 300; font-style: italic; letter-spacing: -0.01em; }
+  .hero-name b { font-weight: 600; font-style: normal; color: #e8a857; }
+  .hero-meta { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #8a8680; line-height: 1.9; margin-top: 18px; }
+  .hero-meta span { color: #e8a857; }
+
+  .section-title { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #5a574f; letter-spacing: 0.18em; text-transform: uppercase; margin-bottom: 24px; border-top: 1px solid #1f2128; padding-top: 28px; }
+
+  .sizes { display: flex; align-items: flex-end; gap: 36px; flex-wrap: wrap; margin-bottom: 72px; }
+  .size-item { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .size-item svg { filter: drop-shadow(0 8px 16px rgba(0,0,0,0.5)); }
+  .size-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #6b6862; }
+
+  .contexts { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .ctx { background: #16181d; border-radius: 16px; padding: 28px; }
+  .ctx-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #6b6862; margin-bottom: 16px; letter-spacing: 0.1em; text-transform: uppercase; }
+  /* dock 场景 */
+  .dock { background: linear-gradient(180deg, #1c1e24, #0e0f12); border-radius: 22px; padding: 20px; display: flex; gap: 16px; align-items: flex-end; }
+  .dock .app-icon { width: 72px; height: 72px; }
+  .dock .app-icon.dim svg { filter: grayscale(0.3) brightness(0.7); }
+  /* 浅色壁纸场景 */
+  .light-ctx { background: linear-gradient(135deg, #f5f1ea, #e8e2d6); border-radius: 16px; padding: 28px; }
+  .light-ctx .app-icon { width: 96px; height: 96px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>cc-desk <em>app icon</em></h1>
+  <div class="sub">▸ final · Nocturne · macOS squircle · scalable svg</div>
+
+  <div class="hero">
+    <div class="hero-icon" id="hero-icon"></div>
+    <div class="hero-text">
+      <div class="hero-name">Nocturne<b>.</b></div>
+      <div class="hero-meta">
+        concept &nbsp;<span>▸</span>&nbsp; terminal cursor → open ring<br>
+        accent &nbsp;&nbsp;<span>▸</span>&nbsp; amber spark (the thinking AI)<br>
+        ground &nbsp;&nbsp;<span>▸</span>&nbsp; deep nocturne blue<br>
+        mood &nbsp;&nbsp;&nbsp;&nbsp;<span>▸</span>&nbsp; focused night-coding companion
+      </div>
+    </div>
+  </div>
+
+  <div class="section-title">scale clarity · dock readability</div>
+  <div class="sizes" id="sizes"></div>
+
+  <div class="section-title">in context</div>
+  <div class="contexts">
+    <div class="ctx">
+      <div class="ctx-label">macOS dock</div>
+      <div class="dock">
+        <div class="app-icon" data-size="72"></div>
+        <div class="app-icon dim" data-size="72"></div>
+        <div class="app-icon dim" data-size="72"></div>
+      </div>
+    </div>
+    <div class="light-ctx">
+      <div class="ctx-label" style="color:#8a8270">light wallpaper</div>
+      <div class="app-icon" data-size="96" data-clone></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const SVG_URL = 'cc-desk-icon.svg';
+  // 内联 SVG（fetch 后注入，便于缩放）
+  fetch(SVG_URL).then(r => r.text()).then(svgText => {
+    document.getElementById('hero-icon').innerHTML = svgText;
+    document.querySelectorAll('[data-size]').forEach(el => {
+      const s = el.getAttribute('data-size');
+      el.innerHTML = svgText.replace('<svg ', `<svg width="${s}" height="${s}" `);
+    });
+    // sizes 展示
+    const sizesWrap = document.getElementById('sizes');
+    [16, 32, 64, 128, 256, 512].forEach(s => {
+      const item = document.createElement('div');
+      item.className = 'size-item';
+      const holder = document.createElement('div');
+      holder.innerHTML = svgText.replace('<svg ', `<svg width="${s}" height="${s}" `);
+      item.appendChild(holder);
+      const lab = document.createElement('div');
+      lab.className = 'size-label';
+      lab.textContent = s + 'px';
+      item.appendChild(lab);
+      sizesWrap.appendChild(item);
+    });
+  });
+</script>
+</body>
+</html>

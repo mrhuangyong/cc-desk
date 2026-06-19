@@ -15,6 +15,7 @@ import { readFile, writeFile, readdir, stat } from 'fs/promises'
 import { existsSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
+import { BUILTIN_COMMANDS } from './builtin-commands'
 
 const HOME = homedir()
 const CLAUDE_DIR = join(HOME, '.claude')
@@ -78,6 +79,9 @@ export interface ClaudeCommand {
   desc: string
   enabled: boolean          // 跟随所属插件
   source: string
+  // 内置命令透传：渲染端据此区分 builtin 并分发到 handler
+  kind?: 'command' | 'builtin'
+  builtinAction?: import('../renderer/editor/types').BuiltinAction
 }
 
 export interface ClaudeHook {
@@ -109,6 +113,12 @@ export async function saveSettingsJson(patch: Record<string, any>): Promise<void
   await writeJson(SETTINGS_PATH, cur)
 }
 
+async function saveSettingsJsonReplace(patch: Record<string, any>): Promise<void> {
+  const cur = await getSettingsJson()
+  for (const k of Object.keys(patch)) cur[k] = patch[k]
+  await writeJson(SETTINGS_PATH, cur)
+}
+
 // ---- ~/.claude.json（全局 mcpServers）----
 
 export async function getGlobalJson(): Promise<Record<string, any>> {
@@ -126,14 +136,16 @@ async function saveGlobalJson(mutator: (root: Record<string, any>) => void): Pro
 // 真实 mcpServers 结构（两种形态）：
 //   stdio: { command, args[], env?, type?:'stdio' }
 //   http:  { type:'http', url, headers? }
-function parseMcpEntry(name: string, raw: any): ClaudeMcpServer {
+const DISABLED_MCP_STASH_KEY = 'ccDeskDisabledMcpServers'
+
+function parseMcpEntry(name: string, raw: any, enabled = true): ClaudeMcpServer {
   const isHttp = raw.type === 'http' || (!!raw.url && !raw.command)
   if (isHttp) {
     return {
       id: name, name, transport: 'http',
       command: raw.url || '',
       args: '', env: '',
-      enabled: true, scope: '用户',
+      enabled, scope: '用户',
     }
   }
   return {
@@ -143,7 +155,7 @@ function parseMcpEntry(name: string, raw: any): ClaudeMcpServer {
     env: raw.env && typeof raw.env === 'object'
       ? Object.entries(raw.env).map(([k, v]) => `${k}=${v}`).join('\n')
       : '',
-    enabled: true, scope: '用户',
+    enabled, scope: '用户',
   }
 }
 
@@ -168,14 +180,27 @@ function buildMcpEntry(s: ClaudeMcpServer): Record<string, any> {
 
 export async function getMcpServers(): Promise<ClaudeMcpServer[]> {
   const root = await getGlobalJson()
+  const settings = await getSettingsJson()
   const servers = root.mcpServers && typeof root.mcpServers === 'object' ? root.mcpServers : {}
-  return Object.entries(servers).map(([name, raw]) => parseMcpEntry(name, raw))
+  const disabled = settings[DISABLED_MCP_STASH_KEY] && typeof settings[DISABLED_MCP_STASH_KEY] === 'object'
+    ? settings[DISABLED_MCP_STASH_KEY]
+    : {}
+  const active = Object.entries(servers).map(([name, raw]) => parseMcpEntry(name, raw, true))
+  const stashed = Object.entries(disabled)
+    .filter(([name]) => !(name in servers))
+    .map(([name, raw]) => parseMcpEntry(name, raw, false))
+  return [...active, ...stashed]
 }
 
 export async function saveMcpServers(servers: ClaudeMcpServer[]): Promise<void> {
   const map: Record<string, any> = {}
-  for (const s of servers) map[s.name] = buildMcpEntry(s)
+  const disabled: Record<string, any> = {}
+  for (const s of servers) {
+    if (s.enabled) map[s.name] = buildMcpEntry(s)
+    else disabled[s.name] = buildMcpEntry(s)
+  }
   await saveGlobalJson(root => { root.mcpServers = map })
+  await saveSettingsJsonReplace({ [DISABLED_MCP_STASH_KEY]: disabled })
 }
 
 // ---- 插件 ----
@@ -230,7 +255,10 @@ export async function setPluginEnabled(id: string, enabled: boolean): Promise<vo
   const map: Record<string, boolean> = { ...(settings.enabledPlugins ?? {}) }
   if (enabled) map[id] = true
   else delete map[id]
-  await saveSettingsJson({ enabledPlugins: map })
+  // 注意：不能用 saveSettingsJson({ enabledPlugins: map })——其对象字段深合并会让被 delete 的旧 key 复活。
+  // 直接整对象替换，确保删除生效。
+  settings.enabledPlugins = map
+  await writeJson(SETTINGS_PATH, settings)
 }
 
 // ---- 技能（扫描已启用插件的 skills/ + 用户级 ~/.claude/skills/）----
@@ -307,6 +335,10 @@ async function scanCommandsInDir(dir: string, source: string, enabled: boolean):
 export async function getCommands(): Promise<ClaudeCommand[]> {
   const plugins = await getPlugins()
   const out: ClaudeCommand[] = []
+  // 内置命令（最前）
+  for (const b of BUILTIN_COMMANDS) {
+    out.push({ id: b.id, name: b.name, desc: b.desc, enabled: true, source: 'builtin', kind: 'builtin', builtinAction: b.builtinAction })
+  }
   for (const p of plugins) {
     if (!p.enabled) continue
     out.push(...await scanCommandsInDir(join(p.installPath, 'commands'), p.name, true))

@@ -1,0 +1,9 @@
+<svg viewBox="0 0 1024 1024" width="1024" height="1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- 单色蒙版版（template image / 状态栏用）：纯黑 C + 终端括号，透明背景。
+       macOS status item、深浅自适应菜单用。 -->
+  <!-- C 棱镜轮廓（开口朝右，半张角 40°） -->
+  <path d="M 741.8 319.2 A 300 300 0 1 0 741.8 704.8 L 662.1 638.0 A 196 196 0 1 1 662.1 386.0 Z" fill="#000000"/>
+  <!-- 终端尖括号 < >（以负空间呈现：从 C 体中挖空） -->
+  <path d="M 556 432 L 508 512 L 556 592" fill="none" stroke="#ffffff" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 668 432 L 716 512 L 668 592" fill="none" stroke="#ffffff" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -26,13 +26,22 @@ interface Props {
   getCwd: () => string
   onDocChange: (doc: TipTapDocJSON) => void
   onPasteFiles?: (files: File[]) => void
+  onSend?: () => void            // Enter（无 Shift）触发发送
+  onBuiltinRun?: (item: SlashMenuItem) => void   // 内置命令选中回调
+  onEditorReady?: (editor: any) => void           // 暴露 editor 实例给父组件（用于插文本）
 }
 
-export function PromptEditor({ doc, placeholder, allSlashItems, getCwd, onDocChange, onPasteFiles }: Props) {
+export function PromptEditor({ doc, placeholder, allSlashItems, getCwd, onDocChange, onPasteFiles, onSend, onBuiltinRun, onEditorReady }: Props) {
   const slashItemsRef = useRef(allSlashItems)
   const getCwdRef = useRef(getCwd)
+  const onSendRef = useRef(onSend)
+  const onBuiltinRunRef = useRef(onBuiltinRun)
+  const onEditorReadyRef = useRef(onEditorReady)
   useEffect(() => { slashItemsRef.current = allSlashItems }, [allSlashItems])
   useEffect(() => { getCwdRef.current = getCwd }, [getCwd])
+  useEffect(() => { onSendRef.current = onSend }, [onSend])
+  useEffect(() => { onBuiltinRunRef.current = onBuiltinRun }, [onBuiltinRun])
+  useEffect(() => { onEditorReadyRef.current = onEditorReady }, [onEditorReady])
 
   const editor = useEditor({
     extensions: [
@@ -40,7 +49,7 @@ export function PromptEditor({ doc, placeholder, allSlashItems, getCwd, onDocCha
       Placeholder.configure({ placeholder }),
       SkillChip,
       FileChip,
-      buildSlashExtension(() => slashItemsRef.current),
+      buildSlashExtension(() => slashItemsRef.current, (item) => onBuiltinRunRef.current?.(item)),
       buildFileExtension(() => getCwdRef.current()),
     ],
     content: doc ?? '',
@@ -53,19 +62,40 @@ export function PromptEditor({ doc, placeholder, allSlashItems, getCwd, onDocCha
         }
         return false
       },
+      handleKeyDown: (_view, event) => {
+        // Enter（无 Shift）发送；Shift+Enter 换行。
+        // suggestion 菜单打开时，suggestion 的 onKeyDown 会先消费 Enter 并返回 true，
+        // 不会走到这里，所以菜单里按 Enter 是确认选项而非发送。
+        if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+          event.preventDefault()
+          onSendRef.current?.()
+          return true
+        }
+        return false
+      },
     },
     onUpdate: ({ editor }) => {
       onDocChange(editor.getJSON() as TipTapDocJSON)
     },
   })
 
-  // 外部 doc 变化（切会话恢复）→ 同步进编辑器，避免 onUpdate 回环
+  // 外部 doc 变化（切会话恢复 / 发送后清空）→ 同步进编辑器，避免 onUpdate 回环。
+  // doc 为 null 时（发送后 reducer 把 draft.doc 置 null）也要清空 editor。
   useEffect(() => {
-    if (editor && doc) {
-      const cur = JSON.stringify(editor.getJSON())
-      if (cur !== JSON.stringify(doc)) editor.commands.setContent(doc, { emitUpdate: false })
+    if (!editor) return
+    if (!doc) {
+      // 发送后清空：仅当 editor 非空时才清，避免空 setContent 循环
+      if (editor.getText() !== '' || editor.getJSON().content?.length > 1) {
+        editor.commands.clearContent(false)
+      }
+      return
     }
+    const cur = JSON.stringify(editor.getJSON())
+    if (cur !== JSON.stringify(doc)) editor.commands.setContent(doc, { emitUpdate: false })
   }, [doc, editor])
+
+  // editor 初始化后回调一次（暴露给父组件用于插文本等）
+  useEffect(() => { if (editor) onEditorReadyRef.current?.(editor) }, [editor])
 
   // 降级：editor 初始化失败 → 原生 textarea
   if (!editor) {

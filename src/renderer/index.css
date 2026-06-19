@@ -5,6 +5,9 @@
   --bg-elevated: #ffffff;
   --bg-sidebar: #fafafa;
   --bg-hover: #f0f0f2;
+  --surface-1: #f7f7f8;
+  --surface-2: #efeff1;
+  --border-hair: rgba(0,0,0,0.06);
   --border: #ececee;
   --text: #1d1d1f;
   --text-muted: #86868b;
@@ -19,7 +22,7 @@
   --font-size-xs: 11px;
   --radius: 8px;
   --radius-lg: 14px;
-  --shadow-float: 0 2px 12px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.03);
+  --shadow-float: 0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.08);
 }
 
 [data-theme='codex-warm'] {
@@ -27,6 +30,9 @@
   --bg-elevated: #ffffff;
   --bg-sidebar: #f6f4f0;
   --bg-hover: #eee9e2;
+  --surface-1: #f3efe9;
+  --surface-2: #eae3da;
+  --border-hair: rgba(42,37,32,0.06);
   --border: #e8e3dc;
   --text: #2a2520;
   --text-muted: #8a8076;
@@ -38,7 +44,7 @@
   --font-mono: 'SF Mono', 'Menlo', monospace;
   --radius: 8px;
   --radius-lg: 14px;
-  --shadow-float: 0 2px 12px rgba(42,37,32,0.06), 0 0 0 1px rgba(42,37,32,0.03);
+  --shadow-float: 0 1px 2px rgba(42,37,32,0.04), 0 8px 24px rgba(42,37,32,0.08);
 }
 
 [data-theme='codex-cool'] {
@@ -46,6 +52,9 @@
   --bg-elevated: #ffffff;
   --bg-sidebar: #f4f6f9;
   --bg-hover: #e9edf2;
+  --surface-1: #eef2f6;
+  --surface-2: #e3e9f0;
+  --border-hair: rgba(26,34,48,0.06);
   --border: #e2e6ec;
   --text: #1a2230;
   --text-muted: #6b7785;
@@ -57,7 +66,7 @@
   --font-mono: 'SF Mono', 'Menlo', monospace;
   --radius: 8px;
   --radius-lg: 14px;
-  --shadow-float: 0 2px 12px rgba(26,34,48,0.06), 0 0 0 1px rgba(26,34,48,0.03);
+  --shadow-float: 0 1px 2px rgba(26,34,48,0.04), 0 8px 24px rgba(26,34,48,0.08);
 }
 
 [data-theme='codex-paper'] {
@@ -65,6 +74,9 @@
   --bg-elevated: #fffefb;
   --bg-sidebar: #f1ede4;
   --bg-hover: #e8e2d4;
+  --surface-1: #f1ecdf;
+  --surface-2: #ece5d9;
+  --border-hair: rgba(44,40,32,0.06);
   --border: #ddd6c8;
   --text: #2c2820;
   --text-muted: #7a7264;
@@ -76,7 +88,7 @@
   --font-mono: 'SF Mono', 'Menlo', monospace;
   --radius: 8px;
   --radius-lg: 14px;
-  --shadow-float: 0 2px 12px rgba(44,40,32,0.06), 0 0 0 1px rgba(44,40,32,0.03);
+  --shadow-float: 0 1px 2px rgba(44,40,32,0.04), 0 8px 24px rgba(44,40,32,0.08);
 }
 
 /* ===== 全局重置 ===== */
@@ -115,6 +127,9 @@ button {
   --bg-elevated: #232428;
   --bg-sidebar: #161719;
   --bg-hover: #2c2e33;
+  --surface-1: #202124;
+  --surface-2: #2a2c31;
+  --border-hair: rgba(255,255,255,0.06);
   --border: #34363c;
   --text: #e6e6e8;
   --text-muted: #9a9ca3;
@@ -126,7 +141,7 @@ button {
   --font-mono: 'SF Mono', 'Menlo', monospace;
   --radius: 8px;
   --radius-lg: 14px;
-  --shadow-float: 0 2px 12px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.04);
+  --shadow-float: 0 1px 3px rgba(0,0,0,0.24), 0 10px 28px rgba(0,0,0,0.34);
 }
 
 /* ===== Markdown 渲染样式（对话区 AI 文本，所有主题通用，用 CSS 变量） ===== */
@@ -134,6 +149,10 @@ button {
 .md > *:first-child { margin-top: 0; }
 .md > *:last-child { margin-bottom: 0; }
 .md p { margin: 8px 0; }
+/* compact 模式（用户消息气泡）：段落无外边距，避免气泡过高 */
+.md-compact .md p { margin: 0; }
+.md-compact .md > *:first-child { margin-top: 0; }
+.md-compact .md > *:last-child { margin-bottom: 0; }
 .md h1, .md h2, .md h3, .md h4, .md h5, .md h6 {
   margin: 16px 0 8px; font-weight: 600; line-height: 1.3;
 }
@@ -147,10 +166,11 @@ button {
 .md a { color: #3b82f6; text-decoration: none; }
 .md a:hover { text-decoration: underline; }
 .md blockquote {
-  margin: 8px 0; padding: 4px 12px; border-left: 3px solid var(--border);
+  margin: 8px 0; padding: 6px 14px;
+  background: var(--surface-1); border-radius: 8px;
   color: var(--text-muted);
 }
-.md hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+.md hr { border: none; border-top: 1px solid var(--border-hair); margin: 14px 0; }
 /* 行内代码 */
 .md code:not(pre code) {
   font-family: var(--font-mono); font-size: 0.88em;
@@ -158,8 +178,9 @@ button {
 }
 /* 表格 */
 .md table { border-collapse: collapse; margin: 8px 0; font-size: 0.95em; }
-.md th, .md td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
-.md th { background: var(--bg-hover); font-weight: 600; }
+.md th, .md td { border-bottom: 1px solid var(--border-hair); padding: 6px 12px; text-align: left; }
+.md th { background: var(--surface-2); font-weight: 600; border-bottom: 1px solid var(--border-hair); }
+.md tr:last-child td { border-bottom: none; }
 /* 任务列表 */
 .md input[type='checkbox'] { margin-right: 6px; }
 /* 图片 */
@@ -169,7 +190,7 @@ button {
    shiki codeToHtml 输出两个 <pre>：.shiki-light / .shiki-dark。
    浅色主题显 light、藏 dark；codex-dark 显 dark、藏 light。 */
 .md .shiki-block { margin: 8px 0; }
-.md .shiki-block pre { margin: 0; border-radius: 8px; overflow-x: auto; font-family: var(--font-mono); }
+.md .shiki-block pre { margin: 0; border-radius: 10px; overflow-x: auto; font-family: var(--font-mono); background: var(--surface-1); padding: 12px 14px; }
 [data-theme='codex-dark'] .md .shiki-light { display: none; }
 [data-theme='codex-light'] .md .shiki-dark,
 [data-theme='codex-warm'] .md .shiki-dark,
@@ -190,7 +211,7 @@ button {
   position: absolute; bottom: -32px;
   opacity: 0; transition: opacity 0.12s;
   padding: 4px; border-radius: 6px;
-  background: var(--bg-elevated); border: 1px solid var(--border);
+  background: var(--surface-1);
   box-shadow: var(--shadow-float); color: var(--text-muted);
   cursor: pointer; display: inline-flex; align-items: center;
   line-height: 0; z-index: 20;
@@ -236,4 +257,28 @@ button {
 .ProseMirror .ProseMirror-selectednode {
   outline: 2px solid var(--accent);
   border-radius: 999;
+}
+
+/* tab 横向滚动：细滚动条 */
+.tab-scroll::-webkit-scrollbar { height: 6px; }
+.tab-scroll::-webkit-scrollbar-track { background: transparent; }
+.tab-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.tab-scroll::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
+
+/* running 态旋转动画(Loader2 图标):卡片状态指示器共用 */
+@keyframes cc-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.cc-spin {
+  animation: cc-spin 1s linear infinite;
+}
+
+/* 思考中指示器:呼吸式脉冲(opacity 0.3→1 循环),参考 codex app 风格 */
+@keyframes cc-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+.cc-pulse {
+  animation: cc-pulse 1.4s ease-in-out infinite;
 }

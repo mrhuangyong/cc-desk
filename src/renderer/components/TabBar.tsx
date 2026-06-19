@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useState, useRef, type CSSProperties, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import type { LucideIcon } from 'lucide-react'
-import { FileText, Globe, SquareTerminal, FileDiff, Plus } from 'lucide-react'
+import { FileText, Globe, SquareTerminal, FileDiff, Plus, X } from 'lucide-react'
 import { useStore } from '../state/store'
 import { FileTab } from './FileTab'
+import type { FileTabHandle } from './FileTab'
 import { BrowserTab } from './BrowserTab'
 import { TerminalTab } from './TerminalTab'
 import { ReviewTab } from './ReviewTab'
@@ -12,6 +14,7 @@ const TAB_ICON: Record<TabType, LucideIcon> = { file: FileText, browser: Globe, 
 
 // 新增 tab 的可选类型（点 + 后下拉菜单展示）
 const ADD_OPTIONS: { type: TabType; label: string; icon: LucideIcon }[] = [
+  { type: 'terminal', label: '终端', icon: SquareTerminal },
   { type: 'browser', label: '浏览器', icon: Globe },
   { type: 'review', label: '审查', icon: FileDiff },
   { type: 'file', label: '文件', icon: FileText }
@@ -23,24 +26,68 @@ export function TabBar() {
   const tabs = state.tabsBySession[sessionId] ?? []
   const activeTabId = state.activeTabIdBySession[sessionId] ?? null
   const [menuOpen, setMenuOpen] = useState(false)
+  const fileTabRefs = useRef<Record<string, FileTabHandle | null>>({})
+  const [confirmTabId, setConfirmTabId] = useState<string | null>(null)
+  const addBtnRef = useRef<HTMLButtonElement | null>(null)
+  // + 按钮的视口坐标（点击时取）。菜单用 portal 渲染到 body（在内容区 zoom 之外），
+  // fixed 定位相对真实视口，与 getBoundingClientRect 坐标系一致，不受 zoom 扭曲。
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
 
-  const renderContent = () => {
-    const active = tabs.find(t => t.id === activeTabId)
-    if (!active) return <div style={{ display: 'grid', placeItems: 'center', flex: 1, color: 'var(--text-muted)' }}>暂无打开的面板</div>
-    if (active.type === 'file') return <FileTab filePath={active.filePath} />
-    if (active.type === 'browser') return <BrowserTab />
-    if (active.type === 'review') return <ReviewTab />
-    return <TerminalTab tabId={active.id} />
+  // 渲染所有已打开 tab（常驻 DOM，靠 display 切显隐）。
+  // 关键：终端 tab 切换时不能卸载——否则 pty 进程被 kill、会话历史丢失。
+  // 故所有 tab 常驻，非激活的 display:none，激活的撑满。FileTab 的 Monaco
+  // 实例、TerminalTab 的 xterm+pty 因此在切 tab 时全部保留状态。
+  const renderAllTabs = () => {
+    if (tabs.length === 0) {
+      return <div style={{ display: 'grid', placeItems: 'center', flex: 1, color: 'var(--text-muted)' }}>暂无打开的面板</div>
+    }
+    return tabs.map(t => {
+      const isActive = t.id === activeTabId
+      const wrapperStyle: CSSProperties = isActive
+        ? { display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }
+        : { display: 'none' }
+      let body: ReactNode = null
+      if (t.type === 'file') {
+        body = (
+          <FileTab
+            ref={(h: FileTabHandle | null) => { fileTabRefs.current[t.id] = h }}
+            tabId={t.id}
+            filePath={t.filePath}
+          />
+        )
+      } else if (t.type === 'browser') {
+        body = <BrowserTab initialUrl={t.url} />
+      } else if (t.type === 'review') {
+        body = <ReviewTab />
+      } else {
+        body = <TerminalTab tabId={t.id} cwd={t.cwd} />
+      }
+      return (
+        <div key={t.id} style={wrapperStyle} data-active={isActive}>
+          {body}
+        </div>
+      )
+    })
+  }
+
+  // 终端 cwd：当前激活会话所属项目的 path，无则回退 settings.cwd
+  const resolveTerminalCwd = (s: typeof state): string | undefined => {
+    const project = s.projects.find(p => p.sessions.some(sess => sess.id === s.activeSessionId))
+    return project?.path || s.settings.cwd || undefined
   }
 
   const addTab = (type: TabType) => {
-    dispatch({ type: 'OPEN_TAB', tabType: type })
+    // terminal：优先落当前会话所属项目目录，回退全局 cwd
+    const cwd = type === 'terminal' ? resolveTerminalCwd(state) : undefined
+    dispatch({ type: 'OPEN_TAB', tabType: type, ...(cwd ? { cwd } : {}) })
     setMenuOpen(false)
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div style={{ display: 'flex', minHeight: 36, alignItems: 'stretch', borderBottom: '1px solid var(--border)', background: 'var(--bg-sidebar)', position: 'relative' }}>
+        {/* tab 列表：可水平滚动，tab 不缩 */}
+        <div style={{ display: 'flex', flex: 1, minWidth: 0, overflowX: 'auto' }} className="tab-scroll">
         {tabs.map(t => (
           <div
             key={t.id}
@@ -49,22 +96,54 @@ export function TabBar() {
               padding: '0 12px', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
               borderBottom: activeTabId === t.id ? '2px solid var(--accent)' : '2px solid transparent',
               color: activeTabId === t.id ? 'var(--text)' : 'var(--text-muted)', fontSize: 13,
-              maxWidth: 140
+              maxWidth: 140, flexShrink: 0, whiteSpace: 'nowrap',
             }}
           >
             <span style={{ display: 'inline-flex', alignItems: 'center' }}>{(() => { const Icon = TAB_ICON[t.type]; return <Icon size={14} />; })()}</span>
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</span>
-            <button onClick={(e) => { e.stopPropagation(); dispatch({ type: 'CLOSE_TAB', tabId: t.id }) }} style={{ fontSize: 14, opacity: 0.6, lineHeight: 1 }} aria-label="关闭标签">×</button>
+            {state.dirtyTabIds[t.id] && (
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />
+            )}
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                const isDirty = !!state.dirtyTabIds[t.id]
+                if (!isDirty) {
+                  dispatch({ type: 'CLOSE_TAB', tabId: t.id })
+                  return
+                }
+                setConfirmTabId(t.id)
+              }}
+              style={{
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                width: 16, height: 16, borderRadius: 4, lineHeight: 1, border: 'none',
+                color: 'var(--text-muted)', background: 'transparent', cursor: 'pointer',
+                opacity: 0.5, transition: 'opacity .12s, background .12s',
+              }}
+              aria-label="关闭标签"
+              onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'var(--bg-hover)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.5'; e.currentTarget.style.background = 'transparent' }}
+            ><X size={12} /></button>
           </div>
         ))}
-        {/* + 按钮：点击展开类型选择下拉菜单 */}
-        <button onClick={() => setMenuOpen(o => !o)} title="新增 Tab" style={{ padding: '0 12px', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center' }}><Plus size={16} /></button>
-        {menuOpen && (
+        {/* + 按钮：在可滚动 tab 列表内，紧跟 tabs，随 tab 一起滚动 */}
+        <button
+          ref={addBtnRef}
+          onClick={() => {
+            const r = addBtnRef.current?.getBoundingClientRect()
+            setMenuPos(r ? { top: r.bottom + 2, left: r.left } : null)
+            setMenuOpen(o => !o)
+          }}
+          title="新增 Tab"
+          style={{ padding: '0 12px', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}
+        ><Plus size={16} /></button>
+        </div>
+        {menuOpen && menuPos && createPortal(
           <>
             {/* 点外部关闭 */}
             <div onClick={() => setMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 90 }} />
             <div style={{
-              position: 'absolute', top: '100%', left: 0, marginTop: 2, zIndex: 100,
+              position: 'fixed', top: menuPos.top, left: menuPos.left, zIndex: 100,
               background: 'var(--bg-elevated)', border: '1px solid var(--border)',
               borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-float)', padding: 4, minWidth: 120
             }}>
@@ -83,10 +162,42 @@ export function TabBar() {
                 </button>
               ))}
             </div>
-          </>
+          </>,
+          document.body
         )}
       </div>
-      {renderContent()}
+        {confirmTabId && (
+          <>
+            <div onClick={() => setConfirmTabId(null)} style={{ position: 'fixed', inset: 0, zIndex: 90 }} />
+            <div style={{
+              position: 'absolute', top: 36, left: '50%', transform: 'translateX(-50%)', zIndex: 100,
+              background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+              borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-float)', padding: 14,
+              display: 'flex', flexDirection: 'column', gap: 10, minWidth: 220
+            }}>
+              <div style={{ fontSize: 13, color: 'var(--text)' }}>该文件有未保存的改动，是否保存？</div>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button onClick={() => { dispatch({ type: 'CLOSE_TAB', tabId: confirmTabId }); setConfirmTabId(null) }} style={btnStyle}>不保存</button>
+                <button onClick={() => setConfirmTabId(null)} style={btnStyle}>取消</button>
+                <button onClick={async () => {
+                  const handle = fileTabRefs.current[confirmTabId]
+                  const ok = handle ? await handle.save() : false
+                  if (ok) {
+                    dispatch({ type: 'CLOSE_TAB', tabId: confirmTabId })
+                  }
+                  setConfirmTabId(null)
+                }} style={{ ...btnStyle, background: 'var(--accent)', color: '#fff', border: 'none' }}>保存</button>
+              </div>
+            </div>
+          </>
+        )}
+      {renderAllTabs()}
     </div>
   )
+}
+
+const btnStyle: CSSProperties = {
+  padding: '5px 12px', fontSize: 12, cursor: 'pointer',
+  background: 'transparent', border: '1px solid var(--border)', color: 'var(--text)',
+  borderRadius: 'var(--radius)'
 }

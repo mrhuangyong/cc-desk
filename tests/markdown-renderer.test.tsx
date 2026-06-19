@@ -50,10 +50,22 @@ describe('MarkdownRenderer', () => {
     expect(container.querySelector('.katex')).toBeTruthy()
   })
 
-  it('链接渲染为 a 标签并阻止默认导航', () => {
+  it('链接渲染为朴素可点击文本（Codex 风：图标+链接文字，无卡片）', () => {
     const { container } = renderMd('[官网](https://example.com)')
-    const a = container.querySelector('a')
-    expect(a?.getAttribute('href')).toBe('https://example.com')
-    expect(a?.target).toBe('_blank')
+    // 不再用 <a>，而是 role="button" 的 span 文本链接
+    expect(container.querySelector('a')).toBeNull()
+    const link = container.querySelector('span[role="button"]')
+    expect(link).toBeTruthy()
+    // 含原始链接文字
+    expect(link?.textContent).toContain('官网')
+    // 不再有"打开"文字和域名副标题（朴素链接）
+    expect(link?.textContent).not.toContain('打开')
+  })
+
+  it('裸 URL 自动识别为可点击链接', () => {
+    const { container } = renderMd('访问 https://example.com 看看')
+    const link = container.querySelector('span[role="button"]')
+    expect(link).toBeTruthy()
+    expect(link?.textContent).toContain('example.com')
   })
 })

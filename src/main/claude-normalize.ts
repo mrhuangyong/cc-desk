@@ -43,16 +43,47 @@ export function normalizeBetaBlocks(content: any[]): NormBlock[] {
   })
 }
 
+// 把 tool_result 的 content（string | text-block[] | 其它）拍平为可读文本。
+// extractToolResults / extractBackgroundTaskId / claude-service 的后台命令兜底共用。
+export function contentToText(content: any): string {
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) return content.map((c: any) => c?.text ?? '').join('')
+  return JSON.stringify(content ?? '')
+}
+
 // user message.content（含 tool_result）→ 提取可读结果
 export function extractToolResults(content: any[]): { toolUseId: string; content: string; isError: boolean }[] {
   if (!Array.isArray(content)) return []
   return content
     .filter((b: any) => b.type === 'tool_result')
-    .map((b: any) => {
-      let text = ''
-      if (typeof b.content === 'string') text = b.content
-      else if (Array.isArray(b.content)) text = b.content.map((c: any) => c?.text ?? '').join('')
-      else text = JSON.stringify(b.content ?? '')
-      return { toolUseId: b.tool_use_id, content: text, isError: !!b.is_error }
-    })
+    .map((b: any) => ({
+      toolUseId: b.tool_use_id,
+      content: contentToText(b.content),
+      isError: !!b.is_error,
+    }))
+}
+
+// 从 tool_result block 提取 SDK 后台任务 id（Bash auto-background 场景）。
+// SDK 0.3.178 的 Bash 工具：后台命令的 backgroundTaskId 藏在 content 文本里
+// （"Command running in background with ID: xxx"），而非结构化字段。
+export function extractBackgroundTaskId(toolResultBlock: any): string | undefined {
+  if (!toolResultBlock) return undefined
+  // 1) tool_result 顶层字段
+  const topBg = toolResultBlock.backgroundTaskId
+  if (typeof topBg === 'string' && topBg) return topBg
+  // 2) structuredContent
+  const sc = toolResultBlock.structuredContent
+  if (sc && typeof sc === 'object' && typeof sc.backgroundTaskId === 'string' && sc.backgroundTaskId) return sc.backgroundTaskId
+  // 3) content 是对象时
+  const c = toolResultBlock.content
+  if (c && typeof c === 'object' && !Array.isArray(c) && typeof c.backgroundTaskId === 'string' && c.backgroundTaskId) return c.backgroundTaskId
+  // 4) content 文本中提取（主路径）
+  const text = (typeof c === 'string' || Array.isArray(c)) ? contentToText(c) : ''
+  // 4a) 结构化 JSON 兜底
+  const m1 = text.match(/"backgroundTaskId"\s*:\s*"([^"]+)"/)
+  if (m1) return m1[1]
+  // 4b) Bash 后台命令的人类可读文本："Command running in background with ID: <id>"
+  const m2 = text.match(/background with ID:\s*([A-Za-z0-9_-]+)/)
+  if (m2) return m2[1]
+  return undefined
 }

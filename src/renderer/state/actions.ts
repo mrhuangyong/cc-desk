@@ -8,8 +8,9 @@ export type Action =
   | { type: 'SELECT_SESSION'; sessionId: string }
   | { type: 'ADD_MESSAGE'; sessionId: string; message: Message }
   | { type: 'OPEN_FILE_TAB'; filePath: string; fileName: string }
-  | { type: 'OPEN_TAB'; tabType: TabType }
+  | { type: 'OPEN_TAB'; tabType: TabType; cwd?: string; url?: string }
   | { type: 'CLOSE_TAB'; tabId: string }
+  | { type: 'TAB_DIRTY'; tabId: string; dirty: boolean }
   | { type: 'SELECT_TAB'; tabId: string }
   | { type: 'SET_THEME'; theme: ThemeId }
   // 草稿：TipTap doc JSON + 上方 chip 栏附件
@@ -30,6 +31,9 @@ export type Action =
   | { type: 'STREAM_ERROR'; sessionId: string; error: string }
   | { type: 'STREAM_ABORTED'; sessionId: string }
   | { type: 'STREAM_END'; sessionId: string; costUSD?: number; durationMs?: number; turns?: number; isError?: boolean }
+  // 刷新后恢复:对仍在跑的 session,把其最后一条 assistant message 重建为 streaming 状态,
+  // 让续推的新 delta 正确追加到同一 draft(不重复、不丢失)。
+  | { type: 'RESTORE_STREAMING'; sessionId: string; draftMessageId: string; blocks: ContentBlock[]; notices: SystemNotice[] }
   // 应用设置：AppSettings 的部分更新（apiKey / model / cwd / providers / models）
   | { type: 'SET_SETTINGS'; settings: Partial<AppSettings> }
   // 初始化：从主进程拉取的 projects 列表
@@ -51,5 +55,35 @@ export type Action =
   // 自动归档：删除超过阈值无活动且无消息的空会话
   | { type: 'ARCHIVE_STALE'; beforeTs: number }
   // AskUserQuestion 等用户对话：显示/应答
-  | { type: 'SHOW_DIALOG'; reqId: string; dialogKind: string; payload: any; toolUseId?: string }
+  | { type: 'SHOW_DIALOG'; reqId: string; dialogKind: string; payload: any; toolUseId?: string; sessionId?: string }
   | { type: 'ANSWER_DIALOG' }
+  // 消息排队（queue 模式：AI 流式中发送的消息先排队）
+  | { type: 'ENQUEUE_MESSAGE'; sessionId: string; prompt: string; attachments: import('../types').DraftAttachment[] }
+  | { type: 'DEQUEUE_MESSAGE'; sessionId: string; queueId: string }
+  | { type: 'CLEAR_QUEUE'; sessionId: string }
+  // Claude task 状态（悬浮面板）
+  | { type: 'UPSERT_TASK'; sessionId: string; task: import('../types').TaskItem }
+  | { type: 'SET_TASKS'; sessionId: string; tasks: import('../types').TaskItem[] }
+  | { type: 'CLEAR_TASKS'; sessionId: string }
+  // 后台任务（悬浮面板）
+  | { type: 'UPSERT_BACKEND_TASK'; sessionId: string; task: import('../types').BackendTask }
+  | { type: 'CLEAR_BACKEND_TASKS'; sessionId: string }
+  | { type: 'REMOVE_BACKEND_TASK'; sessionId: string; taskId: string }
+  | { type: 'CLEAR_FINISHED_BACKEND_TASKS'; sessionId: string }
+  | { type: 'ARCHIVE_SESSION'; sessionId: string }
+  | { type: 'RESTORE_SESSION'; sessionId: string }
+  // 移动会话到另一个项目（修改空会话的关联项目）
+  | { type: 'MOVE_SESSION'; sessionId: string; toProjectId: string }
+  // 右上角 Panel 折叠状态（三层独立）
+  | { type: 'SET_PANEL_FOLD'; panel: 'root' | 'taskCard' | 'subagentCard' | 'backendTaskCard'; folded: boolean }
+  | { type: 'APPEND_SUBAGENT_OUTPUT'; sessionId: string; toolUseId: string; block: import('../types').ContentBlock }
+  // 计划模式（ExitPlanMode 提交的计划）
+  | { type: 'SHOW_PLAN'; sessionId: string; plan: import('../types').PlanProposal }
+  | { type: 'DISMISS_PLAN'; sessionId: string }
+  // 内置命令相关
+  | { type: 'CLEAR_SESSION_MESSAGES'; sessionId: string }
+  | { type: 'SET_SESSION_PERMISSION'; sessionId: string; permissionMode: string }
+  | { type: 'SET_SESSION_THINKING'; sessionId: string; thinking: 'low' | 'medium' | 'high' }
+  | { type: 'ADD_SESSION_DIR'; sessionId: string; dir: string }
+  | { type: 'SHOW_COST'; sessionId: string; text: string }
+  | { type: 'COMPACT_DONE'; sessionId: string; summary: string; keepRecent: number }

@@ -9,16 +9,21 @@ import type {
 } from '../main/claude-config'
 
 interface ClaudeAPI {
-  send(opts: { prompt: string; localSessionId?: string; sessionId?: string; cwd?: string }): Promise<void>
-  stop(): Promise<void>
+  send(opts: { prompt: string; localSessionId?: string; sessionId?: string; cwd?: string; permission?: string; thinking?: 'low' | 'medium' | 'high'; extraDirs?: string[] }): Promise<void>
+  stop(localSessionId: string): Promise<void>
+  runningSessions(): Promise<string[]>
   onSystem(cb: (data: { sessionId: string; model: string; tools: string[] }) => void): void
   onDelta(cb: (data: { kind: 'text' | 'thinking'; delta: string }) => void): void
   onBlocks(cb: (data: any) => void): void
   onNotice(cb: (data: any) => void): void
+  onTask(cb: (data: any) => void): void
   onResult(cb: (data: { sessionId: string; subtype: string; isError: boolean; costUSD: number; durationMs: number; turns: number }) => void): void
   onError(cb: (data: { error: string }) => void): void
   onAborted(cb: (data: any) => void): void
   onDialogRequest(cb: (data: any) => void): void
+  onBuiltinResult(cb: (data: any) => void): void
+  onPlan(cb: (data: any) => void): void
+  onSubagentOutput(cb: (data: any) => void): void
   dialogResponse(payload: { reqId: string; result: any }): Promise<void>
   removeAllListeners(): void
 }
@@ -58,6 +63,9 @@ interface ProjectsAPI {
 interface FsAPI {
   readTree(dirPath: string): Promise<any[]>
   readFile(filePath: string): Promise<string>
+  writeFile(filePath: string, content: string): Promise<void>
+  searchFiles(dirPath: string): Promise<any[]>
+  exists(filePath: string): Promise<boolean>
 }
 
 interface PtyAPI {
@@ -69,12 +77,22 @@ interface PtyAPI {
   onExit(cb: (data: { tabId: string; code: number }) => void): void
 }
 
+interface BackendTaskAPI {
+  list(localSessionId: string): Promise<any[]>
+  kill(localSessionId: string, taskId: string): Promise<{ ok: boolean; error?: string }>
+  onEvent(cb: (data: any) => void): () => void
+}
+
+interface SessionAPI {
+  archive(localSessionId: string): Promise<void>
+}
+
 interface DialogAPI {
   openDirectory(): Promise<string | null>
 }
 
 interface MiscAPI {
-  onArchiveTick(cb: (data: { beforeTs: number }) => void): void
+  onArchiveTick(cb: (data: { beforeTs: number }) => void): () => void
 }
 
 // Claude 真实配置（读写 ~/.claude/）
@@ -101,6 +119,12 @@ interface ClaudeConfigAPI {
     get(): Promise<GeneralConfig>
     save(cfg: Partial<GeneralConfig>): Promise<void>
   }
+  builtin: {
+    compact(localSessionId: string): Promise<void>
+    init(opts: { cwd: string }): Promise<void>
+    exportSession(localSessionId: string): Promise<void>
+    addDir(opts: { localSessionId: string; dir: string }): Promise<void>
+  }
 }
 
 // 本文件含 import（变成 module），需用 declare global 扩充 Window。
@@ -113,6 +137,8 @@ declare global {
       projects: ProjectsAPI
       fs: FsAPI
       pty: PtyAPI
+      backendTask: BackendTaskAPI
+      session: SessionAPI
       dialog: DialogAPI
       cc: ClaudeConfigAPI
       onArchiveTick: MiscAPI['onArchiveTick']

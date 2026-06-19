@@ -42,6 +42,7 @@ const dict: Record<Lang, Record<string, string>> = {
     'settings.plugins': '插件',
     'settings.commands': '命令',
     'settings.hooks': 'hooks',
+    'settings.archived': '已归档会话',
     // 模型设置（多供应商）
     'model.title': '模型设置',
     'model.desc': '管理自定义模型供应商，配置后可在聊天时选择使用。',
@@ -93,6 +94,7 @@ const dict: Record<Lang, Record<string, string>> = {
     'settings.plugins': 'Plugins',
     'settings.commands': 'Commands',
     'settings.hooks': 'Hooks',
+    'settings.archived': 'Archived Sessions',
     // 模型设置（多供应商）
     'model.title': 'Model settings',
     'model.desc': 'Manage custom model providers; pick one when chatting.',
@@ -117,6 +119,11 @@ const dict: Record<Lang, Record<string, string>> = {
 
 export function translate(lang: Lang, key: string): string {
   return dict[lang]?.[key] ?? dict['zh-CN'][key] ?? key
+}
+
+// 返回某语言的全部 key（用于测试漏译检测，非运行时路径）
+export function dictKeys(lang: Lang): string[] {
+  return Object.keys(dict[lang] ?? {})
 }
 
 export const SUPPORTED_LANGS: { id: Lang; label: string }[] = [

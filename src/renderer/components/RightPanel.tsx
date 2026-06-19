@@ -46,6 +46,8 @@ export function RightPanel({ collapsed }: Props) {
         width, flexShrink: 0, position: 'relative', background: 'var(--bg)',
         borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column',
         ...animStyles,
+        // 拖动时去掉 width transition，避免动画平滑导致不跟手；仅展开/折叠保留动画
+        transition: dragging ? 'none' : animStyles.transition,
       }}
     >
       {/* 拖拽手柄：左边缘竖条（动画期间禁用） */}
@@ -65,6 +67,7 @@ export function RightPanel({ collapsed }: Props) {
       <div style={{
         display: 'flex', flexDirection: 'column', flex: 1,
         width: animating ? originalWidthRef.current : undefined,
+        minWidth: 0,  // flex 子项默认 min-width:auto 会被内容撑住，导致外层缩小时内容不跟着缩
         overflow: 'hidden',
       }}>
         <TabBar />

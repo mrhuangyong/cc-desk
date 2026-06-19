@@ -1,6 +1,6 @@
 // src/main/settings-store.ts
 import Store from 'electron-store'
-import { app } from 'electron'
+import { CC_DESK_DIR } from './paths'
 
 export interface ModelProvider {
   id: string
@@ -93,9 +93,9 @@ export interface AppSettings {
   queueMode: string         // queue | interrupt
   showThinking: boolean
   showTodo: boolean
+  showBackendTask: boolean
   autoArchive: boolean
   archiveDays: string
-  dataPath: string
 
   // ===== 各设置子页 =====
   codePreview: CodePreviewSettings
@@ -185,10 +185,10 @@ const defaults: AppSettings = {
   notifySound: true,
   queueMode: 'queue',
   showThinking: false,
-  showTodo: false,
+  showTodo: true,
+  showBackendTask: true,
   autoArchive: true,
   archiveDays: '7',
-  dataPath: process.env.HOME || '',
 
   codePreview: {
     lightTheme: 'GitHub Light',
@@ -204,34 +204,18 @@ const defaults: AppSettings = {
   hooks: defaultHooks,
 }
 
-// Store 实例：dataPath 决定存储目录。先以默认位置读取 dataPath，
-// 若与默认不同则在该位置重建 Store（实现「数据存储路径」生效）。
-function createStore(cwd?: string): Store<{ settings: AppSettings }> {
-  return new Store<{ settings: AppSettings }>({ defaults: { settings: defaults }, cwd })
+// Store 实例：固定写入 ~/.cc-desk/settings.json。
+// 所有应用数据统一收敛到 ~/.cc-desk/，不再用 dataPath 机制改写存储位置。
+// 独立文件名 settings，与模型供应商配置（config.json）隔离，避免共文件混写。
+function createStore(): Store<{ settings: AppSettings }> {
+  return new Store<{ settings: AppSettings }>({
+    name: 'settings',
+    cwd: CC_DESK_DIR,
+    defaults: { settings: defaults },
+  })
 }
 
-let store = createStore()
-
-// 根据已存的 dataPath 切换存储目录（迁移：把当前内容写入新位置）
-function relocateIfNeeded(): void {
-  const raw = store.get('settings', defaults) as Partial<AppSettings>
-  const wantDataPath = raw.dataPath || defaults.dataPath
-  // 默认存储位置即 app data dir；dataPath 为空或等于默认时不迁移
-  if (!wantDataPath) return
-  try {
-    const defaultCwd = app.getPath('userData')
-    const wantCwd = wantDataPath
-    if (wantCwd && wantCwd !== defaultCwd) {
-      // 在新位置建 store 并把当前配置整体写入（首次会落 defaults，之后用已有值）
-      const migrated = createStore(wantCwd)
-      migrated.set('settings', withDefaults(raw))
-      store = migrated
-    }
-  } catch {
-    /* 路径不可写等：保持默认 store，不阻塞 */
-  }
-}
-relocateIfNeeded()
+const store = createStore()
 
 // 字段级默认值回退：旧版本数据可能缺某些字段，逐项补齐
 function withDefaults(raw: Partial<AppSettings>): AppSettings {
@@ -247,10 +231,10 @@ function withDefaults(raw: Partial<AppSettings>): AppSettings {
   merged.modelRoleMap = raw.modelRoleMap ?? defaults.modelRoleMap
   merged.codePreview = { ...defaults.codePreview, ...(raw.codePreview ?? {}) }
   // 标量类：undefined 时回落默认（用 ?? 兜底，保留 false/0/'' 等合法值）
-  ;(['theme', 'lang', 'zoom', 'proxy', 'terminalFont', 'queueMode', 'archiveDays', 'dataPath'] as const).forEach(k => {
+  ;(['theme', 'lang', 'zoom', 'proxy', 'terminalFont', 'queueMode', 'archiveDays'] as const).forEach(k => {
     ;(merged as any)[k] = (raw as any)[k] ?? (defaults as any)[k]
   })
-  ;(['inheritTerminal', 'taskNotify', 'notifySound', 'showThinking', 'showTodo', 'autoArchive'] as const).forEach(k => {
+  ;(['inheritTerminal', 'taskNotify', 'notifySound', 'showThinking', 'showTodo', 'showBackendTask', 'autoArchive'] as const).forEach(k => {
     ;(merged as any)[k] = (raw as any)[k] ?? (defaults as any)[k]
   })
   return merged
@@ -270,10 +254,4 @@ export function getSettings(): AppSettings {
 export function saveSettings(partial: Partial<AppSettings>): void {
   const current = getSettings()
   store.set('settings', { ...current, ...partial })
-  // 若 dataPath 变更，立刻迁移到新位置（运行时生效，下次读写在目录）
-  if (partial.dataPath && partial.dataPath !== current.dataPath) {
-    const migrated = createStore(partial.dataPath)
-    migrated.set('settings', withDefaults({ ...current, ...partial }))
-    store = migrated
-  }
 }

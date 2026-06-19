@@ -6,6 +6,8 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    setupFiles: './tests/setup.ts'
-  }
+    setupFiles: './tests/setup.ts',
+    // 默认排除真机 e2e（依赖本地 ai-proxy + 真实模型，耗时 ~50s）；用 pnpm test:e2e 单独跑
+    exclude: ['**/node_modules/**', '**/dist/**', 'tests/e2e-real-model.test.ts'],
+  },
 })
