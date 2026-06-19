@@ -22,7 +22,8 @@ function initialState(): AppState {
     claudeSessionMap: {}, pendingDialog: null,
     dirtyTabIds: {}, lastFileOpenedSeq: 0,
     queueBySession: {}, tasksBySession: {}, backendTasksBySession: {},
-    panelFold: { root: false, taskCard: false, backendTaskCard: false },
+    panelFold: { root: false, taskCard: false, subagentCard: false, backendTaskCard: false },
+    subagentOutputBySession: {},
     planBySession: {},
   }
 }
@@ -151,3 +152,30 @@ describe('reducer: plan（ExitPlanMode）', () => {
 
 // helper
 function next_tasks(s: AppState, sid: string) { return s.tasksBySession[sid] ?? [] }
+
+
+describe('reducer: subagent output & panel fold', () => {
+  it('APPEND_SUBAGENT_OUTPUT 按 toolUseId 累积子代理输出', () => {
+    let state = reducer(initialState(), {
+      type: 'APPEND_SUBAGENT_OUTPUT', sessionId: 's1', toolUseId: 'tu1',
+      block: { type: 'text', text: '子代理说了一句话' },
+    })
+    expect(state.subagentOutputBySession['s1']?.['tu1']).toEqual([{ type: 'text', text: '子代理说了一句话' }])
+
+    state = reducer(state, {
+      type: 'APPEND_SUBAGENT_OUTPUT', sessionId: 's1', toolUseId: 'tu1',
+      block: { type: 'text', text: '第二句' },
+    })
+    expect(state.subagentOutputBySession['s1']?.['tu1']).toEqual([
+      { type: 'text', text: '子代理说了一句话' },
+      { type: 'text', text: '第二句' },
+    ])
+  })
+
+  it('SET_PANEL_FOLD 支持 subagentCard', () => {
+    const state = reducer(initialState(), {
+      type: 'SET_PANEL_FOLD', panel: 'subagentCard', folded: true,
+    })
+    expect(state.panelFold.subagentCard).toBe(true)
+  })
+})

@@ -52,7 +52,7 @@ export type Action =
   // 自动归档：删除超过阈值无活动且无消息的空会话
   | { type: 'ARCHIVE_STALE'; beforeTs: number }
   // AskUserQuestion 等用户对话：显示/应答
-  | { type: 'SHOW_DIALOG'; reqId: string; dialogKind: string; payload: any; toolUseId?: string }
+  | { type: 'SHOW_DIALOG'; reqId: string; dialogKind: string; payload: any; toolUseId?: string; sessionId?: string }
   | { type: 'ANSWER_DIALOG' }
   // 消息排队（queue 模式：AI 流式中发送的消息先排队）
   | { type: 'ENQUEUE_MESSAGE'; sessionId: string; prompt: string; attachments: import('../types').DraftAttachment[] }
@@ -60,6 +60,7 @@ export type Action =
   | { type: 'CLEAR_QUEUE'; sessionId: string }
   // Claude task 状态（悬浮面板）
   | { type: 'UPSERT_TASK'; sessionId: string; task: import('../types').TaskItem }
+  | { type: 'SET_TASKS'; sessionId: string; tasks: import('../types').TaskItem[] }
   | { type: 'CLEAR_TASKS'; sessionId: string }
   // 后台任务（悬浮面板）
   | { type: 'UPSERT_BACKEND_TASK'; sessionId: string; task: import('../types').BackendTask }
@@ -69,7 +70,8 @@ export type Action =
   | { type: 'ARCHIVE_SESSION'; sessionId: string }
   | { type: 'RESTORE_SESSION'; sessionId: string }
   // 右上角 Panel 折叠状态（三层独立）
-  | { type: 'SET_PANEL_FOLD'; panel: 'root' | 'taskCard' | 'backendTaskCard'; folded: boolean }
+  | { type: 'SET_PANEL_FOLD'; panel: 'root' | 'taskCard' | 'subagentCard' | 'backendTaskCard'; folded: boolean }
+  | { type: 'APPEND_SUBAGENT_OUTPUT'; sessionId: string; toolUseId: string; block: import('../types').ContentBlock }
   // 计划模式（ExitPlanMode 提交的计划）
   | { type: 'SHOW_PLAN'; sessionId: string; plan: import('../types').PlanProposal }
   | { type: 'DISMISS_PLAN'; sessionId: string }
