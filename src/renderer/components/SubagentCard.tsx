@@ -114,6 +114,19 @@ function SubagentRow({ t, onKill, onRemove, onClick }: {
             <span style={{ background: 'var(--surface-2)', padding: '0 4px', borderRadius: 3 }}>{t.subagentType}</span>
           )}
         </div>
+        {/* 实时进度(task_progress 刷新):running 时显示当前工具/摘要/token,让行「活」起来 */}
+        {t.status === 'running' && (t.lastToolName || t.progressSummary || t.tokenCount != null) && (
+          <div style={{ fontSize: 10, marginTop: 3, color: 'var(--text-muted)', lineHeight: 1.4 }}>
+            {t.progressSummary && (
+              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.progressSummary}</div>
+            )}
+            <div style={{ display: 'flex', gap: 8, marginTop: t.progressSummary ? 2 : 0, opacity: 0.8 }}>
+              {t.lastToolName && <span>⏵ {t.lastToolName}</span>}
+              {t.tokenCount != null && <span>{t.tokenCount < 1000 ? t.tokenCount : `${(t.tokenCount / 1000).toFixed(1)}k`} tok</span>}
+              {t.toolUses != null && t.toolUses > 0 && <span>{t.toolUses} 工具</span>}
+            </div>
+          </div>
+        )}
       </div>
       {t.status === 'running' ? (
         <button onClick={(e) => { e.stopPropagation(); onKill(t.id) }} title="终止" style={{
