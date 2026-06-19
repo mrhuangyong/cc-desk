@@ -83,33 +83,33 @@ describe('reducer: task（普通子任务）', () => {
 describe('reducer: backend-task', () => {
   it('UPSERT_BACKEND_TASK 新增/更新', () => {
     let s = initialState()
-    s = reducer(s, { type: 'UPSERT_BACKEND_TASK', sessionId: 's1', task: { id: 'bg1', localSessionId: 's1', command: 'sleep 30', status: 'running', startedAt: 1, lastKnownAt: 1 } })
+    s = reducer(s, { type: 'UPSERT_BACKEND_TASK', sessionId: 's1', task: { id: 'bg1', localSessionId: 's1', command: 'sleep 30', kind: 'workflow', status: 'running', startedAt: 1, lastKnownAt: 1 } })
     expect(s.backendTasksBySession.s1.length).toBe(1)
-    s = reducer(s, { type: 'UPSERT_BACKEND_TASK', sessionId: 's1', task: { id: 'bg1', localSessionId: 's1', command: 'sleep 30', status: 'completed', startedAt: 1, lastKnownAt: 2 } })
+    s = reducer(s, { type: 'UPSERT_BACKEND_TASK', sessionId: 's1', task: { id: 'bg1', localSessionId: 's1', command: 'sleep 30', kind: 'workflow', status: 'completed', startedAt: 1, lastKnownAt: 2 } })
     expect(s.backendTasksBySession.s1.length).toBe(1)
     expect(s.backendTasksBySession.s1[0].status).toBe('completed')
   })
 
   it('REMOVE_BACKEND_TASK 删除指定', () => {
     let s = initialState()
-    s = reducer(s, { type: 'UPSERT_BACKEND_TASK', sessionId: 's1', task: { id: 'bg1', localSessionId: 's1', command: 'c', status: 'running', startedAt: 1, lastKnownAt: 1 } })
-    s = reducer(s, { type: 'UPSERT_BACKEND_TASK', sessionId: 's1', task: { id: 'bg2', localSessionId: 's1', command: 'c', status: 'running', startedAt: 1, lastKnownAt: 1 } })
+    s = reducer(s, { type: 'UPSERT_BACKEND_TASK', sessionId: 's1', task: { id: 'bg1', localSessionId: 's1', command: 'c', kind: 'workflow', status: 'running', startedAt: 1, lastKnownAt: 1 } })
+    s = reducer(s, { type: 'UPSERT_BACKEND_TASK', sessionId: 's1', task: { id: 'bg2', localSessionId: 's1', command: 'c', kind: 'workflow', status: 'running', startedAt: 1, lastKnownAt: 1 } })
     s = reducer(s, { type: 'REMOVE_BACKEND_TASK', sessionId: 's1', taskId: 'bg1' })
     expect(s.backendTasksBySession.s1.map(t => t.id)).toEqual(['bg2'])
   })
 
   it('CLEAR_FINISHED_BACKEND_TASKS 仅保留 running', () => {
     let s = initialState()
-    s = reducer(s, { type: 'UPSERT_BACKEND_TASK', sessionId: 's1', task: { id: 'bg1', localSessionId: 's1', command: 'c', status: 'running', startedAt: 1, lastKnownAt: 1 } })
-    s = reducer(s, { type: 'UPSERT_BACKEND_TASK', sessionId: 's1', task: { id: 'bg2', localSessionId: 's1', command: 'c', status: 'completed', startedAt: 1, lastKnownAt: 1 } })
-    s = reducer(s, { type: 'UPSERT_BACKEND_TASK', sessionId: 's1', task: { id: 'bg3', localSessionId: 's1', command: 'c', status: 'failed', startedAt: 1, lastKnownAt: 1 } })
+    s = reducer(s, { type: 'UPSERT_BACKEND_TASK', sessionId: 's1', task: { id: 'bg1', localSessionId: 's1', command: 'c', kind: 'workflow', status: 'running', startedAt: 1, lastKnownAt: 1 } })
+    s = reducer(s, { type: 'UPSERT_BACKEND_TASK', sessionId: 's1', task: { id: 'bg2', localSessionId: 's1', command: 'c', kind: 'workflow', status: 'completed', startedAt: 1, lastKnownAt: 1 } })
+    s = reducer(s, { type: 'UPSERT_BACKEND_TASK', sessionId: 's1', task: { id: 'bg3', localSessionId: 's1', command: 'c', kind: 'workflow', status: 'failed', startedAt: 1, lastKnownAt: 1 } })
     s = reducer(s, { type: 'CLEAR_FINISHED_BACKEND_TASKS', sessionId: 's1' })
     expect(s.backendTasksBySession.s1.map(t => t.id)).toEqual(['bg1'])
   })
 
   it('CLEAR_BACKEND_TASKS 清空', () => {
     let s = initialState()
-    s = reducer(s, { type: 'UPSERT_BACKEND_TASK', sessionId: 's1', task: { id: 'bg1', localSessionId: 's1', command: 'c', status: 'running', startedAt: 1, lastKnownAt: 1 } })
+    s = reducer(s, { type: 'UPSERT_BACKEND_TASK', sessionId: 's1', task: { id: 'bg1', localSessionId: 's1', command: 'c', kind: 'workflow', status: 'running', startedAt: 1, lastKnownAt: 1 } })
     s = reducer(s, { type: 'CLEAR_BACKEND_TASKS', sessionId: 's1' })
     expect(s.backendTasksBySession.s1).toEqual([])
   })

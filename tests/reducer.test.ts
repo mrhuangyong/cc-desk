@@ -26,7 +26,7 @@ function initialState(): AppState {
     },
     claudeSessionMap: {},
     pendingDialog: null,
-    dirtyTabIds: {}, lastFileOpenedSeq: 0, queueBySession: {}, tasksBySession: {}, backendTasksBySession: {}, panelFold: { root: false, taskCard: false, backendTaskCard: false },
+    dirtyTabIds: {}, lastFileOpenedSeq: 0, queueBySession: {}, tasksBySession: {}, backendTasksBySession: {}, panelFold: { root: false, taskCard: false, subagentCard: false, backendTaskCard: false },
   }
 }
 
@@ -334,6 +334,29 @@ describe('reducer', () => {
     const s2 = reducer(s1, { type: 'STREAM_DELTA', sessionId: 's1', kind: 'text', delta: 'Hello' })
     const s3 = reducer(s2, { type: 'STREAM_DELTA', sessionId: 's1', kind: 'text', delta: ', World' })
     expect(s3.streamingBySession['s1'].blocks[0]).toEqual({ type: 'text', text: 'Hello, World' })
+  })
+
+  it('STREAM_END 时该 session 有未答 pendingDialog → 保留 streaming（授权等待期间防误清）', () => {
+    const state = initialState()
+    const s1 = reducer(state, { type: 'STREAM_START', sessionId: 's1' })
+    const s2 = reducer(s1, { type: 'STREAM_DELTA', sessionId: 's1', kind: 'text', delta: '部分输出' })
+    // 弹出授权 dialog（带 sessionId）
+    const s3 = reducer(s2, { type: 'SHOW_DIALOG', reqId: 'dlg1', sessionId: 's1', dialogKind: 'tool_use', payload: {} })
+    // SDK 授权等待期间提前结束：STREAM_END 应保留 streaming，不清理
+    const next = reducer(s3, { type: 'STREAM_END', sessionId: 's1', costUSD: 0.01, durationMs: 100 })
+    expect(next.streamingBySession['s1']).toBeDefined()
+    // 但消息已固化
+    const session = next.projects.find(p => p.id === 'p1')!.sessions.find(s => s.id === 's1')!
+    expect(session.messages.length).toBeGreaterThan(0)
+    // streaming blocks 被重置为空，等续跑追加
+    expect(next.streamingBySession['s1'].blocks).toEqual([])
+  })
+
+  it('STREAM_END 时该 session 无 pendingDialog → 正常清理 streaming', () => {
+    const state = initialState()
+    const s1 = reducer(state, { type: 'STREAM_START', sessionId: 's1' })
+    const next = reducer(s1, { type: 'STREAM_END', sessionId: 's1' })
+    expect(next.streamingBySession['s1']).toBeUndefined()
   })
 
   it('STREAM_END 把流式 blocks 固化为 assistant 消息并清理 streaming', () => {

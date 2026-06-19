@@ -22,6 +22,7 @@ interface ClaudeAPI {
   onDialogRequest(cb: (data: any) => void): void
   onBuiltinResult(cb: (data: any) => void): void
   onPlan(cb: (data: any) => void): void
+  onSubagentOutput(cb: (data: any) => void): void
   dialogResponse(payload: { reqId: string; result: any }): Promise<void>
   removeAllListeners(): void
 }
@@ -62,6 +63,8 @@ interface FsAPI {
   readTree(dirPath: string): Promise<any[]>
   readFile(filePath: string): Promise<string>
   writeFile(filePath: string, content: string): Promise<void>
+  searchFiles(dirPath: string): Promise<any[]>
+  exists(filePath: string): Promise<boolean>
 }
 
 interface PtyAPI {

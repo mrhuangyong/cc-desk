@@ -224,7 +224,7 @@ describe('ChatArea 渲染', () => {
     ;(window as any).api = {
       claude: {
         onSystem() {}, onDelta() {}, onBlocks() {}, onNotice() {}, onTask() {}, onSubagentOutput() {},
-        onResult() {}, onError() {}, onAborted() {}, onDialogRequest() {}, onPlan() {}, onSubagentOutput() {},
+        onResult() {}, onError() {}, onAborted() {}, onDialogRequest() {}, onPlan() {},
         removeAllListeners() {},
       },
       backendTask: { onEvent: () => () => {} },
