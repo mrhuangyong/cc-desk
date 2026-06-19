@@ -6,7 +6,7 @@ import type { TaskStatus, TaskItem } from '../types'
 function StatusIcon({ status }: { status: TaskStatus }) {
   const common = { size: 13, style: { flexShrink: 0 } }
   switch (status) {
-    case 'running': return <Loader2 {...common} style={{ ...common.style, color: 'var(--accent)' }} />
+    case 'running': return <Loader2 {...common} className="cc-spin" style={{ ...common.style, color: 'var(--accent)' }} />
     case 'completed': return <CheckCircle2 {...common} style={{ ...common.style, color: '#34c759' }} />
     case 'failed': return <XCircle {...common} style={{ ...common.style, color: '#ff3b30' }} />
     case 'killed': return <XCircle {...common} style={{ ...common.style, color: 'var(--text-muted)' }} />

@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('api', {
   claude: {
     send: (opts: any) => ipcRenderer.invoke('claude:send', opts),
     stop: (localSessionId: string) => ipcRenderer.invoke('claude:stop', localSessionId),
+    runningSessions: () => ipcRenderer.invoke('claude:running-sessions') as Promise<string[]>,
     onSystem: (cb: (data: any) => void) => { ipcRenderer.on('claude:system', (_, data) => cb(data)) },
     onDelta: (cb: (data: { kind: 'text' | 'thinking'; delta: string }) => void) => { ipcRenderer.on('claude:delta', (_, data) => cb(data)) },
     onBlocks: (cb: (data: any) => void) => { ipcRenderer.on('claude:blocks', (_, data) => cb(data)) },

@@ -1,9 +1,11 @@
+import { useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import { ExternalLink } from 'lucide-react'
 import { URL_RE, cleanUrl } from '../../utils/url'
+import { tokenizeLinks, resolvePath } from '../../utils/links'
 import { useStore } from '../../state/store'
 import { CodeBlock } from './CodeBlock'
 import { MermaidBlock } from './MermaidBlock'
@@ -15,63 +17,49 @@ function langFromClassName(className?: string): string {
   return m ? m[1] : ''
 }
 
-// remark 插件：自动识别文本中的 bare URL，转换为链接节点。
-// 不依赖 unist-util-visit，递归遍历 AST，仅处理 text 类型节点（跳过已有的 link/code 节点）。
-// URL_RE / cleanUrl 见 utils/url.ts（与 TerminalTab 共用）。
-function remarkLinkify() {
-  return (tree: any) => {
-    walkAndLinkify(tree)
-  }
+// remark 插件：把文本节点里的 URL 和文件路径切成链接节点。
+// URL → 普通 http(s) 链接；文件路径 → file: 伪协议链接（携带行号 hash），
+// 由渲染层拦截处理。文件路径用「绝对/相对+分隔符」启发式匹配，
+// 不在此处校验存在性，由渲染层异步校验。
+function remarkLinkifyAndPaths() {
+  return (tree: any) => walk(tree)
 }
-function walkAndLinkify(node: any) {
+function walk(node: any) {
   if (!node || typeof node !== 'object') return
   if (Array.isArray(node.children)) {
-    // 只处理 text 节点；跳过已有 link/code/inlineCode（避免重复链接化）
-    const newChildren: any[] = []
-    let changed = false
+    const next: any[] = []
     for (const child of node.children) {
+      // 只在 text 节点切分（跳过已有 link/code/inlineCode，避免重复处理）
       if (child.type === 'text' && typeof child.value === 'string') {
-        const parts: any[] = []
-        let last = 0
-        let m: RegExpExecArray | null
-        URL_RE.lastIndex = 0
-        while ((m = URL_RE.exec(child.value)) !== null) {
-          const raw = m[0]
-          const url = cleanUrl(raw)
-          if (url) {
-            if (m.index > last) parts.push({ type: 'text', value: child.value.slice(last, m.index) })
-            parts.push({ type: 'link', url, children: [{ type: 'text', value: url }] })
-          }
-          last = m.index + raw.length
+        const tokens = tokenizeLinks(child.value)
+        if (tokens.length === 1 && tokens[0].kind === 'text') {
+          next.push(child) // 无链接，原样保留
+          continue
         }
-        if (parts.length > 0) {
-          if (last < child.value.length) parts.push({ type: 'text', value: child.value.slice(last) })
-          newChildren.push(...parts)
-          changed = true
-        } else {
-          newChildren.push(child)
+        for (const tk of tokens) {
+          if (tk.kind === 'text') {
+            next.push({ type: 'text', value: tk.raw })
+          } else if (tk.kind === 'url') {
+            next.push({ type: 'link', url: tk.href, children: [{ type: 'text', value: tk.raw }] })
+          } else if (tk.kind === 'path') {
+            const hash = tk.line ? `#L${tk.line}` : ''
+            next.push({ type: 'link', url: `file:${tk.path}${hash}`, children: [{ type: 'text', value: tk.raw }] })
+          }
         }
       } else {
-        walkAndLinkify(child)
-        newChildren.push(child)
+        walk(child)
+        next.push(child)
       }
     }
-    if (changed) node.children = newChildren
+    node.children = next
   }
 }
 
-// 链接组件：卡片式按钮，类似文件列表风格。
-// 左侧链接图标 + URL 标题 + 右侧"打开"按钮。点击按钮在内置浏览器打开。
-function LinkCard({ href, children }: { href?: string; children: React.ReactNode }) {
+// 朴素文本链接（Codex 风）：轻量下划线链接 + 外链图标，点击打开内置浏览器。
+function LinkText({ href, children }: { href?: string; children: React.ReactNode }) {
   const { dispatch } = useStore()
   if (!href) return <span>{children}</span>
-  // 从 children 提取显示文本（可能是 ReactNode，取 textContent）
   const label = typeof children === 'string' ? children : href
-  // 截断过长 URL
-  const display = label.length > 80 ? label.slice(0, 77) + '...' : label
-  // 提取域名作为副标题
-  let domain = ''
-  try { domain = new URL(href).hostname } catch { /* noop */ }
   const open = () => dispatch({ type: 'OPEN_TAB', tabType: 'browser', url: href })
   return (
     <span
@@ -80,52 +68,103 @@ function LinkCard({ href, children }: { href?: string; children: React.ReactNode
       onClick={open}
       onKeyDown={(e) => { if (e.key === 'Enter') open() }}
       style={{
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: '8px 12px', margin: '4px 0',
-        background: 'var(--bg-elevated, var(--bg))',
-        border: '1px solid var(--border)', borderRadius: 'var(--radius)',
-        cursor: 'pointer', fontSize: 13, lineHeight: 1.4,
-        transition: 'background .15s, border-color .15s',
+        color: 'var(--text)',
+        textDecoration: 'underline',
+        textDecorationColor: 'var(--text-faint)',
+        textUnderlineOffset: '2px',
+        cursor: 'pointer',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 3,
+        borderRadius: 3,
       }}
-      onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--bg-hover, var(--bg))' }}
-      onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--bg-elevated, var(--bg))' }}
+      onMouseEnter={(e) => { e.currentTarget.style.textDecorationColor = 'var(--text)' }}
+      onMouseLeave={(e) => { e.currentTarget.style.textDecorationColor = 'var(--text-faint)' }}
     >
-      <span style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--accent)', flexShrink: 0 }}>
-        <ExternalLink size={16} />
-      </span>
-      <span style={{ flex: 1, minWidth: 0 }}>
-        <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)' }}>
-          {display}
-        </span>
-        {domain && (
-          <span style={{ display: 'block', fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>
-            {domain}
-          </span>
-        )}
-      </span>
-      <span style={{ flexShrink: 0, fontSize: 12, color: 'var(--accent)', whiteSpace: 'nowrap' }}>
-        打开 ▼
-      </span>
+      <ExternalLink size={11} style={{ flexShrink: 0, opacity: 0.55 }} />
+      {label}
     </span>
   )
 }
 
+// 文件路径链接：file: 伪协议。异步校验存在性，存在才可点击打开，
+// 不存在则渲染为普通文本（避免把误识别的词变成可点链接）。
+function FilePathLink({ url, children }: { url: string; children: React.ReactNode }) {
+  const { state, dispatch } = useStore()
+  const cwd = useCwd(state)
+  // url 形如 file:src/foo.ts 或 file:src/foo.ts#L42
+  const inner = url.slice('file:'.length)
+  const [relPath, hashPart] = inner.split('#')
+  const lineNum = hashPart?.startsWith('L') ? Number(hashPart.slice(1)) : undefined
+  const absPath = resolvePath(relPath, cwd)
+
+  const [exists, setExists] = useState<boolean | null>(null)
+  const checked = useRef(false)
+  useEffect(() => {
+    if (checked.current) return
+    checked.current = true
+    let cancelled = false
+    window.api?.fs?.exists(absPath).then((ok: boolean) => {
+      if (!cancelled) setExists(ok)
+    }).catch(() => { if (!cancelled) setExists(false) })
+    return () => { cancelled = true }
+  }, [absPath])
+
+  // 未确认存在：渲染为普通文本（不可点），避免闪烁/误点
+  if (exists === null || exists === false) {
+    return <span style={{ color: 'var(--text)' }}>{children}</span>
+  }
+
+  const label = typeof children === 'string' ? children : relPath
+  const open = () => {
+    const fileName = absPath.split(/[\\/]/).pop() || absPath
+    dispatch({ type: 'OPEN_FILE_TAB', filePath: absPath, fileName })
+  }
+  const title = lineNum ? `${absPath}:${lineNum}` : absPath
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      title={title}
+      onClick={open}
+      onKeyDown={(e) => { if (e.key === 'Enter') open() }}
+      style={{
+        color: 'var(--text)',
+        fontFamily: 'var(--font-mono)',
+        fontSize: '0.9em',
+        textDecoration: 'underline',
+        textDecorationColor: 'var(--text-faint)',
+        textUnderlineOffset: '2px',
+        cursor: 'pointer',
+        borderRadius: 3,
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.textDecorationColor = 'var(--text)' }}
+      onMouseLeave={(e) => { e.currentTarget.style.textDecorationColor = 'var(--text-faint)' }}
+    >
+      {label}
+    </span>
+  )
+}
+
+// 取当前激活会话所属项目的 cwd，回退 settings.cwd
+function useCwd(state: any): string {
+  const project = state.projects.find((p: any) => p.sessions.some((s: any) => s.id === state.activeSessionId))
+  return project?.path || state.settings?.cwd || ''
+}
+
 // 对话区 Markdown 渲染：GFM + 数学公式 + shiki 代码高亮 + mermaid 图表。
-// 自动识别 bare URL 为链接，以卡片式按钮呈现（图标+URL+域名+打开按钮）。
-// className="md" 让 index.css 的 .md 样式生效。
+// 自动识别 bare URL 与文件路径为可点击链接。
 export function MarkdownRenderer({ text }: { text: string }) {
   return (
     <div className="md">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath, remarkLinkify]}
+        remarkPlugins={[remarkGfm, remarkMath, remarkLinkifyAndPaths]}
         rehypePlugins={[rehypeKatex]}
         components={{
-          // 代码：inline（无 language- class）→ 内联 code；block → CodeBlock 或 Mermaid
           code({ className, children, ...props }) {
             const lang = langFromClassName(className)
             const raw = String(children ?? '').replace(/\n$/, '')
             if (!lang) {
-              // 行内代码：交回默认渲染（套 .md 内联样式）
               return <code className={className} {...props}>{children}</code>
             }
             if (lang === 'mermaid') {
@@ -133,9 +172,13 @@ export function MarkdownRenderer({ text }: { text: string }) {
             }
             return <CodeBlock code={raw} lang={lang} />
           },
-          // 链接：卡片式按钮（内置浏览器打开），不用 <a> 包裹避免格式干扰
           a({ href, children }) {
-            return <LinkCard href={href}>{children}</LinkCard>
+            if (!href) return <span>{children}</span>
+            // file: 伪协议 → 文件路径链接（异步校验存在性）
+            if (href.startsWith('file:')) {
+              return <FilePathLink url={href}>{children}</FilePathLink>
+            }
+            return <LinkText href={href}>{children}</LinkText>
           },
         }}
       >
@@ -144,3 +187,6 @@ export function MarkdownRenderer({ text }: { text: string }) {
     </div>
   )
 }
+
+// 保留导出供 TerminalTab 等复用（向后兼容）
+export { URL_RE, cleanUrl }

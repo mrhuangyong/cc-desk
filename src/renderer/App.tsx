@@ -84,18 +84,49 @@ export function App() {
       }
     })
     // 加载持久化的工作区快照（项目/会话/消息/tab/sessionMap），注入 state
-    window.api?.projects.get().then(snap => {
+    window.api?.projects.get().then(async snap => {
       if (snap && snap.projects?.length > 0) {
         dispatch({ type: 'HYDRATE', snapshot: snap })
       }
       // 无论是否恢复，加载完成后才允许保存，避免空 state 在加载前覆盖磁盘
       hydratedRef.current = true
+
+      // 恢复仍在运行的 session：main 进程的 SDK query 刷新后仍存活，
+      // 查询哪些 session 正在迭代，对它们重建 streaming 状态，
+      // 把已恢复的 draft message 关联回去，让续推的新 delta 无缝追加。
+      try {
+        const runningIds = await window.api?.claude?.runningSessions?.()
+        if (Array.isArray(runningIds) && runningIds.length > 0) {
+          // 从 HYDRATE 后的 projects 里找每个 running session 的最后一条 assistant message（draft）
+          const hydrated = snap && snap.projects?.length > 0 ? snap : null
+          const projects = hydrated?.projects ?? []
+          for (const sid of runningIds) {
+            const session = projects.flatMap(p => p.sessions).find(sess => sess.id === sid)
+            if (!session || session.messages.length === 0) continue
+            const last = session.messages[session.messages.length - 1]
+            if (last.role !== 'assistant') continue
+            // 把 draft message 的 content 重建为 streaming blocks
+            const blocks = (last.content ?? []) as import('./state/reducer').AppState['streamingBySession'][string]['blocks']
+            const notices = (last.notices ?? []) as import('./state/reducer').AppState['streamingBySession'][string]['notices']
+            dispatch({ type: 'RESTORE_STREAMING', sessionId: sid, draftMessageId: last.id, blocks, notices })
+            // 恢复该 session 的后台任务/subagent（main 进程 registry 仍存活）
+            try {
+              const tasks = await window.api?.backendTask?.list?.(sid)
+              if (Array.isArray(tasks) && tasks.length > 0) {
+                for (const t of tasks) {
+                  dispatch({ type: 'UPSERT_BACKEND_TASK', sessionId: sid, task: t })
+                }
+              }
+            } catch { /* backendTask.list 可能不存在,忽略 */ }
+          }
+        }
+      } catch { /* runningSessions 可能不存在(老版本),忽略 */ }
     })
   }, [])
 
   // 工作区快照持久化：订阅稳定字段，debounce 落盘。
-  // 刻意不把 streamingBySession/draft/theme/settings 放进依赖数组——
-  // 流式 delta 只动 streamingBySession 不动 projects，故流式过程零写压。
+  // 流式 delta 现在会同步更新 projects.messages 里的 draft message（实时持久化），
+  // 使刷新后可恢复到截断点。debounce 500ms 合并高频 delta，写压可控。
   useEffect(() => {
     // 加载未完成前不保存，防止初始化空 state 覆盖磁盘上的快照
     if (!hydratedRef.current) return

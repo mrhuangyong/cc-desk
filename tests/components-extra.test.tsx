@@ -47,26 +47,36 @@ describe('PlanCard', () => {
 })
 
 describe('ToolUseCard', () => {
-  it('running 状态显示黄点，summary 含工具名', () => {
+  // 状态色点：running 琥珀 / error 红 / done 绿，由 CSS 渲染而非 emoji。
+  // 状态点为 summary 内首个 span（圆形），取其 background 断言颜色族。
+  function statusDotColor(container: HTMLElement): string {
+    const summary = container.querySelector('summary')!
+    const dot = summary.querySelector('span[aria-hidden]') as HTMLElement
+    return dot.style.background
+  }
+
+  it('running 状态显示琥珀色点，summary 含工具名', () => {
     const { container } = render(
       <ToolUseCard block={{ type: 'tool_use', id: 'tu1', name: 'Bash', input: { command: 'ls' }, status: 'running' }} />,
     )
-    expect(container.textContent).toContain('🟡')
     expect(container.textContent).toContain('Bash')
+    expect(statusDotColor(container)).toMatch(/d97706|amber|warn/i)
   })
 
-  it('error 状态显示红点', () => {
+  it('error 状态显示红色点', () => {
     const { container } = render(
       <ToolUseCard block={{ type: 'tool_use', id: 'tu1', name: 'Edit', input: {}, status: 'error' }} />,
     )
-    expect(container.textContent).toContain('🔴')
+    expect(container.textContent).toContain('Edit')
+    expect(statusDotColor(container)).toMatch(/danger|#[ec][0-9a-f]{5}|e57575/i)
   })
 
-  it('completed 状态显示绿点', () => {
+  it('completed 状态显示绿色点', () => {
     const { container } = render(
       <ToolUseCard block={{ type: 'tool_use', id: 'tu1', name: 'Read', input: {}, status: 'completed' }} />,
     )
-    expect(container.textContent).toContain('🟢')
+    expect(container.textContent).toContain('Read')
+    expect(statusDotColor(container)).toMatch(/16a34a|ok|status-ok/i)
   })
 
   it('默认折叠（不显示输入详情），展开后显示输入 JSON', () => {

@@ -9,7 +9,7 @@ const STATUS_LABEL: Record<BackendTask['status'], string> = {
 function StatusIcon({ status }: { status: BackendTask['status'] }) {
   const common = { size: 13, style: { flexShrink: 0, marginTop: 1 } }
   switch (status) {
-    case 'running': return <Loader2 {...common} style={{ ...common.style, color: 'var(--accent)' }} />
+    case 'running': return <Loader2 {...common} className="cc-spin" style={{ ...common.style, color: 'var(--accent)' }} />
     case 'completed': return <CheckCircle2 {...common} style={{ ...common.style, color: '#34c759' }} />
     case 'failed': return <AlertCircle {...common} style={{ ...common.style, color: '#ff3b30' }} />
     case 'stopped': return <Square {...common} style={{ ...common.style, color: 'var(--text-muted)' }} />

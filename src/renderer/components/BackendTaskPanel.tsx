@@ -53,52 +53,59 @@ export function BackendTaskPanel({
   return (
     <div style={{
       position: 'absolute', top: 12, right: 16, zIndex: 50,
-      width: 280, maxHeight: 480, overflowY: 'auto',
-      display: 'flex', flexDirection: 'column', gap: 8,
+      width: 280, maxHeight: 480,
+      display: 'flex', flexDirection: 'column',
     }}>
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button onClick={() => dispatch({ type: 'SET_PANEL_FOLD', panel: 'root', folded: true })}
-          title="收起面板"
-          aria-label="收起面板"
-          style={{
-            width: 26, height: 26, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            background: 'var(--surface-1)',
-            borderRadius: 6, cursor: 'pointer', color: 'var(--text-muted)',
-          }}>
-          <PanelRightClose size={14} />
-        </button>
+      {/* 内层滚动容器:padding 让卡片 boxShadow 不被裁,内容溢出时仅此处滚动 */}
+      <div style={{
+        flex: 1, minHeight: 0, overflowY: 'auto',
+        paddingRight: 6, paddingLeft: 6, paddingBottom: 6,
+        display: 'flex', flexDirection: 'column', gap: 8,
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 2, marginRight: -6 }}>
+          <button onClick={() => dispatch({ type: 'SET_PANEL_FOLD', panel: 'root', folded: true })}
+            title="收起面板"
+            aria-label="收起面板"
+            style={{
+              width: 26, height: 26, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              background: 'var(--surface-1)',
+              borderRadius: 6, cursor: 'pointer', color: 'var(--text-muted)',
+            }}>
+            <PanelRightClose size={14} />
+          </button>
+        </div>
+        {taskVisible && (
+          <TaskCard tasks={tasks} folded={folded.taskCard}
+            onToggleFold={() => dispatch({ type: 'SET_PANEL_FOLD', panel: 'taskCard', folded: !folded.taskCard })} />
+        )}
+        {subagentVisible && (
+          <SubagentCard
+            tasks={subagents}
+            folded={folded.subagentCard}
+            onToggleFold={() => dispatch({ type: 'SET_PANEL_FOLD', panel: 'subagentCard', folded: !folded.subagentCard })}
+            onKill={(taskId) => { void window.api.backendTask.kill(activeSessionId, taskId) }}
+            onRemove={(taskId) => dispatch({ type: 'REMOVE_BACKEND_TASK', sessionId: activeSessionId, taskId })}
+            onClearFinished={() => dispatch({ type: 'CLEAR_FINISHED_BACKEND_TASKS', sessionId: activeSessionId })}
+            onClickTask={(task) => setActiveSubagent(task)}
+          />
+        )}
+        {bgVisible && (
+          <BackendTaskCard
+            tasks={backends}
+            folded={folded.backendTaskCard}
+            onToggleFold={() => dispatch({ type: 'SET_PANEL_FOLD', panel: 'backendTaskCard', folded: !folded.backendTaskCard })}
+            onKill={(taskId) => { void window.api.backendTask.kill(activeSessionId, taskId) }}
+            onRemove={(taskId) => dispatch({ type: 'REMOVE_BACKEND_TASK', sessionId: activeSessionId, taskId })}
+            onClearFinished={() => dispatch({ type: 'CLEAR_FINISHED_BACKEND_TASKS', sessionId: activeSessionId })}
+          />
+        )}
       </div>
-      {taskVisible && (
-        <TaskCard tasks={tasks} folded={folded.taskCard}
-          onToggleFold={() => dispatch({ type: 'SET_PANEL_FOLD', panel: 'taskCard', folded: !folded.taskCard })} />
-      )}
-      {subagentVisible && (
-        <SubagentCard
-          tasks={subagents}
-          folded={folded.subagentCard}
-          onToggleFold={() => dispatch({ type: 'SET_PANEL_FOLD', panel: 'subagentCard', folded: !folded.subagentCard })}
-          onKill={(taskId) => { void window.api.backendTask.kill(activeSessionId, taskId) }}
-          onRemove={(taskId) => dispatch({ type: 'REMOVE_BACKEND_TASK', sessionId: activeSessionId, taskId })}
-          onClearFinished={() => dispatch({ type: 'CLEAR_FINISHED_BACKEND_TASKS', sessionId: activeSessionId })}
-          onClickTask={(task) => setActiveSubagent(task)}
-        />
-      )}
-      {/* 子代理详情抽屉:点击面板 subagent 行弹出 */}
+      {/* 子代理详情抽屉:点击面板 subagent 行弹出;fixed 定位,独立于滚动容器 */}
       <SubagentDetailDrawer
         task={activeSubagent}
         outputByToolUseId={subagentOutputByToolUseId ?? {}}
         onClose={() => setActiveSubagent(null)}
       />
-      {bgVisible && (
-        <BackendTaskCard
-          tasks={backends}
-          folded={folded.backendTaskCard}
-          onToggleFold={() => dispatch({ type: 'SET_PANEL_FOLD', panel: 'backendTaskCard', folded: !folded.backendTaskCard })}
-          onKill={(taskId) => { void window.api.backendTask.kill(activeSessionId, taskId) }}
-          onRemove={(taskId) => dispatch({ type: 'REMOVE_BACKEND_TASK', sessionId: activeSessionId, taskId })}
-          onClearFinished={() => dispatch({ type: 'CLEAR_FINISHED_BACKEND_TASKS', sessionId: activeSessionId })}
-        />
-      )}
     </div>
   )
 }

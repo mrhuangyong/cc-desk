@@ -31,6 +31,9 @@ export type Action =
   | { type: 'STREAM_ERROR'; sessionId: string; error: string }
   | { type: 'STREAM_ABORTED'; sessionId: string }
   | { type: 'STREAM_END'; sessionId: string; costUSD?: number; durationMs?: number; turns?: number; isError?: boolean }
+  // 刷新后恢复:对仍在跑的 session,把其最后一条 assistant message 重建为 streaming 状态,
+  // 让续推的新 delta 正确追加到同一 draft(不重复、不丢失)。
+  | { type: 'RESTORE_STREAMING'; sessionId: string; draftMessageId: string; blocks: ContentBlock[]; notices: SystemNotice[] }
   // 应用设置：AppSettings 的部分更新（apiKey / model / cwd / providers / models）
   | { type: 'SET_SETTINGS'; settings: Partial<AppSettings> }
   // 初始化：从主进程拉取的 projects 列表
@@ -69,6 +72,8 @@ export type Action =
   | { type: 'CLEAR_FINISHED_BACKEND_TASKS'; sessionId: string }
   | { type: 'ARCHIVE_SESSION'; sessionId: string }
   | { type: 'RESTORE_SESSION'; sessionId: string }
+  // 移动会话到另一个项目（修改空会话的关联项目）
+  | { type: 'MOVE_SESSION'; sessionId: string; toProjectId: string }
   // 右上角 Panel 折叠状态（三层独立）
   | { type: 'SET_PANEL_FOLD'; panel: 'root' | 'taskCard' | 'subagentCard' | 'backendTaskCard'; folded: boolean }
   | { type: 'APPEND_SUBAGENT_OUTPUT'; sessionId: string; toolUseId: string; block: import('../types').ContentBlock }

@@ -34,6 +34,7 @@ function makeInitialState(seedProjects?: Project[]): AppState {
     panelFold: { root: false, taskCard: false, subagentCard: false, backendTaskCard: false },
     subagentOutputBySession: {},
     planBySession: {},
+    abortedBySession: {},
   }
   if (!seedProjects || seedProjects.length === 0) return base
   const sessions = seedProjects.flatMap(p => p.sessions)
