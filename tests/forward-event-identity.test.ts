@@ -44,29 +44,30 @@ describe('forwardEvent 能力识别', () => {
     expect(created[0].data.task.taskType).toBe('local_workflow')
   })
 
-  it('system.subtype=task_started (普通 task) → claude:task kind=started', () => {
+  it('system.subtype=task_started (subagent, task_type=agent) → claude:backend-task create', () => {
     const svc = new ClaudeService()
     svc.setRegistry(new BackendTaskRegistry())
     const { wc, calls } = mockWebContents()
     fwd(svc, {
       type: 'system', subtype: 'task_started',
-      task_id: 't-task1', task_type: 'agent',  // 非 local_workflow
+      task_id: 't-task1', task_type: 'agent', subagent_type: 'general-purpose',
       description: '搜索代码', uuid: 'u2', session_id: 's1',
     }, wc)
 
-    const started = calls.filter(c => c.channel === 'claude:task' && c.data?.kind === 'started')
-    expect(started.length).toBe(1)
-    expect(started[0].data.taskId).toBe('t-task1')
+    const created = calls.filter(c => c.channel === 'claude:backend-task' && c.data?.op === 'create')
+    expect(created.length).toBe(1)
+    expect(created[0].data.task.kind).toBe('subagent')
   })
 
-  it('system.subtype=task_notification → claude:task kind=updated（普通 task 终态）', () => {
+  it('system.subtype=task_notification (已注册 subagent) → claude:backend-task update', () => {
     const svc = new ClaudeService()
     svc.setRegistry(new BackendTaskRegistry())
     const { wc, calls } = mockWebContents()
-    // 先 started
+    // 先 started 注册 subagent
     fwd(svc, {
       type: 'system', subtype: 'task_started',
-      task_id: 't-task2', task_type: 'agent', description: 'x', uuid: 'u3', session_id: 's1',
+      task_id: 't-task2', task_type: 'subagent', subagent_type: 'general-purpose',
+      description: 'x', uuid: 'u3', session_id: 's1',
     }, wc)
     calls.length = 0
     // 再 notification
@@ -75,9 +76,9 @@ describe('forwardEvent 能力识别', () => {
       task_id: 't-task2', status: 'completed', uuid: 'u4', session_id: 's1',
     }, wc)
 
-    const updated = calls.filter(c => c.channel === 'claude:task' && c.data?.kind === 'updated')
+    const updated = calls.filter(c => c.channel === 'claude:backend-task' && c.data?.op === 'update')
     expect(updated.length).toBe(1)
-    expect(updated[0].data.patch?.status).toBe('completed')
+    expect(updated[0].data.task.status).toBe('completed')
   })
 
   it('system.subtype=task_updated (local_workflow 已注册) → claude:backend-task update', () => {
@@ -167,3 +168,19 @@ describe('forwardEvent 能力识别', () => {
     expect(dialogs[0].data.dialogKind).toBe('ask_user_question')
   })
 })
+
+  it('system.subtype=task_started (subagent) → claude:backend-task create, kind=subagent', () => {
+    const svc = new ClaudeService()
+    svc.setRegistry(new BackendTaskRegistry())
+    const { wc, calls } = mockWebContents()
+    fwd(svc, {
+      type: 'system', subtype: 'task_started',
+      task_id: 't-sub1', task_type: 'subagent', subagent_type: 'general-purpose',
+      description: '审查代码', uuid: 'u10', session_id: 's1',
+    }, wc)
+
+    const created = calls.filter(c => c.channel === 'claude:backend-task' && c.data?.op === 'create')
+    expect(created.length).toBe(1)
+    expect(created[0].data.task.kind).toBe('subagent')
+    expect(created[0].data.task.subagentType).toBe('general-purpose')
+  })
