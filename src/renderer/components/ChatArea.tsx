@@ -223,12 +223,6 @@ export function ChatArea() {
     api.onDialogRequest((data) => {
       dispatch({ type: 'SHOW_DIALOG', reqId: data.reqId, sessionId: data.localSessionId, dialogKind: data.dialogKind, payload: data.payload, toolUseId: data.toolUseId })
     })
-    // 计划模式：模型提交计划（ExitPlanMode）
-    api.onPlan((data) => {
-      const sid = data?.localSessionId
-      if (!sid || data.op !== 'plan_proposed') return
-      dispatch({ type: 'SHOW_PLAN', sessionId: sid, plan: { toolUseId: data.toolUseId, plan: data.plan ?? '', allowedPrompts: data.allowedPrompts } })
-    })
 
     return () => {
       unsubBackendTask()
@@ -256,7 +250,9 @@ export function ChatArea() {
       />
       <PlanCard
         sessionId={state.activeSessionId}
-        plan={state.planBySession[state.activeSessionId] ?? null}
+        pendingPlan={state.pendingDialog?.dialogKind === 'plan_proposed' && state.pendingDialog.sessionId === state.activeSessionId
+          ? { reqId: state.pendingDialog.reqId, plan: state.pendingDialog.payload?.plan ?? '', allowedPrompts: state.pendingDialog.payload?.allowedPrompts }
+          : null}
         dispatch={dispatch}
       />
       <div

@@ -43,14 +43,13 @@ describe('BackendTaskPanel', () => {
     )
   })
 
-  it('root 折叠态 → 只显示图标入口按钮，不显示 Card 内容', () => {
-    render(<BackendTaskPanel
+  it('root 折叠态 → 面板整体不渲染（入口已移至 TitleBar）', () => {
+    const { container } = render(<BackendTaskPanel
       tasks={[{ id: 't1', description: '任务A', taskType: '', status: 'running' }]}
       backendTasks={[]} showTodo showBackendTask
       folded={{ root: true, taskCard: false, subagentCard: false, backendTaskCard: false }}
       activeSessionId="s1" dispatch={dispatch} />)
-    expect(screen.getByLabelText('展开面板')).toBeTruthy()
-    expect(screen.queryByText('任务')).toBeNull()
+    expect(container.firstChild).toBeNull()
   })
 
   it('running 任务显示终止按钮', () => {

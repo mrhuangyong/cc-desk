@@ -1,26 +1,28 @@
 // src/main/claude-config.ts
-// 真实读写 Claude CLI 的配置文件，作为设置页的数据源。
+// 设置页的数据源：读写 cc-desk 隔离的 Claude 配置目录（CLAUDE_CONFIG_DIR = ~/.cc-desk/claude）。
+// 与 Claude Agent SDK 运行时同一目录，确保设置页展示/编辑的配置即实际生效配置，
+// 不再读写 ~/.claude（那是 Claude CLI 原生目录，与 cc-desk 运行时隔离）。
 //
-// 数据源映射：
-//   ~/.claude/settings.json  —— 用户级设置：env / model / theme / language /
-//                                enabledPlugins / hooks / permissions / extraKnownMarketplaces
-//   ~/.claude.json           —— 全局状态：mcpServers（全局 MCP 配置）+ projects（各项目配置）
-//   ~/.claude/plugins/installed_plugins.json —— 已安装插件清单
-//   ~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/.claude-plugin/plugin.json —— 插件 manifest
+// 数据源映射（均在 CLAUDE_CONFIG_DIR 下）：
+//   settings.json        —— 用户级设置：env / model / theme / language /
+//                            enabledPlugins / hooks / permissions / extraKnownMarketplaces
+//   .claude.json         —— 全局状态：mcpServers（全局 MCP 配置）+ projects（各项目配置）
+//   plugins/installed_plugins.json —— 已安装插件清单
+//   plugins/cache/<marketplace>/<plugin>/<version>/.claude-plugin/plugin.json —— 插件 manifest
 //   <pluginPath>/skills/<name>/SKILL.md   —— 技能（frontmatter: name + description）
 //   <pluginPath>/commands/<name>.md        —— 命令
 //
 // 写策略：深合并 + 仅动受管字段，保留用户的其他配置（append-only 思想，不删除未知 key）。
-import { readFile, writeFile, readdir, stat } from 'fs/promises'
+import { readFile, writeFile, readdir, stat, mkdir } from 'fs/promises'
 import { existsSync } from 'fs'
-import { homedir } from 'os'
-import { join } from 'path'
+import { join, dirname } from 'path'
 import { BUILTIN_COMMANDS } from './builtin-commands'
+import { CLAUDE_CONFIG_DIR } from './paths'
 
-const HOME = homedir()
-const CLAUDE_DIR = join(HOME, '.claude')
+// 所有配置文件均落在 CLAUDE_CONFIG_DIR（~/.cc-desk/claude），与 SDK 运行时一致。
+const CLAUDE_DIR = CLAUDE_CONFIG_DIR
 const SETTINGS_PATH = join(CLAUDE_DIR, 'settings.json')
-const GLOBAL_PATH = join(HOME, '.claude.json')
+const GLOBAL_PATH = join(CLAUDE_DIR, '.claude.json')
 const INSTALLED_PLUGINS_PATH = join(CLAUDE_DIR, 'plugins', 'installed_plugins.json')
 const PLUGINS_CACHE_DIR = join(CLAUDE_DIR, 'plugins', 'cache')
 
@@ -34,7 +36,9 @@ async function readJson<T = any>(path: string, fallback: T): Promise<T> {
   }
 }
 
+// 写入前确保父目录存在（隔离目录的 plugins/ 等子目录首次写入时缺失）。
 async function writeJson(path: string, data: unknown): Promise<void> {
+  await mkdir(dirname(path), { recursive: true })
   await writeFile(path, JSON.stringify(data, null, 2) + '\n', 'utf-8')
 }
 

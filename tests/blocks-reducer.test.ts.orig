@@ -168,22 +168,3 @@ describe('notice / error / end', () => {
     expect(tu.input).toEqual({ file_path: 'a' })
   })
 })
-
-describe('STREAM_ASSISTANT_BLOCKS 空内容回归', () => {
-  beforeEach(() => setIdCounter(100))
-
-  it('空 assistant_blocks 不应清空已累积的流式文本', () => {
-    // 回归：当本轮 assistant 内容全是被过滤的 tool_use（TodoWrite/AskUserQuestion 等），
-    // 主进程发来 blocks: [] 的 assistant_blocks，不应清空主流已显示的文本。
-    let s = initialState()
-    s = reducer(s, { type: 'STREAM_START', sessionId: 's1' })
-    s = reducer(s, { type: 'STREAM_DELTA', sessionId: 's1', kind: 'text', delta: '我来帮你' })
-    s = reducer(s, { type: 'STREAM_DELTA', sessionId: 's1', kind: 'text', delta: '处理' })
-    // 空 blocks 到达（本轮内容全被过滤）
-    s = reducer(s, { type: 'STREAM_ASSISTANT_BLOCKS', sessionId: 's1', uuid: 'u1', blocks: [] })
-    const blocks = s.streamingBySession['s1'].blocks
-    const texts = blocks.filter(b => b.type === 'text')
-    expect(texts.length).toBe(1)
-    expect((texts[0] as any).text).toBe('我来帮你处理')
-  })
-})
