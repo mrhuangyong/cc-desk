@@ -185,7 +185,7 @@ const defaults: AppSettings = {
   notifySound: true,
   queueMode: 'queue',
   showThinking: false,
-  showTodo: false,
+  showTodo: true,
   showBackendTask: true,
   autoArchive: true,
   archiveDays: '7',

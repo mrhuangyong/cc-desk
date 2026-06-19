@@ -11,7 +11,7 @@ const STATUS_LABEL: Record<BackendTask['status'], string> = {
 function StatusIcon({ status }: { status: BackendTask['status'] }) {
   const common = { size: 13, style: { flexShrink: 0, marginTop: 1 } }
   switch (status) {
-    case 'running': return <Loader2 {...common} style={{ ...common.style, color: 'var(--accent)' }} />
+    case 'running': return <Loader2 {...common} className="cc-spin" style={{ ...common.style, color: 'var(--accent)' }} />
     case 'completed': return <CheckCircle2 {...common} style={{ ...common.style, color: '#34c759' }} />
     case 'failed': return <AlertCircle {...common} style={{ ...common.style, color: '#ff3b30' }} />
     case 'stopped': return <Square {...common} style={{ ...common.style, color: 'var(--text-muted)' }} />
@@ -108,7 +108,7 @@ function SubagentRow({ t, onKill, onRemove, onClick }: {
         }}>
           {t.command}
         </div>
-        <div style={{ color: 'var(--text-faint)', fontSize: 10, marginTop: 2, display: 'flex', gap: 6, alignItems: 'center' }}>
+        <div style={{ color: 'var(--text-faint)', fontSize: 10, marginTop: 2, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           <span>{STATUS_LABEL[t.status]}{t.startedAt ? ` · ${formatSessionTime(t.startedAt)}` : ''}</span>
           {t.subagentType && (
             <span style={{ background: 'var(--surface-2)', padding: '0 4px', borderRadius: 3 }}>{t.subagentType}</span>
@@ -120,10 +120,12 @@ function SubagentRow({ t, onKill, onRemove, onClick }: {
             {t.progressSummary && (
               <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.progressSummary}</div>
             )}
-            <div style={{ display: 'flex', gap: 8, marginTop: t.progressSummary ? 2 : 0, opacity: 0.8 }}>
-              {t.lastToolName && <span>⏵ {t.lastToolName}</span>}
-              {t.tokenCount != null && <span>{t.tokenCount < 1000 ? t.tokenCount : `${(t.tokenCount / 1000).toFixed(1)}k`} tok</span>}
-              {t.toolUses != null && t.toolUses > 0 && <span>{t.toolUses} 工具</span>}
+            <div style={{ display: 'flex', gap: 8, marginTop: t.progressSummary ? 2 : 0, opacity: 0.8, flexWrap: 'wrap' }}>
+              {t.lastToolName && (
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, maxWidth: '100%' }}>⏵ {t.lastToolName}</span>
+              )}
+              {t.tokenCount != null && <span style={{ whiteSpace: 'nowrap' }}>{t.tokenCount < 1000 ? t.tokenCount : `${(t.tokenCount / 1000).toFixed(1)}k`} tok</span>}
+              {t.toolUses != null && t.toolUses > 0 && <span style={{ whiteSpace: 'nowrap' }}>{t.toolUses} 工具</span>}
             </div>
           </div>
         )}

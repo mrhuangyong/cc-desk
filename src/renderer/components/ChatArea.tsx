@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowDown, Copy, Check } from 'lucide-react'
+import { ArrowDown, Copy, Check, Sparkles } from 'lucide-react'
 import { useStore } from '../state/store'
 import { useI18n } from '../i18n/useI18n'
 import { AttachmentChip } from './AttachmentChip'
@@ -45,7 +45,7 @@ export function ChatArea() {
   const { state, dispatch } = useStore()
   const { t } = useI18n()
 
-  // 找当前会话
+  // 找当前会话及其所属项目
   const session = state.projects
     .flatMap(p => p.sessions)
     .find(s => s.id === state.activeSessionId)
@@ -244,8 +244,6 @@ export function ChatArea() {
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: 'var(--bg)', position: 'relative' }}>
-      {/* 闪烁光标动画 */}
-      <style>{`@keyframes blink { 50% { opacity: 0 } }`}</style>
       <BackendTaskPanel
         tasks={state.tasksBySession[state.activeSessionId] ?? []}
         backendTasks={state.backendTasksBySession[state.activeSessionId] ?? []}
@@ -269,8 +267,11 @@ export function ChatArea() {
         {session.messages.length === 0 && !streaming && (
           <div style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: 60 }}>{t('chat.empty')}</div>
         )}
-        {session.messages.map(m => (
-          m.role === 'assistant' ? (
+        {session.messages.map(m => {
+          // streaming 进行中时,跳过 draft message(它由下方 streaming 区渲染,避免重复显示)
+          if (streaming?.draftMessageId === m.id) return null
+          return (
+            m.role === 'assistant' ? (
             // AI 消息：全宽左对齐，无背景；block 之间用 hairline 分隔
             <div key={m.id} className="msg-row is-assistant" style={{
               alignSelf: 'flex-start', width: '100%',
@@ -307,14 +308,18 @@ export function ChatArea() {
               <CopyButton text={extractText(m.content)} />
             </div>
           )
-        ))}
-        {/* 流式消息：notice + blocks + 错误 + 闪烁光标 */}
+        )})}
+        {/* 流式消息：notice + blocks + 错误 + 思考中指示器 */}
         {streaming && (
           <div style={{ color: 'var(--text)', fontSize: 14, lineHeight: 1.6, padding: '0 28px', display: 'flex', flexDirection: 'column', gap: 8, userSelect: 'text' }}>
             <Notices notices={streaming.notices ?? []} />
             {renderBlocks(streaming.blocks, false, state.subagentOutputBySession[state.activeSessionId] ?? {}, new Set((state.backendTasksBySession[state.activeSessionId] ?? []).filter(t => t.kind === 'subagent' && t.toolUseId).map(t => t.toolUseId!)))}
             {streaming.error && <div style={{ color: '#ef4444', fontSize: 13 }}>❌ {streaming.error}</div>}
-            <span style={{ animation: 'blink 1s step-end infinite' }}>▌</span>
+            {/* 思考中指示器:Sparkles 图标 + 文字,呼吸式脉冲动画(参考 codex app) */}
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontSize: 13 }}>
+              <Sparkles size={14} className="cc-pulse" style={{ color: 'var(--accent)' }} />
+              <span className="cc-pulse">思考中</span>
+            </div>
           </div>
         )}
       </div>

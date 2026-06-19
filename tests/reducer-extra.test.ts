@@ -25,6 +25,7 @@ function initialState(): AppState {
     panelFold: { root: false, taskCard: false, subagentCard: false, backendTaskCard: false },
     subagentOutputBySession: {},
     planBySession: {},
+    abortedBySession: {},
   }
 }
 

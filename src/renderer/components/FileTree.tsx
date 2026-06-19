@@ -1,25 +1,38 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, Folder, FolderOpen, FileText } from 'lucide-react'
+import { ArrowLeft, Folder, FolderOpen, FileText, ChevronRight, ChevronDown } from 'lucide-react'
 import { useStore } from '../state/store'
 import type { FileNode } from '../types'
 
 // 读单层目录（depth=1）。目录树按需展开——用户点开某目录时才读它的直接子节点，
 // 不依赖 readTree 预读的 depth=3，可下钻到任意层级。
 async function readLayer(dirPath: string): Promise<FileNode[]> {
-  // readTree 默认 depth=3，但只取第一层 children 即可；空目录返回 []
   const tree = await (window as any).api.fs.readTree(dirPath)
   return tree ?? []
 }
 
-function Node({ node, depth }: { node: FileNode; depth: number }) {
+function Node({ node, depth, initiallyOpen }: { node: FileNode; depth: number; initiallyOpen?: boolean }) {
   const { dispatch } = useStore()
-  const [open, setOpen] = useState(depth === 0)
+  // open 与 children 必须同步：open=true 时 children 必已加载（或正在加载）。
+  // 修复点：initiallyOpen 为真的节点，在 mount 时即触发首次加载，避免
+  // "图标展开但内容空、首次要点两次"的状态不一致。
+  const [open, setOpen] = useState(!!initiallyOpen)
   const [hovered, setHovered] = useState(false)
-  // 按需加载的子节点：首次展开时读取，避免受 readTree depth=3 限制。
-  // 注意：readTree 对深层目录返回 children=[]（depth 到 0），无法区分"空目录"
-  // 和"未读取"，所以统一初始为 null，展开时按需读取该目录单层。
   const [children, setChildren] = useState<FileNode[] | null>(null)
   const [loading, setLoading] = useState(false)
+
+  // 首次展开（含初始展开的顶层目录）：mount 后立即加载子节点。
+  // 这样 open=true 与 children!=null 保持一致，图标与内容状态同步。
+  useEffect(() => {
+    if (!initiallyOpen) return
+    let cancelled = false
+    setLoading(true)
+    readLayer(node.path)
+      .then(layer => { if (!cancelled) setChildren(layer) })
+      .catch(() => { if (!cancelled) setChildren([]) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const toggle = async () => {
     const willOpen = !open
@@ -43,10 +56,12 @@ function Node({ node, depth }: { node: FileNode; depth: number }) {
           onMouseEnter={() => setHovered(true)}
           onMouseLeave={() => setHovered(false)}
           onClick={toggle}
-          style={{ padding: '5px 12px', paddingLeft: 12 + depth * 16, cursor: 'pointer', color: 'var(--text)', background: hoverBg, display: 'flex', alignItems: 'center', gap: 4 }}
+          style={{ padding: '5px 12px', paddingLeft: 12 + depth * 16, cursor: 'pointer', color: 'var(--text)', background: hoverBg, display: 'flex', alignItems: 'center', gap: 5 }}
         >
-          {open ? <FolderOpen size={14} /> : <Folder size={14} />} {node.name}
-          {loading && <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>…</span>}
+          {open ? <ChevronDown size={13} style={{ flexShrink: 0, color: 'var(--text-muted)' }} /> : <ChevronRight size={13} style={{ flexShrink: 0, color: 'var(--text-muted)' }} />}
+          {open ? <FolderOpen size={14} style={{ flexShrink: 0, color: 'var(--text-muted)' }} /> : <Folder size={14} style={{ flexShrink: 0, color: 'var(--text-muted)' }} />}
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{node.name}</span>
+          {loading && <span style={{ color: 'var(--text-faint)', fontSize: 11 }}>…</span>}
         </div>
         {open && children?.map(c => <Node key={c.path} node={c} depth={depth + 1} />)}
       </div>
@@ -57,9 +72,11 @@ function Node({ node, depth }: { node: FileNode; depth: number }) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onClick={() => dispatch({ type: 'OPEN_FILE_TAB', filePath: node.path, fileName: node.name })}
-      style={{ padding: '4px 12px', paddingLeft: 12 + depth * 16, cursor: 'pointer', color: 'var(--text-muted)', background: hoverBg, display: 'flex', alignItems: 'center', gap: 4 }}
+      style={{ padding: '4px 12px', paddingLeft: 12 + depth * 16, cursor: 'pointer', color: 'var(--text-muted)', background: hoverBg, display: 'flex', alignItems: 'center', gap: 5 }}
     >
-      <FileText size={14} /> {node.name}
+      <span style={{ width: 13, flexShrink: 0 }} />
+      <FileText size={14} style={{ flexShrink: 0, color: 'var(--text-faint)' }} />
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{node.name}</span>
     </div>
   )
 }
@@ -87,7 +104,7 @@ export function FileTree({ projectId, onBack }: { projectId: string; onBack: () 
 
   return (
     <div style={{ flex: 1, overflowY: 'auto' }}>
-      <button onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onClick={onBack} style={{ padding: '10px 12px', color: 'var(--text-muted)', background: hovered ? 'var(--bg-hover)' : 'transparent', display: 'flex', alignItems: 'center', gap: 6, borderBottom: '1px solid var(--border)', width: '100%', cursor: 'pointer' }}>
+      <button onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onClick={onBack} style={{ padding: '10px 12px', color: 'var(--text-muted)', background: hovered ? 'var(--bg-hover)' : 'transparent', display: 'flex', alignItems: 'center', gap: 6, borderBottom: '1px solid var(--border-hair)', width: '100%', cursor: 'pointer' }}>
         <ArrowLeft size={14} /> {project?.name}
       </button>
       {loading && (

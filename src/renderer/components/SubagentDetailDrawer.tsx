@@ -1,6 +1,7 @@
 // 子代理详情抽屉:点击悬浮面板 subagent 行弹出,展示该 subagent 的完整对话输出。
 // 复用主流 renderBlocks 渲染 subagentOutputByToolUseId[task.toolUseId]。
-// 浮层风格对齐 McpEditDialog:position:fixed + rgba 遮罩 + zIndex:1000。
+// 无遮罩层;从右侧滑入/滑出(transform translateX + transition)。
+import { useEffect, useRef, useState } from 'react'
 import { X, Bot, Clock, Cpu, Wrench } from 'lucide-react'
 import type { BackendTask, ContentBlock } from '../types'
 import { renderBlocks } from './blocks/BlockRenderer'
@@ -27,15 +28,42 @@ function fmtTokens(n?: number): string {
 }
 
 export function SubagentDetailDrawer({ task, outputByToolUseId, onClose }: Props) {
+  // 进入/离开动画:open=true 滑入,onClose 时先转 false 滑出,transition 结束后卸载
+  const [open, setOpen] = useState(false)
+  const closingRef = useRef(false)
+
+  // task 变化驱动动画:
+  // - null -> 非null: 重置关闭标志,下一帧滑入
+  // - 非null -> 非null(切换 subagent): 重置关闭标志,保持滑入态
+  // - 非null -> null: 不渲染,无需处理
+  useEffect(() => {
+    if (task) {
+      closingRef.current = false
+      // 下一帧触发滑入(切换 subagent 时若已 open 则无变化,不影响视觉)
+      const raf = requestAnimationFrame(() => setOpen(true))
+      return () => cancelAnimationFrame(raf)
+    }
+  }, [task])
+
   if (!task) return null
   const blocks = (task.toolUseId && outputByToolUseId[task.toolUseId]) || []
 
+  const handleClose = () => {
+    if (closingRef.current) return
+    closingRef.current = true
+    setOpen(false)
+    // transition 结束后通知外部卸载(transition .25s,留点余量)
+    setTimeout(onClose, 280)
+  }
+
   return (
     <div
-      onClick={onClose}
+      onClick={handleClose}
       style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000,
+        position: 'fixed', inset: 0, zIndex: 1000,
         display: 'flex', justifyContent: 'flex-end',
+        // 背景全透明(无视觉遮罩),但仍接收点击用于「点外部关闭」
+        background: 'transparent',
       }}
     >
       <div
@@ -44,6 +72,8 @@ export function SubagentDetailDrawer({ task, outputByToolUseId, onClose }: Props
           width: 'min(680px, 90vw)', height: '100%', background: 'var(--bg)',
           borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column',
           boxShadow: 'var(--shadow-float)',
+          transform: open ? 'translateX(0)' : 'translateX(100%)',
+          transition: 'transform .25s ease',
         }}
       >
         {/* 头部:标题 + 进度元信息 + 关闭 */}
@@ -58,7 +88,7 @@ export function SubagentDetailDrawer({ task, outputByToolUseId, onClose }: Props
                 {task.command}
               </span>
             </div>
-            <button onClick={onClose} title="关闭" aria-label="关闭" style={{
+            <button onClick={handleClose} title="关闭" aria-label="关闭" style={{
               width: 28, height: 28, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)',
               borderRadius: 6,

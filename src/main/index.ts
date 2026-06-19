@@ -3,7 +3,7 @@ import { join } from 'path'
 import { ClaudeService } from './claude-service'
 import { SessionQueryManager } from './session-query-manager'
 import { PtyManager } from './pty-manager'
-import { readDirTree, readFileContent, searchFiles, writeFileContent } from './file-service'
+import { readDirTree, readFileContent, searchFiles, writeFileContent, pathExists } from './file-service'
 import { getSettings, saveSettings } from './settings-store'
 import { getModelProvidersConfig, saveModelProvidersConfig } from './cc-desk-store'
 import { getProjectsSnapshot, saveProjectsSnapshot } from './projects-store'
@@ -57,6 +57,7 @@ function createWindow() {
     // 兜底：interrupt 不保证 SDK 一定再吐 result，主动发 aborted 让渲染端清 streaming 状态。
     win.webContents.send('claude:aborted', { localSessionId })
   })
+  ipcMain.handle('claude:running-sessions', () => claude.runningSessionIds())
   ipcMain.handle('claude:dialog-response', (_e, { reqId, result }) => {
     claude.resolveDialog(reqId, result)
   })
@@ -96,6 +97,7 @@ function createWindow() {
   ipcMain.handle('fs:read-file', async (_e, filePath: string) => readFileContent(filePath))
   ipcMain.handle('fs:search-files', async (_e, dirPath: string) => searchFiles(dirPath))
   ipcMain.handle('fs:write-file', async (_e, filePath: string, content: string) => writeFileContent(filePath, content))
+  ipcMain.handle('fs:exists', async (_e, filePath: string) => pathExists(filePath))
   ipcMain.handle('dialog:open-directory', async () => {
     const result = await dialog.showOpenDialog(win, {
       properties: ['openDirectory'],
@@ -153,6 +155,13 @@ function createWindow() {
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url)
     return { action: 'deny' }
+  })
+
+  // 渲染端(重新)加载完成后,把活跃 SDK session 的事件回调重新绑定到当前 webContents。
+  // 刷新页面时 webContents 对象本身不变(JS 上下文重建),onEvent 闭包仍指向同一 webContents,
+  // 但统一在 did-finish-load 后 reattach 可保证回调指向最新的 webContents(保险 + 一致性)。
+  win.webContents.on('did-finish-load', () => {
+    claude.reattachRunningSessions(win.webContents)
   })
 }
 

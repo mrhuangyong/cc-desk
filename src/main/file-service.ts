@@ -32,6 +32,17 @@ export async function readDirTree(dirPath: string, depth = 3): Promise<FileNode[
   })
 }
 
+// 判断路径是否存在（文件或目录）。供渲染进程在把疑似路径识别为可点击链接前校验，
+// 避免把普通文本误判成路径后点击打不开。任何异常都视为不存在。
+export async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await stat(filePath)
+    return true
+  } catch {
+    return false
+  }
+}
+
 export async function readFileContent(filePath: string): Promise<string> {
   const s = await stat(filePath)
   if (s.size > 1024 * 200) throw new Error('文件过大（>200KB）')

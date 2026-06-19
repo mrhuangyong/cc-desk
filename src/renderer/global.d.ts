@@ -11,6 +11,7 @@ import type {
 interface ClaudeAPI {
   send(opts: { prompt: string; localSessionId?: string; sessionId?: string; cwd?: string; permission?: string; thinking?: 'low' | 'medium' | 'high'; extraDirs?: string[] }): Promise<void>
   stop(localSessionId: string): Promise<void>
+  runningSessions(): Promise<string[]>
   onSystem(cb: (data: { sessionId: string; model: string; tools: string[] }) => void): void
   onDelta(cb: (data: { kind: 'text' | 'thinking'; delta: string }) => void): void
   onBlocks(cb: (data: any) => void): void

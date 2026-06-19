@@ -149,6 +149,10 @@ button {
 .md > *:first-child { margin-top: 0; }
 .md > *:last-child { margin-bottom: 0; }
 .md p { margin: 8px 0; }
+/* compact 模式（用户消息气泡）：段落无外边距，避免气泡过高 */
+.md-compact .md p { margin: 0; }
+.md-compact .md > *:first-child { margin-top: 0; }
+.md-compact .md > *:last-child { margin-bottom: 0; }
 .md h1, .md h2, .md h3, .md h4, .md h5, .md h6 {
   margin: 16px 0 8px; font-weight: 600; line-height: 1.3;
 }
@@ -260,3 +264,21 @@ button {
 .tab-scroll::-webkit-scrollbar-track { background: transparent; }
 .tab-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 .tab-scroll::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
+
+/* running 态旋转动画(Loader2 图标):卡片状态指示器共用 */
+@keyframes cc-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.cc-spin {
+  animation: cc-spin 1s linear infinite;
+}
+
+/* 思考中指示器:呼吸式脉冲(opacity 0.3→1 循环),参考 codex app 风格 */
+@keyframes cc-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+.cc-pulse {
+  animation: cc-pulse 1.4s ease-in-out infinite;
+}

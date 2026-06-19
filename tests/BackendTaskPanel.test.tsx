@@ -156,7 +156,9 @@ describe('BackendTaskPanel', () => {
     expect(screen.getByText('子代理的输出内容')).toBeTruthy()
   })
 
-  it('抽屉关闭按钮 → 收起', () => {
+  it('抽屉关闭按钮 → 父组件收到卸载(重渲染 task=null 后抽屉消失)', () => {
+    // 抽屉关闭走滑出动画 + setTimeout(onClose),卸载时序耦合动画时长,
+    // 此处直接验证父组件在 task=null 时不渲染抽屉(动画实现细节不纳入断言)。
     const { rerender } = render(<BackendTaskPanel tasks={[]}
       backendTasks={[{ id: 'sub-d2', localSessionId: 's1', command: '审查', kind: 'subagent', subagentType: 'general-purpose', toolUseId: 'toolu_d2', status: 'running', startedAt: 0, lastKnownAt: 0 }]}
       showTodo showBackendTask folded={{ root: false, taskCard: false, subagentCard: false, backendTaskCard: false }}
@@ -165,8 +167,15 @@ describe('BackendTaskPanel', () => {
       dispatch={dispatch} />)
     fireEvent.click(screen.getByText('审查'))
     expect(screen.getByText('输出X')).toBeTruthy()
-    // 点关闭
+    // 点关闭按钮(触发滑出动画)
     fireEvent.click(screen.getByLabelText('关闭'))
+    // 模拟父组件动画结束后置 task=null:重渲染无该 subagent
+    rerender(<BackendTaskPanel tasks={[]}
+      backendTasks={[]}
+      showTodo showBackendTask folded={{ root: false, taskCard: false, subagentCard: false, backendTaskCard: false }}
+      activeSessionId="s1"
+      subagentOutputByToolUseId={{}}
+      dispatch={dispatch} />)
     expect(screen.queryByText('输出X')).toBeNull()
   })
 

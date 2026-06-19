@@ -26,6 +26,8 @@ export class ClaudeService {
   private toolUseInputs = new Map<string, { name: string; input: any }>()
   // Pending onUserDialog resolvers keyed by reqId。渲染端经 claude:dialog-response 回答。
   private dialogResolvers = new Map<string, (r: any) => void>()
+  // 每个 session 的 AbortController:创建 query 时传入,interrupt 不生效时 abort() 兜底强制中止。
+  private abortControllers = new Map<string, AbortController>()
 
   setManager(m: SessionQueryManager): void { this.manager = m }
   setRegistry(r: BackendTaskRegistry): void { this.registry = r }
@@ -189,9 +191,14 @@ export class ClaudeService {
       webContents,
       onEvent,
       onError,
-      buildQuery: (controller: PushController<SDKUserMessage>) => query({
+      buildQuery: (controller: PushController<SDKUserMessage>) => {
+        // 创建 AbortController 供 interrupt 不生效时 abort() 兜底强制中止。
+        const ac = new AbortController()
+        this.abortControllers.set(lsid, ac)
+        return query({
         prompt: controller.iterable,
         options: {
+          abortController: ac,
           // env REPLACES process.env，故先铺底再覆盖。注入激活供应商的 apiKey/baseUrl
           // 与各角色模型映射（来自 ~/.cc-desk/config.json）。
           env: { ...process.env, ...proxyEnv, ...buildSdkEnv(resolved, cfg.modelRoleMap, cfg.models) },
@@ -232,7 +239,8 @@ export class ClaudeService {
             return this.askUserDialog(webContents, request, signal)
           },
         },
-      }),
+      })
+      }
     })
 
     this.manager.pushMessage(lsid, prompt)
@@ -381,12 +389,20 @@ export class ClaudeService {
       }
       case 'result': {
         const r = message
+        // 用户主动 interrupt 导致的中断:SDK 会发 error_during_execution(result.is_error=true),
+        // 但 terminal_reason 为 aborted_streaming/aborted_tools。这种情况不是真正的执行错误,
+        // 不显示"任务出错"通知,让 STREAM_END 正常收尾(渲染端已通过 claude:aborted 清状态)。
+        const abortedReasons = ['aborted_streaming', 'aborted_tools']
+        const isUserAbort = r.is_error && abortedReasons.includes(r.terminal_reason)
         webContents.send('claude:result', {
           localSessionId: lsid,
-          sessionId: r.session_id, subtype: r.subtype, isError: !!r.is_error,
+          sessionId: r.session_id, subtype: r.subtype,
+          isError: isUserAbort ? false : !!r.is_error,
           costUSD: r.total_cost_usd, durationMs: r.duration_ms, turns: r.num_turns,
         })
-        if (r.is_error) webContents.send('claude:notice', { ...mkNotice('error', `任务出错（${r.subtype}）`, 'error'), localSessionId: lsid })
+        if (r.is_error && !isUserAbort) {
+          webContents.send('claude:notice', { ...mkNotice('error', `任务出错（${r.subtype}）`, 'error'), localSessionId: lsid })
+        }
         break
       }
       case 'api_retry':
@@ -475,19 +491,57 @@ export class ClaudeService {
     }
   }
 
-  /** 中断当前轮次（不杀进程，后台任务存活）。委托 manager.interrupt。 */
-  interrupt(localSessionId: string): Promise<void> {
-    return this.manager?.interrupt(localSessionId) ?? Promise.resolve()
+  /**
+   * 中断当前轮次（不杀进程，后台任务存活）。
+   * 策略：先 query.interrupt()（优雅中断，发 control request 给 CLI）；
+   * 若 2s 后 session 仍在迭代（工具执行中 interrupt 可能不立即生效），
+   * 用 abortController.abort() 强制中止，确保停止按钮可靠生效。
+   */
+  async interrupt(localSessionId: string): Promise<void> {
+    if (!this.manager) return
+    await this.manager.interrupt(localSessionId)
+    // interrupt 是 control request，CLI 可能正在执行工具无法立即响应。
+    // 等待 2s 后检查：若仍在迭代，abort 强制中止。
+    setTimeout(() => {
+      if (this.manager?.isIterating(localSessionId)) {
+        const ac = this.abortControllers.get(localSessionId)
+        if (ac && !ac.signal.aborted) {
+          console.warn('[claude] interrupt timeout, aborting query', localSessionId)
+          ac.abort()
+        }
+      }
+    }, 2000)
   }
 
   /** 关闭会话：关闭 controller + query.return()，删除 session。委托 manager.closeSession。 */
   closeSession(localSessionId: string): Promise<void> {
+    this.abortControllers.delete(localSessionId)
     return this.manager?.closeSession(localSessionId) ?? Promise.resolve()
   }
 
   /** 停止单个后台任务。委托 manager.stopTask。 */
   stopTask(localSessionId: string, taskId: string): Promise<void> {
     return this.manager?.stopTask(localSessionId, taskId) ?? Promise.resolve()
+  }
+
+  /** 返回当前正在迭代的 session id 列表。渲染端刷新后据此重建 streaming 状态。 */
+  runningSessionIds(): string[] {
+    return this.manager?.runningSessionIds() ?? []
+  }
+
+  /** 刷新后重新绑定活跃 session 的事件回调到新 webContents。
+   *  SDK query 刷新后仍存活,但 onEvent 闭包捕获的是旧(已销毁)webContents。
+   *  这里用新 webContents 重建闭包,让续推的事件正确送达新窗口。 */
+  reattachRunningSessions(webContents: WebContents): void {
+    if (!this.manager) return
+    const ids = this.manager.runningSessionIds()
+    for (const lsid of ids) {
+      const onEvent = (message: any) => this.forwardEvent(message, lsid, webContents)
+      const onError = (err: unknown) => {
+        webContents.send('claude:error', { localSessionId: lsid, error: String(err) })
+      }
+      this.manager.updateCallbacks(lsid, onEvent, onError)
+    }
   }
 
   /**

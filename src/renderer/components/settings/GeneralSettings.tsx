@@ -138,7 +138,7 @@ export function GeneralSettings() {
         <SettingsRow title="显示思考过程" desc="在消息流中展示模型思考内容。">
           <Toggle on={s.showThinking} onChange={v => persist({ showThinking: v })} />
         </SettingsRow>
-        <SettingsRow title="显示待办" desc="在消息流中展示 Todo 工具卡片。" noBorder>
+        <SettingsRow title="显示任务面板" desc="在右上角悬浮面板展示 Claude 规划的任务列表。" noBorder>
           <Toggle on={s.showTodo} onChange={v => persist({ showTodo: v })} />
         </SettingsRow>
       </SettingsCard>

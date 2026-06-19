@@ -14,6 +14,9 @@ export interface SessionQuery {
   iterateTask: Promise<void>
   onEvent: (msg: any) => void        // mutable, updated on each ensureSession
   onError: (err: unknown) => void    // mutable, updated on each ensureSession
+  // 是否正在迭代(一轮对话尚未结束)。for await 循环在跑时为 true。
+  // 渲染端刷新后据此判断哪些 session 需要重建 streaming 状态。
+  isIterating: boolean
 }
 
 export interface EnsureSessionOpts {
@@ -92,6 +95,7 @@ export class SessionQueryManager {
       onEvent: opts.onEvent,
       onError: opts.onError,
       iterateTask: Promise.resolve(),  // placeholder, set below
+      isIterating: false,
     }
     // runIterate reads sq.onEvent/onError (mutable), so pass sq reference
     sq.iterateTask = this.runIterate(opts.localSessionId, sq)
@@ -110,14 +114,25 @@ export class SessionQueryManager {
   }
 
   private async runIterate(localSessionId: string, sq: SessionQuery): Promise<void> {
+    sq.isIterating = true
     try {
       for await (const message of sq.query) {
         sq.onEvent(message)
       }
     } catch (err) {
-      // 先通知渲染端（清掉 streaming 状态、显示错误），再做本地清理。
-      sq.onError(err)
-      this.handleCrash(localSessionId, err)
+      // 用户主动 abort（interrupt 超时后强制中止）:不报错、不触发 onError,
+      // 仅清理 session。用户再发消息时 ensureSession 会用 resumeId 续接。
+      const isAbort = err instanceof Error && (err.name === 'AbortError' || /abort/i.test(err.message))
+      if (isAbort) {
+        sq.controller.close()
+        this.sessions.delete(localSessionId)
+      } else {
+        // 真正的 crash:通知渲染端 + 本地清理。
+        sq.onError(err)
+        this.handleCrash(localSessionId, err)
+      }
+    } finally {
+      sq.isIterating = false
     }
   }
 
@@ -142,6 +157,26 @@ export class SessionQueryManager {
     sq.controller.close()
     try { await sq.query.return() } catch (err) { console.error('[session-query] closeSession return failed', err) }
     this.sessions.delete(localSessionId)
+  }
+
+  /** 指定 session 是否正在迭代（一轮对话尚未结束）。 */
+  isIterating(localSessionId: string): boolean {
+    return this.sessions.get(localSessionId)?.isIterating ?? false
+  }
+
+  /** 返回当前正在迭代的 session id 列表（一轮对话尚未结束）。
+   *  渲染端刷新后据此重建 streaming 状态，让续推的新事件正确追加。 */
+  runningSessionIds(): string[] {
+    return [...this.sessions.values()].filter(sq => sq.isIterating).map(sq => sq.localSessionId)
+  }
+
+  /** 更新指定 session 的 onEvent/onError 回调（刷新后 webContents 变了，
+   *  需把活跃 session 的事件转发指向新 webContents）。 */
+  updateCallbacks(localSessionId: string, onEvent: (msg: any) => void, onError: (err: unknown) => void): void {
+    const sq = this.sessions.get(localSessionId)
+    if (!sq) return
+    sq.onEvent = onEvent
+    sq.onError = onError
   }
 
   async closeAll(): Promise<void> {

@@ -26,7 +26,7 @@ function initialState(): AppState {
     },
     claudeSessionMap: {},
     pendingDialog: null,
-    dirtyTabIds: {}, lastFileOpenedSeq: 0, queueBySession: {}, tasksBySession: {}, backendTasksBySession: {}, panelFold: { root: false, taskCard: false, subagentCard: false, backendTaskCard: false },
+    dirtyTabIds: {}, lastFileOpenedSeq: 0, queueBySession: {}, tasksBySession: {}, backendTasksBySession: {}, panelFold: { root: false, taskCard: false, subagentCard: false, backendTaskCard: false }, subagentOutputBySession: {}, planBySession: {}, abortedBySession: {},
   }
 }
 
@@ -322,10 +322,16 @@ describe('reducer', () => {
     expect(next.activeSettingsSection).toBe('skills')
   })
 
-  it('STREAM_START 初始化空 blocks/notices', () => {
+  it('STREAM_START 初始化空 blocks/notices 并创建 draft message（实时持久化锚点）', () => {
     const state = initialState()
     const next = reducer(state, { type: 'STREAM_START', sessionId: 's1' })
-    expect(next.streamingBySession['s1']).toEqual({ blocks: [], notices: [] })
+    const st = next.streamingBySession['s1']
+    expect(st.blocks).toEqual([])
+    expect(st.notices).toEqual([])
+    expect(st.draftMessageId).toBeTruthy()
+    // draft message 已插入 projects.messages
+    const session = next.projects.find(p => p.id === 'p1')!.sessions.find(s => s.id === 's1')!
+    expect(session.messages.some(m => m.id === st.draftMessageId)).toBe(true)
   })
 
   it('STREAM_DELTA 增量拼接文本 (新 kind 签名)', () => {
@@ -359,10 +365,11 @@ describe('reducer', () => {
     expect(next.streamingBySession['s1']).toBeUndefined()
   })
 
-  it('STREAM_END 把流式 blocks 固化为 assistant 消息并清理 streaming', () => {
+  it('STREAM_END finalize draft message（同一 id，不再新建）并清理 streaming', () => {
     const state = initialState() // s1 有 2 条消息
     const before = state.projects.find(p => p.id === 'p1')!.sessions.find(s => s.id === 's1')!.messages.length
     const s1 = reducer(state, { type: 'STREAM_START', sessionId: 's1' })
+    const draftId = s1.streamingBySession['s1'].draftMessageId!
     const s2 = reducer(s1, { type: 'STREAM_DELTA', sessionId: 's1', kind: 'text', delta: '最终回复' })
     const next = reducer(s2, {
       type: 'STREAM_END',
@@ -371,8 +378,10 @@ describe('reducer', () => {
       durationMs: 1234,
     })
     const session = next.projects.find(p => p.id === 'p1')!.sessions.find(s => s.id === 's1')!
+    // STREAM_START 创建 draft(+1),END finalize 同一个(不再 +1)
     expect(session.messages.length).toBe(before + 1)
     const last = session.messages[session.messages.length - 1]
+    expect(last.id).toBe(draftId) // 同一 id,未新建
     expect(last.role).toBe('assistant')
     expect(last.content).toEqual([{ type: 'text', text: '最终回复' }])
     expect(last.costUSD).toBe(0.01)

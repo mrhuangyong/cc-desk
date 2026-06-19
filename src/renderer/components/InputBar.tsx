@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Paperclip, Check, ShieldCheck, ChevronDown, ArrowUp, Square } from 'lucide-react'
+import { Plus, Paperclip, AtSign, Check, ShieldCheck, ChevronDown, ArrowUp, Square, Folder, FolderPlus } from 'lucide-react'
 import { useStore } from '../state/store'
 import { useI18n } from '../i18n/useI18n'
 import { AttachmentChip } from './AttachmentChip'
@@ -8,7 +8,7 @@ import { serializeForPrompt } from '../editor/serialize'
 import { runBuiltin } from './builtinCommands'
 import type { SlashMenuItem } from '../editor/types'
 
-type MenuId = 'permission' | 'model' | 'thinking'
+type MenuId = 'permission' | 'model' | 'thinking' | 'project' | 'add'
 
 const PERMISSIONS = ['变更前确认', '自动编辑', '计划模式', '完全访问']
 const THINKINGS: Array<'low' | 'medium' | 'high'> = ['low', 'medium', 'high']
@@ -213,6 +213,18 @@ export function InputBar() {
     setOpenMenu(null)
   }
 
+  // 空会话判断:无消息时显示项目选择下拉框,发送首条消息后关联固定、不再显示
+  const isEmptySession = (activeSession?.messages.length ?? 1) === 0
+
+  // 添加新项目(复用系统目录选择器)
+  const handleAddProject = async () => {
+    setOpenMenu(null)
+    const dirPath = await window.api?.dialog.openDirectory()
+    if (!dirPath) return
+    const name = dirPath.split('/').pop() || dirPath
+    dispatch({ type: 'ADD_PROJECT', name, path: dirPath })
+  }
+
   // 通用下拉菜单容器
   const menuStyle: React.CSSProperties = {
     position: 'absolute', bottom: '100%', left: 0, marginBottom: 4,
@@ -317,10 +329,108 @@ export function InputBar() {
 
         {/* 左下组 */}
         <div style={{ display: 'flex', gap: 6, position: 'relative' }}>
-          {/* 附件按钮：触发系统文件选择 */}
-          <button onClick={pickFiles} style={{ ...btnBase }} title="添加附件">
-            <Paperclip size={13} /><span>附件</span>
-          </button>
+          {/* 项目选择下拉框:仅空会话显示。发送首条消息后关联固定,不再显示。 */}
+          {isEmptySession && (
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => toggleMenu('project')}
+                style={{ ...btnBase, background: openMenu === 'project' ? 'var(--bg-hover)' : undefined, color: openMenu === 'project' ? 'var(--text)' : undefined }}
+              >
+                <Folder size={13} /><span>{project?.name ?? '选择项目'}</span><ChevronDown size={10} />
+              </button>
+              {openMenu === 'project' && (
+                <div style={menuStyle}>
+                  {state.projects.map(p => (
+                    <div
+                      key={p.id}
+                      style={{
+                        ...itemStyle,
+                        background: p.id === project?.id ? 'var(--bg-hover)' : 'transparent',
+                      }}
+                      onClick={() => {
+                        if (p.id !== project?.id) {
+                          dispatch({ type: 'MOVE_SESSION', sessionId: state.activeSessionId, toProjectId: p.id })
+                        }
+                        setOpenMenu(null)
+                      }}
+                      onMouseEnter={e => { if (p.id !== project?.id) e.currentTarget.style.background = 'var(--bg-hover)' }}
+                      onMouseLeave={e => { if (p.id !== project?.id) e.currentTarget.style.background = 'transparent' }}
+                    >
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <Folder size={12} style={{ color: 'var(--text-muted)' }} />
+                        {p.name}
+                      </span>
+                      {p.id === project?.id && <Check size={13} />}
+                    </div>
+                  ))}
+                  <div style={{ height: 1, background: 'var(--border-hair)', margin: '4px 0' }} />
+                  <div
+                    style={{ ...itemStyle, color: 'var(--text-muted)' }}
+                    onClick={handleAddProject}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                  >
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <FolderPlus size={12} /> 打开新项目
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 添加按钮：加号图标,展开菜单(添加附件 / @ 提及 / / 命令) */}
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => toggleMenu('add')}
+              style={{ ...btnBase, background: openMenu === 'add' ? 'var(--bg-hover)' : undefined, color: openMenu === 'add' ? 'var(--text)' : undefined }}
+              title="添加"
+            >
+              <Plus size={14} />
+            </button>
+            {openMenu === 'add' && (
+              <div style={menuStyle}>
+                <div
+                  style={itemStyle}
+                  onClick={() => { setOpenMenu(null); pickFiles() }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                >
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <Paperclip size={13} style={{ color: 'var(--text-muted)' }} /> 添加附件
+                  </span>
+                </div>
+                <div
+                  style={itemStyle}
+                  onClick={() => {
+                    setOpenMenu(null)
+                    editorRef?.commands?.focus?.()
+                    editorRef?.commands?.insertContent('@')
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                >
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <AtSign size={13} style={{ color: 'var(--text-muted)' }} /> 插入 @ 提及
+                  </span>
+                </div>
+                <div
+                  style={itemStyle}
+                  onClick={() => {
+                    setOpenMenu(null)
+                    editorRef?.commands?.focus?.()
+                    editorRef?.commands?.insertContent('/')
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                >
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ width: 13, display: 'inline-flex', justifyContent: 'center', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 15, lineHeight: 1 }}>/</span> 插入 / 命令
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* 权限按钮 */}
           <div style={{ position: 'relative' }}>

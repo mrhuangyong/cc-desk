@@ -1,7 +1,7 @@
 import { useState, useRef, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { LucideIcon } from 'lucide-react'
-import { FileText, Globe, SquareTerminal, FileDiff, Plus } from 'lucide-react'
+import { FileText, Globe, SquareTerminal, FileDiff, Plus, X } from 'lucide-react'
 import { useStore } from '../state/store'
 import { FileTab } from './FileTab'
 import type { FileTabHandle } from './FileTab'
@@ -114,9 +114,16 @@ export function TabBar() {
                 }
                 setConfirmTabId(t.id)
               }}
-              style={{ fontSize: 14, opacity: 0.6, lineHeight: 1 }}
+              style={{
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                width: 16, height: 16, borderRadius: 4, lineHeight: 1, border: 'none',
+                color: 'var(--text-muted)', background: 'transparent', cursor: 'pointer',
+                opacity: 0.5, transition: 'opacity .12s, background .12s',
+              }}
               aria-label="关闭标签"
-            >×</button>
+              onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'var(--bg-hover)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.5'; e.currentTarget.style.background = 'transparent' }}
+            ><X size={12} /></button>
           </div>
         ))}
         {/* + 按钮：在可滚动 tab 列表内，紧跟 tabs，随 tab 一起滚动 */}
