@@ -113,6 +113,7 @@ describe('ChatArea IPC 监听 → dispatch 链路', () => {
         onAborted: (cb: any) => { handlers.onAborted = cb },
         onDialogRequest: (cb: any) => { handlers.onDialogRequest = cb },
         onPlan: (cb: any) => { handlers.onPlan = cb },
+        onSubagentOutput: (cb: any) => { handlers.onSubagentOutput = cb },
         removeAllListeners: vi.fn(),
       },
       backendTask: { onEvent: () => unsubBackend },
@@ -153,6 +154,26 @@ describe('ChatArea IPC 监听 → dispatch 链路', () => {
     render(<ChatArea />)
     handlers.onTask({ localSessionId: 's1', kind: 'started', taskId: 't1', description: '搜索', taskType: 'agent' })
     expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: 'UPSERT_TASK', sessionId: 's1' }))
+  })
+
+  it('onTask todo_sync → SET_TASKS（TodoWrite 待办列表映射成任务）', () => {
+    render(<ChatArea />)
+    handlers.onTask({
+      localSessionId: 's1', kind: 'todo_sync',
+      todos: [
+        { content: '读取文件', status: 'completed' },
+        { content: '修改代码', status: 'in_progress' },
+        { content: '跑测试', status: 'pending' },
+      ],
+    })
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: 'SET_TASKS', sessionId: 's1' }))
+    const call = dispatch.mock.calls.find((c: any[]) => c[0]?.type === 'SET_TASKS')
+    expect(call).toBeTruthy()
+    const tasks = call![0].tasks
+    expect(tasks).toHaveLength(3)
+    expect(tasks[0]).toMatchObject({ description: '读取文件', status: 'completed', taskType: 'todo' })
+    expect(tasks[1]).toMatchObject({ description: '修改代码', status: 'running' })
+    expect(tasks[2]).toMatchObject({ description: '跑测试', status: 'pending' })
   })
 
   it('onResult → STREAM_END', () => {
@@ -202,8 +223,8 @@ describe('ChatArea 渲染', () => {
   beforeEach(() => {
     ;(window as any).api = {
       claude: {
-        onSystem() {}, onDelta() {}, onBlocks() {}, onNotice() {}, onTask() {},
-        onResult() {}, onError() {}, onAborted() {}, onDialogRequest() {}, onPlan() {},
+        onSystem() {}, onDelta() {}, onBlocks() {}, onNotice() {}, onTask() {}, onSubagentOutput() {},
+        onResult() {}, onError() {}, onAborted() {}, onDialogRequest() {}, onPlan() {}, onSubagentOutput() {},
         removeAllListeners() {},
       },
       backendTask: { onEvent: () => () => {} },
