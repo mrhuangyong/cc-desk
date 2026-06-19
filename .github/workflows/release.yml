@@ -103,6 +103,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        # 关键：检出 prepare 打好 tag 的那个 commit（其 package.json version 已回写为
+        # 与 tag 一致的版本）。若用默认的触发 commit，version 会落后 tag 一格，
+        # 导致 Release tag=vX.Y.Z 而打包产物=VX.Y.(Z-1) 的错位。
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+          fetch-depth: 1
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
