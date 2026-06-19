@@ -9,6 +9,7 @@ const ITEMS: MenuItem[] = [
   { id: 'general', labelKey: 'settings.general' },
   { id: 'code-preview', labelKey: 'settings.codePreview' },
   { id: 'model', labelKey: 'settings.model' },
+  { id: 'memory', labelKey: 'settings.memory' },
   { id: 'skills', labelKey: 'settings.skills' },
   { id: 'mcp', labelKey: 'settings.mcp' },
   { id: 'plugins', labelKey: 'settings.plugins' },

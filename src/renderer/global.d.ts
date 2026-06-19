@@ -114,6 +114,10 @@ interface ClaudeConfigAPI {
     get(): Promise<ClaudeHook[]>
     setEnabled(name: string, enabled: boolean): Promise<void>
   }
+  memory: {
+    get(): Promise<string>
+    save(content: string): Promise<void>
+  }
   model: {
     get(): Promise<ModelConfig>
     save(cfg: Partial<ModelConfig>): Promise<void>
