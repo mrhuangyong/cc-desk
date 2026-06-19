@@ -121,11 +121,12 @@ jobs:
       - name: Build app (electron-vite)
         run: pnpm build
 
-      # 注入版本号到 electron-builder（确保产物元数据带正确版本）
+      # 版本号已由 prepare job 的 npm version 回写到 package.json，electron-builder 自动读取；
+      # 不要传 -c.productVersion（非合法配置项，electron-builder 26 会报 unknown property）
       - name: Package app
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder --${{ matrix.target }} -c.productVersion=${{ needs.prepare.outputs.version }}
+        run: npx electron-builder --${{ matrix.target }}
 
       # macOS 产物在 release/，Windows 在 release/，Linux 在 release/
       - name: Upload build artifacts
