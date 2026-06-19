@@ -75,4 +75,15 @@ describe('ClaudeService.send 权限模式在会话复用时实时生效', () => 
     // 复用时不该重建 query，所以构造模式不变；但必须通过 setPermissionMode 实时切到 plan
     expect(setModeCalls).toContain('plan')
   })
+
+  it('首次 send（新建会话）不冗余调 setPermissionMode，permissionMode 由 buildQuery 设', async () => {
+    const { ClaudeService } = await import('../src/main/claude-service')
+    const { SessionQueryManager } = await import('../src/main/session-query-manager')
+    const svc = new ClaudeService()
+    svc.setManager(new SessionQueryManager())
+    await svc.send({ prompt: 'hi', localSessionId: 's2', permission: '计划模式', webContents: mkWc() })
+    // 新建会话：模式由 buildQuery 直接写入，不该再额外发 control request
+    expect(constructedMode).toBe('plan')
+    expect(setModeCalls).toEqual([])
+  })
 })

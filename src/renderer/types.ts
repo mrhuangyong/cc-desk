@@ -72,6 +72,11 @@ export interface TaskItem {
   description: string
   taskType: string
   status: TaskStatus
+  // 详情抽屉展示的完整内容（来自 TaskCreate input / TodoWrite todo 项）
+  subject?: string            // TaskCreate input.subject
+  details?: string            // TaskCreate input.description（详细说明）
+  activeForm?: string         // TaskCreate input.activeForm（进行中提示文案）
+  createdAt?: number          // 登记时间戳
 }
 
 // 计划模式提交（ExitPlanMode）：模型在 plan 模式下产出的计划
