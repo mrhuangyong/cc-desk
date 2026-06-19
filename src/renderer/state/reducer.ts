@@ -25,7 +25,7 @@ export interface AppState {
   // 本地会话 ID → Claude SDK 返回的真实 session ID 映射，用于 resume 续接
   claudeSessionMap: Record<string, string>
   // 待处理的用户对话请求（AskUserQuestion 等），Task 10 使用
-  pendingDialog: { reqId: string; dialogKind: string; payload: any; toolUseId?: string } | null
+  pendingDialog: { reqId: string; sessionId?: string; dialogKind: string; payload: any; toolUseId?: string } | null
   // 脏 tab 记录：key = tabId，value = true（未保存改动）。FileTab 上报，TabBar 读取消耗。
   dirtyTabIds: Record<string, boolean>
   // 用户点击文件树打开文件的递增计数：每次 OPEN_FILE_TAB +1。App 监听它，
@@ -37,8 +37,10 @@ export interface AppState {
   tasksBySession: Record<string, import('../types').TaskItem[]>
   // 后台任务：按会话隔离的后台任务列表（悬浮面板）
   backendTasksBySession: Record<string, import('../types').BackendTask[]>
-  // 右上角 Panel 折叠状态（三层独立）
-  panelFold: { root: boolean; taskCard: boolean; backendTaskCard: boolean }
+  // 右上角 Panel 折叠状态（四层独立）
+  panelFold: { root: boolean; taskCard: boolean; subagentCard: boolean; backendTaskCard: boolean }
+  // 子代理对话输出：按会话 + 触发它的 Task tool_use id 索引，累积 ContentBlock[]
+  subagentOutputBySession: Record<string, Record<string, import('../types').ContentBlock[]>>
   // 计划模式：模型提交的计划（ExitPlanMode）。按会话隔离，每次提交覆盖前一条。
   planBySession: Record<string, import('../types').PlanProposal | null>
 }
@@ -433,6 +435,14 @@ export function reducer(state: AppState, action: Action): AppState {
         ...p,
         sessions: p.sessions.map(s => s.id === action.sessionId ? { ...s, messages: [...s.messages, assistantMsg] } : s),
       }))
+      // 防护：若该 session 有未答的 pendingDialog（授权等待期间 SDK 提前结束），
+      // 保留 streaming 状态——用户回答后 SDK 会续跑，此时不应清流，避免按钮在
+      // 「可发送/停止」间反复跳动。续跑的最终 result（无 pendingDialog 时）才真正清流。
+      const dialogPending = state.pendingDialog?.sessionId === action.sessionId
+      if (dialogPending) {
+        // 固化本轮消息，但重置 streaming blocks 为空（续跑输出会重新追加）
+        return { ...state, projects, streamingBySession: { ...state.streamingBySession, [action.sessionId]: { blocks: [], notices: [] } } }
+      }
       const { [action.sessionId]: _, ...rest } = state.streamingBySession
       return { ...state, projects, streamingBySession: rest }
     }
@@ -496,7 +506,7 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, projects }
     }
     case 'SHOW_DIALOG': {
-      return { ...state, pendingDialog: { reqId: action.reqId, dialogKind: action.dialogKind, payload: action.payload, toolUseId: action.toolUseId } }
+      return { ...state, pendingDialog: { reqId: action.reqId, sessionId: action.sessionId, dialogKind: action.dialogKind, payload: action.payload, toolUseId: action.toolUseId } }
     }
     case 'ANSWER_DIALOG': {
       return { ...state, pendingDialog: null }
@@ -517,6 +527,10 @@ export function reducer(state: AppState, action: Action): AppState {
     }
     case 'UPSERT_TASK': {
       return upsertBySession(state, 'tasksBySession', action.sessionId, action.task)
+    }
+    case 'SET_TASKS': {
+      // TodoWrite 全量替换任务列表：每次调用都是完整的当前 todo 集合
+      return { ...state, tasksBySession: { ...state.tasksBySession, [action.sessionId]: action.tasks } }
     }
     case 'CLEAR_TASKS': {
       return { ...state, tasksBySession: { ...state.tasksBySession, [action.sessionId]: [] } }
@@ -552,6 +566,20 @@ export function reducer(state: AppState, action: Action): AppState {
         sessions: p.sessions.map(s => s.id === action.sessionId ? { ...s, archived: false, archivedAt: undefined } : s),
       }))
       return { ...state, projects }
+    }
+    case 'APPEND_SUBAGENT_OUTPUT': {
+      const bySession = state.subagentOutputBySession[action.sessionId] ?? {}
+      const existing = bySession[action.toolUseId] ?? []
+      return {
+        ...state,
+        subagentOutputBySession: {
+          ...state.subagentOutputBySession,
+          [action.sessionId]: {
+            ...bySession,
+            [action.toolUseId]: [...existing, action.block],
+          },
+        },
+      }
     }
     case 'SET_PANEL_FOLD': {
       return { ...state, panelFold: { ...state.panelFold, [action.panel]: action.folded } }

@@ -81,12 +81,16 @@ export interface PlanProposal {
   allowedPrompts?: { tool: string; prompt: string }[]
 }
 
+export type BackendTaskKind = 'subagent' | 'workflow' | 'shell' | 'monitor'
+
 export type BackendTaskStatus = 'running' | 'completed' | 'failed' | 'stopped'
 export interface BackendTask {
   id: string
   localSessionId: string
   command: string
   taskType?: string
+  kind: BackendTaskKind
+  subagentType?: string
   status: BackendTaskStatus
   startedAt: number
   lastKnownAt: number
