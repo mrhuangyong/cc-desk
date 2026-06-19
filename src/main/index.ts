@@ -8,6 +8,7 @@ import { getSettings, saveSettings } from './settings-store'
 import { getModelProvidersConfig, saveModelProvidersConfig } from './cc-desk-store'
 import { getProjectsSnapshot, saveProjectsSnapshot } from './projects-store'
 import * as cc from './claude-config'
+import { getMemoryFile, saveMemoryFile } from './memory-file'
 import { BackendTaskRegistry } from './backend-task-registry'
 import { ensureClaudeConfigDir } from './paths'
 import { migrateFromClaude } from './migrate-from-claude'
@@ -105,6 +106,10 @@ function createWindow() {
   ipcMain.handle('cc:model:save', (_e, cfg) => cc.saveModelConfig(cfg))
   ipcMain.handle('cc:general:get', () => cc.getGeneralConfig())
   ipcMain.handle('cc:general:save', (_e, cfg) => cc.saveGeneralConfig(cfg))
+
+  // 全局记忆文件 CLAUDE.md（读写 ~/.cc-desk/claude/CLAUDE.md）
+  ipcMain.handle('cc:memory:get', () => getMemoryFile())
+  ipcMain.handle('cc:memory:save', (_e, content: string) => saveMemoryFile(content))
 
   // File System
   ipcMain.handle('fs:read-tree', async (_e, dirPath: string) => readDirTree(dirPath))
