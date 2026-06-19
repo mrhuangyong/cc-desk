@@ -11,6 +11,7 @@ vi.mock('../src/renderer/state/store', () => ({
 
 import { useTheme } from '../src/renderer/hooks/useTheme'
 import { useResizableWidth } from '../src/renderer/hooks/useResizableWidth'
+import { usePanelAnimation } from '../src/renderer/hooks/usePanelAnimation'
 
 describe('useTheme', () => {
   beforeEach(() => {
@@ -130,5 +131,20 @@ describe('useResizableWidth', () => {
       window.dispatchEvent(new MouseEvent('mouseup'))
     })
     expect(localStorage.getItem('pw')).toBe('250')
+  })
+})
+
+describe('usePanelAnimation', () => {
+  it('初始折叠时保持未挂载，避免隐藏右栏内容泄漏到 DOM', async () => {
+    const { result } = renderHook(() => usePanelAnimation(true))
+
+    expect(result.current.mounted).toBe(false)
+    await act(async () => {
+      await new Promise(r => setTimeout(r, 0))
+    })
+
+    expect(result.current.mounted).toBe(false)
+    expect(result.current.animating).toBe(false)
+    expect(result.current.styles).toEqual({})
   })
 })

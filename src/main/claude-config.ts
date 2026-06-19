@@ -113,6 +113,12 @@ export async function saveSettingsJson(patch: Record<string, any>): Promise<void
   await writeJson(SETTINGS_PATH, cur)
 }
 
+async function saveSettingsJsonReplace(patch: Record<string, any>): Promise<void> {
+  const cur = await getSettingsJson()
+  for (const k of Object.keys(patch)) cur[k] = patch[k]
+  await writeJson(SETTINGS_PATH, cur)
+}
+
 // ---- ~/.claude.json（全局 mcpServers）----
 
 export async function getGlobalJson(): Promise<Record<string, any>> {
@@ -130,14 +136,16 @@ async function saveGlobalJson(mutator: (root: Record<string, any>) => void): Pro
 // 真实 mcpServers 结构（两种形态）：
 //   stdio: { command, args[], env?, type?:'stdio' }
 //   http:  { type:'http', url, headers? }
-function parseMcpEntry(name: string, raw: any): ClaudeMcpServer {
+const DISABLED_MCP_STASH_KEY = 'ccDeskDisabledMcpServers'
+
+function parseMcpEntry(name: string, raw: any, enabled = true): ClaudeMcpServer {
   const isHttp = raw.type === 'http' || (!!raw.url && !raw.command)
   if (isHttp) {
     return {
       id: name, name, transport: 'http',
       command: raw.url || '',
       args: '', env: '',
-      enabled: true, scope: '用户',
+      enabled, scope: '用户',
     }
   }
   return {
@@ -147,7 +155,7 @@ function parseMcpEntry(name: string, raw: any): ClaudeMcpServer {
     env: raw.env && typeof raw.env === 'object'
       ? Object.entries(raw.env).map(([k, v]) => `${k}=${v}`).join('\n')
       : '',
-    enabled: true, scope: '用户',
+    enabled, scope: '用户',
   }
 }
 
@@ -172,14 +180,27 @@ function buildMcpEntry(s: ClaudeMcpServer): Record<string, any> {
 
 export async function getMcpServers(): Promise<ClaudeMcpServer[]> {
   const root = await getGlobalJson()
+  const settings = await getSettingsJson()
   const servers = root.mcpServers && typeof root.mcpServers === 'object' ? root.mcpServers : {}
-  return Object.entries(servers).map(([name, raw]) => parseMcpEntry(name, raw))
+  const disabled = settings[DISABLED_MCP_STASH_KEY] && typeof settings[DISABLED_MCP_STASH_KEY] === 'object'
+    ? settings[DISABLED_MCP_STASH_KEY]
+    : {}
+  const active = Object.entries(servers).map(([name, raw]) => parseMcpEntry(name, raw, true))
+  const stashed = Object.entries(disabled)
+    .filter(([name]) => !(name in servers))
+    .map(([name, raw]) => parseMcpEntry(name, raw, false))
+  return [...active, ...stashed]
 }
 
 export async function saveMcpServers(servers: ClaudeMcpServer[]): Promise<void> {
   const map: Record<string, any> = {}
-  for (const s of servers) map[s.name] = buildMcpEntry(s)
+  const disabled: Record<string, any> = {}
+  for (const s of servers) {
+    if (s.enabled) map[s.name] = buildMcpEntry(s)
+    else disabled[s.name] = buildMcpEntry(s)
+  }
   await saveGlobalJson(root => { root.mcpServers = map })
+  await saveSettingsJsonReplace({ [DISABLED_MCP_STASH_KEY]: disabled })
 }
 
 // ---- 插件 ----
