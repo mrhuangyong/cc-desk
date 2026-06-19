@@ -94,6 +94,13 @@ export interface BackendTask {
   status: BackendTaskStatus
   startedAt: number
   lastKnownAt: number
+  toolUseId?: string              // 触发该任务的 Task tool_use block id(主流隐藏/面板详情锚定)
+  // 实时进度(task_progress 事件刷新,~30s 一次)
+  progressSummary?: string        // AI 生成的进度摘要
+  lastToolName?: string           // 最近调用的工具名
+  tokenCount?: number             // 累计 token
+  toolUses?: number               // 累计工具调用数
+  durationMs?: number             // 累计耗时
 }
 
 // 会话：归属于某个项目

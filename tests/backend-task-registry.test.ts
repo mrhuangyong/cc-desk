@@ -427,3 +427,22 @@ describe('BackendTaskRegistry 清理（防内存泄漏）', () => {
     })
     expect(updated!.lastKnownAt).toBeGreaterThanOrEqual(before)
   })
+
+  // ===== toolUseId: 锚定触发 subagent 的 Task tool_use(主流隐藏用) =====
+  it('handleTaskStarted 存储 tool_use_id', () => {
+    const reg = new BackendTaskRegistry()
+    const task = reg.handleTaskStarted('session1', {
+      task_id: 'sub-tu', task_type: 'subagent', subagent_type: 'general-purpose',
+      description: 'x', tool_use_id: 'toolu_abc',
+    })
+    expect(task!.toolUseId).toBe('toolu_abc')
+  })
+
+  it('handleTaskStarted 无 tool_use_id 时 toolUseId 为 undefined', () => {
+    const reg = new BackendTaskRegistry()
+    const task = reg.handleTaskStarted('session1', {
+      task_id: 'sub-tu2', task_type: 'subagent', subagent_type: 'general-purpose',
+      description: 'x',
+    })
+    expect(task!.toolUseId).toBeUndefined()
+  })

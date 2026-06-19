@@ -24,6 +24,7 @@ export interface BackendTask {
   tokenCount?: number        // 累计 token
   toolUses?: number          // 累计工具调用数
   durationMs?: number        // 累计耗时
+  toolUseId?: string         // 触发该任务的 Task tool_use block id(主流隐藏/面板详情锚定)
 }
 
 interface TaskStartedEvent {
@@ -32,6 +33,7 @@ interface TaskStartedEvent {
   prompt?: string
   task_type?: string
   subagent_type?: string
+  tool_use_id?: string
 }
 
 interface TaskProgressEvent {
@@ -106,6 +108,7 @@ export class BackendTaskRegistry {
       taskType: event.task_type,
       kind,
       subagentType: event.subagent_type,
+      toolUseId: event.tool_use_id,
       status: 'running',
       startedAt: now,
       lastKnownAt: now,

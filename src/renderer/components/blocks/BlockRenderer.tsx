@@ -6,13 +6,16 @@ import { ToolUseCard } from './ToolUseCard'
 import { ToolGroup } from './ToolGroup'
 import { ImageBlock } from './ImageBlock'
 
-export function BlockRenderer({ block, subagentOutputByToolUseId }: { block: ContentBlock; subagentOutputByToolUseId?: Record<string, ContentBlock[]> }) {
+export function BlockRenderer({ block, subagentOutputByToolUseId, hiddenToolUseIds }: { block: ContentBlock; subagentOutputByToolUseId?: Record<string, ContentBlock[]>; hiddenToolUseIds?: Set<string> }) {
   const { state } = useStore()
   switch (block.type) {
     case 'text': return <TextBlock text={block.text} />
     // thinking 块受「显示思考过程」设置控制：关闭时不渲染
     case 'thinking': return state.settings.showThinking ? <ThinkingBlock text={block.text} /> : null
-    case 'tool_use': return <ToolUseCard block={block} subagentBlocks={subagentOutputByToolUseId?.[block.id]} />
+    case 'tool_use':
+      // subagent 入口的 Task 卡片不在主流显示(重心移至悬浮面板)
+      if (hiddenToolUseIds?.has(block.id)) return null
+      return <ToolUseCard block={block} />
     case 'tool_result': return null
     case 'image': return <ImageBlock source={block.source} />
     default: return null
@@ -24,7 +27,7 @@ export function BlockRenderer({ block, subagentOutputByToolUseId }: { block: Con
 // 让连续工具调用可整体折叠，避免一长串工具卡占满对话区。
 type ToolBlock = Extract<ContentBlock, { type: 'tool_use' }>
 
-export function renderBlocks(blocks: ContentBlock[], compact?: boolean, subagentOutputByToolUseId?: Record<string, ContentBlock[]>): React.ReactNode[] {
+export function renderBlocks(blocks: ContentBlock[], compact?: boolean, subagentOutputByToolUseId?: Record<string, ContentBlock[]>, hiddenToolUseIds?: Set<string>): React.ReactNode[] {
   const out: React.ReactNode[] = []
   let i = 0
   let key = 0
@@ -40,17 +43,20 @@ export function renderBlocks(blocks: ContentBlock[], compact?: boolean, subagent
         if (cur.type === 'tool_use') group.push(cur)
         j++
       }
-      if (group.length >= 2) {
-        out.push(<ToolGroup key={`g${key++}`} tools={group} />)
-      } else {
-        out.push(<ToolUseCard key={`t${key++}`} block={group[0]} subagentBlocks={subagentOutputByToolUseId?.[group[0].id]} />)
+      const visibleGroup = hiddenToolUseIds ? group.filter(t => !hiddenToolUseIds.has(t.id)) : group
+      if (visibleGroup.length >= 2) {
+        out.push(<ToolGroup key={`g${key++}`} tools={visibleGroup} />)
+      } else if (visibleGroup.length === 1) {
+        if (!hiddenToolUseIds?.has(visibleGroup[0].id)) {
+          out.push(<ToolUseCard key={`t${key++}`} block={visibleGroup[0]} />)
+        }
       }
       i = j
     } else {
       if (b.type === 'text') {
         out.push(<TextBlock key={`b${key++}`} text={b.text} compact={compact} />)
       } else {
-        out.push(<BlockRenderer key={`b${key++}`} block={b} subagentOutputByToolUseId={subagentOutputByToolUseId} />)
+        out.push(<BlockRenderer key={`b${key++}`} block={b} subagentOutputByToolUseId={subagentOutputByToolUseId} hiddenToolUseIds={hiddenToolUseIds} />)
       }
       i++
     }
