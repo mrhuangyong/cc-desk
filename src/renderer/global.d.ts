@@ -25,6 +25,7 @@ interface ClaudeAPI {
   onPlan(cb: (data: any) => void): void
   onSubagentOutput(cb: (data: any) => void): void
   dialogResponse(payload: { reqId: string; result: any }): Promise<void>
+  setPermissionMode(opts: { localSessionId: string; permission: string }): Promise<void>
   removeAllListeners(): void
 }
 
@@ -80,6 +81,8 @@ interface PtyAPI {
 interface BackendTaskAPI {
   list(localSessionId: string): Promise<any[]>
   kill(localSessionId: string, taskId: string): Promise<{ ok: boolean; error?: string }>
+  // 从主进程 registry 删除任务记录（单个或批量），避免刷新后已移除任务复活。
+  remove(localSessionId: string, taskIds: string | string[]): Promise<number>
   onEvent(cb: (data: any) => void): () => void
 }
 

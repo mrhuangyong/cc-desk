@@ -9,6 +9,16 @@ import { getModelProvidersConfig, saveModelProvidersConfig } from './cc-desk-sto
 import { getProjectsSnapshot, saveProjectsSnapshot } from './projects-store'
 import * as cc from './claude-config'
 import { BackendTaskRegistry } from './backend-task-registry'
+import { ensureClaudeConfigDir } from './paths'
+import { migrateFromClaude } from './migrate-from-claude'
+
+// 启动第一件事：把 Claude Agent SDK / CLI 的配置目录隔离到 ~/.cc-desk/claude，
+// 使运行时不再读取 ~/.claude/settings.json（其 env 块会覆盖 cc-desk 注入的角色模型映射，
+// 导致 haiku 等后台子任务被 ~/.claude 的模型配置劫持）。必须在任何 query() 之前完成。
+ensureClaudeConfigDir()
+// 首次启动时把 ~/.claude 的插件/技能/设置一次性迁移到隔离目录（幂等，已迁移则跳过）。
+// 让设置页与 SDK 运行时在隔离目录也能看到原有插件，cc-desk 完全自洽不再依赖 ~/.claude。
+void migrateFromClaude()
 
 const isDev = !app.isPackaged
 
@@ -60,6 +70,10 @@ function createWindow() {
   ipcMain.handle('claude:running-sessions', () => claude.runningSessionIds())
   ipcMain.handle('claude:dialog-response', (_e, { reqId, result }) => {
     claude.resolveDialog(reqId, result)
+  })
+  // 动态切换权限模式：批准计划后立即退出 plan 模式（control request 实时生效）。
+  ipcMain.handle('claude:set-permission-mode', (_e, { localSessionId, permission }) => {
+    return claude.setPermissionMode(localSessionId, permission)
   })
   ipcMain.handle('cc:builtin:compact', (_e, localSessionId: string) => claude.compactSession(localSessionId, win.webContents))
   ipcMain.handle('cc:builtin:init', (_e, opts: { cwd: string }) => claude.initProject(opts.cwd, win.webContents))
@@ -123,6 +137,14 @@ function createWindow() {
   // 后台任务
   ipcMain.handle('backend-task:list', (_e, localSessionId: string) => {
     return backendTaskRegistry.listBySession(localSessionId)
+  })
+
+  // 从 registry 删除后台任务记录（渲染端「移除」/「清除已结束」调用）。
+  // 仅清理已持久化的记录，不影响正在运行的进程（停止走 backend-task:kill）。
+  // 支持单个(taskIds 为单元素)与批量两种调用。
+  ipcMain.handle('backend-task:remove', (_e, _localSessionId: string, taskIds: string | string[]) => {
+    const ids = Array.isArray(taskIds) ? taskIds : [taskIds]
+    return backendTaskRegistry.removeMany(ids)
   })
 
   ipcMain.handle('backend-task:kill', async (_e, localSessionId: string, taskId: string) => {

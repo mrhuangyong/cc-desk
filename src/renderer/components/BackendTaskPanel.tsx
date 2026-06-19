@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { PanelRightOpen, PanelRightClose } from 'lucide-react'
 import { SubagentDetailDrawer } from './SubagentDetailDrawer'
+import { TaskDetailDrawer } from './TaskDetailDrawer'
 import { TaskCard } from './TaskPanel'
 import { BackendTaskCard } from './BackendTaskCard'
 import { SubagentCard } from './SubagentCard'
@@ -24,6 +24,7 @@ export function BackendTaskPanel({
   tasks, backendTasks, showTodo, showBackendTask, folded, activeSessionId, subagentOutputByToolUseId, dispatch,
 }: Props) {
   const [activeSubagent, setActiveSubagent] = useState<BackendTask | null>(null)
+  const [activeTask, setActiveTask] = useState<TaskItem | null>(null)
   const subagents = backendTasks.filter(t => t.kind === 'subagent')
   const backends = backendTasks.filter(t => t.kind !== 'subagent')
   const taskVisible = showTodo && tasks.length > 0
@@ -31,24 +32,8 @@ export function BackendTaskPanel({
   const bgVisible = showBackendTask && backends.length > 0
   if (!taskVisible && !subagentVisible && !bgVisible) return null
 
-  // 折叠态：单个圆形小图标，不遮挡内容
-  if (folded.root) {
-    return (
-      <div style={{ position: 'absolute', top: 12, right: 16, zIndex: 50 }}>
-        <button onClick={() => dispatch({ type: 'SET_PANEL_FOLD', panel: 'root', folded: false })}
-          title="展开面板"
-          aria-label="展开面板"
-          style={{
-            width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            background: 'var(--surface-1)',
-            borderRadius: 8, cursor: 'pointer', color: 'var(--text-muted)',
-            boxShadow: 'var(--shadow-float)',
-          }}>
-          <PanelRightOpen size={15} />
-        </button>
-      </div>
-    )
-  }
+  // 根级折叠：入口已移至 TitleBar，折叠时面板整体不渲染
+  if (folded.root) return null
 
   return (
     <div style={{
@@ -62,21 +47,10 @@ export function BackendTaskPanel({
         paddingRight: 6, paddingLeft: 6, paddingBottom: 6,
         display: 'flex', flexDirection: 'column', gap: 8,
       }}>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 2, marginRight: -6 }}>
-          <button onClick={() => dispatch({ type: 'SET_PANEL_FOLD', panel: 'root', folded: true })}
-            title="收起面板"
-            aria-label="收起面板"
-            style={{
-              width: 26, height: 26, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              background: 'var(--surface-1)',
-              borderRadius: 6, cursor: 'pointer', color: 'var(--text-muted)',
-            }}>
-            <PanelRightClose size={14} />
-          </button>
-        </div>
         {taskVisible && (
           <TaskCard tasks={tasks} folded={folded.taskCard}
-            onToggleFold={() => dispatch({ type: 'SET_PANEL_FOLD', panel: 'taskCard', folded: !folded.taskCard })} />
+            onToggleFold={() => dispatch({ type: 'SET_PANEL_FOLD', panel: 'taskCard', folded: !folded.taskCard })}
+            onClickTask={(task) => setActiveTask(task)} />
         )}
         {subagentVisible && (
           <SubagentCard
@@ -84,8 +58,12 @@ export function BackendTaskPanel({
             folded={folded.subagentCard}
             onToggleFold={() => dispatch({ type: 'SET_PANEL_FOLD', panel: 'subagentCard', folded: !folded.subagentCard })}
             onKill={(taskId) => { void window.api.backendTask.kill(activeSessionId, taskId) }}
-            onRemove={(taskId) => dispatch({ type: 'REMOVE_BACKEND_TASK', sessionId: activeSessionId, taskId })}
-            onClearFinished={() => dispatch({ type: 'CLEAR_FINISHED_BACKEND_TASKS', sessionId: activeSessionId })}
+            onRemove={(taskId) => { void window.api?.backendTask?.remove?.(activeSessionId, taskId); dispatch({ type: 'REMOVE_BACKEND_TASK', sessionId: activeSessionId, taskId }) }}
+            onClearFinished={() => {
+              const ids = subagents.filter(t => t.status !== 'running').map(t => t.id)
+              if (ids.length) void window.api?.backendTask?.remove?.(activeSessionId, ids)
+              dispatch({ type: 'CLEAR_FINISHED_BACKEND_TASKS', sessionId: activeSessionId })
+            }}
             onClickTask={(task) => setActiveSubagent(task)}
           />
         )}
@@ -95,8 +73,12 @@ export function BackendTaskPanel({
             folded={folded.backendTaskCard}
             onToggleFold={() => dispatch({ type: 'SET_PANEL_FOLD', panel: 'backendTaskCard', folded: !folded.backendTaskCard })}
             onKill={(taskId) => { void window.api.backendTask.kill(activeSessionId, taskId) }}
-            onRemove={(taskId) => dispatch({ type: 'REMOVE_BACKEND_TASK', sessionId: activeSessionId, taskId })}
-            onClearFinished={() => dispatch({ type: 'CLEAR_FINISHED_BACKEND_TASKS', sessionId: activeSessionId })}
+            onRemove={(taskId) => { void window.api?.backendTask?.remove?.(activeSessionId, taskId); dispatch({ type: 'REMOVE_BACKEND_TASK', sessionId: activeSessionId, taskId }) }}
+            onClearFinished={() => {
+              const ids = backends.filter(t => t.status !== 'running').map(t => t.id)
+              if (ids.length) void window.api?.backendTask?.remove?.(activeSessionId, ids)
+              dispatch({ type: 'CLEAR_FINISHED_BACKEND_TASKS', sessionId: activeSessionId })
+            }}
           />
         )}
       </div>
@@ -105,6 +87,10 @@ export function BackendTaskPanel({
         task={activeSubagent}
         outputByToolUseId={subagentOutputByToolUseId ?? {}}
         onClose={() => setActiveSubagent(null)}
+      />
+      <TaskDetailDrawer
+        task={activeTask}
+        onClose={() => setActiveTask(null)}
       />
     </div>
   )

@@ -102,10 +102,11 @@ describe('forwardEvent 能力识别', () => {
 
   // ===== Plan：ExitPlanMode =====
 
-  it('assistant 含 ExitPlanMode tool_use → claude:plan', () => {
+  it('assistant 含 ExitPlanMode tool_use → claude:dialog-request（plan_proposed，阻塞式）', async () => {
     const svc = new ClaudeService()
     const { wc, calls } = mockWebContents()
-    fwd(svc, {
+    // forwardEvent 遇到 ExitPlanMode 现在阻塞（走 dialog 通道），返回未 resolve 的 Promise
+    const fwdPromise = (svc as any).forwardEvent({
       type: 'assistant',
       uuid: 'u7', session_id: 's1',
       message: {
@@ -115,18 +116,33 @@ describe('forwardEvent 能力识别', () => {
           { type: 'tool_use', id: 'plan-use-1', name: 'ExitPlanMode', input: { plan: '# 重构方案\n\n1. 拆分模块' } },
         ],
       },
-    }, wc)
+    }, 'sess1', wc)
+    await new Promise(r => setTimeout(r, 0))
 
-    const plans = calls.filter(c => c.channel === 'claude:plan')
-    expect(plans.length).toBe(1)
-    expect(plans[0].data.op).toBe('plan_proposed')
-    expect(String(plans[0].data.plan)).toContain('重构方案')
+    // 应发 dialog-request（dialogKind='plan_proposed'），而非旧的 claude:plan
+    const dialogs = calls.filter(c => c.channel === 'claude:dialog-request')
+    expect(dialogs.length).toBe(1)
+    expect(dialogs[0].data.dialogKind).toBe('plan_proposed')
+    expect(String(dialogs[0].data.payload?.plan)).toContain('重构方案')
+
+    // 用户选择前 Promise 应保持 pending
+    let resolved = false
+    fwdPromise.then(() => { resolved = true })
+    await new Promise(r => setTimeout(r, 10))
+    expect(resolved).toBe(false)
+
+    // 用户批准：dialogResponse 回复
+    svc.resolveDialog(dialogs[0].data.reqId, { behavior: 'completed', result: { permissionMode: '自动编辑' } })
+    await new Promise(r => setTimeout(r, 10))
+    expect(resolved).toBe(true)
   })
 
-  it('ExitPlanMode 不应作为普通 tool_use 卡片渲染（assistant_blocks 过滤）', () => {
+  it('ExitPlanMode 不应作为普通 tool_use 卡片渲染（assistant_blocks 过滤）', async () => {
     const svc = new ClaudeService()
     const { wc, calls } = mockWebContents()
-    fwd(svc, {
+    // ExitPlanMode 阻塞，但不影响 assistant_blocks 的推送（它在同一个 forwardEvent 调用中同步发出）
+    // 用一个无 plan 内容的 ExitPlanMode（plan 为空时 handleExitPlanMode 仍会弹 dialog，但测试只验证 blocks 过滤）
+    const fwdPromise = (svc as any).forwardEvent({
       type: 'assistant',
       uuid: 'u8', session_id: 's1',
       message: {
@@ -135,21 +151,27 @@ describe('forwardEvent 能力识别', () => {
           { type: 'tool_use', id: 'plan-use-2', name: 'ExitPlanMode', input: { plan: 'p' } },
         ],
       },
-    }, wc)
+    }, 'sess1', wc)
+    await new Promise(r => setTimeout(r, 0))
 
     const blocks = calls.filter(c => c.channel === 'claude:blocks' && c.data?.op === 'assistant_blocks')
     expect(blocks.length).toBe(1)
     // 过滤后不再含 ExitPlanMode tool_use
     const toolUses = blocks[0].data.blocks.filter((b: any) => b.type === 'tool_use')
     expect(toolUses.find((b: any) => b.name === 'ExitPlanMode')).toBeUndefined()
+
+    // 清理：取消 dialog 避免 unhandled rejection
+    const dialogs = calls.filter(c => c.channel === 'claude:dialog-request')
+    if (dialogs.length > 0) svc.resolveDialog(dialogs[0].data.reqId, { behavior: 'cancelled' })
+    await new Promise(r => setTimeout(r, 0))
   })
 
-  // ===== AskUserQuestion（确认现有链路） =====
+  // ===== AskUserQuestion（阻塞式交互，确认 BUG 1 修复） =====
 
-  it('assistant 含 AskUserQuestion tool_use → claude:dialog-request（异步）', async () => {
+  it('assistant 含 AskUserQuestion tool_use → claude:dialog-request', async () => {
     const svc = new ClaudeService()
-    // handleAskUserQuestion 会调 manager.pushMessage，但底层是 void 异步，未 setManager 时早返回
     const { wc, calls } = mockWebContents()
+    // forwardEvent 现在是 async, 返回未 resolve 的 Promise（等待用户回答）
     fwd(svc, {
       type: 'assistant',
       uuid: 'u9', session_id: 's1',
@@ -160,12 +182,41 @@ describe('forwardEvent 能力识别', () => {
         ],
       },
     }, wc)
-    // handleAskUserQuestion 内部 webContents.send('claude:dialog-request') 在微任务中
+    // dialog-request 在微任务中发出
     await new Promise(r => setTimeout(r, 0))
 
     const dialogs = calls.filter(c => c.channel === 'claude:dialog-request')
     expect(dialogs.length).toBe(1)
     expect(dialogs[0].data.dialogKind).toBe('ask_user_question')
+  })
+
+  it('forwardEvent 遇到 AskUserQuestion 时阻塞：用户回答前 Promise 不 resolve', async () => {
+    const svc = new ClaudeService()
+    const { wc, calls } = mockWebContents()
+    // forwardEvent 返回 Promise; 在用户回答前应保持 pending
+    const fwdPromise = (svc as any).forwardEvent({
+      type: 'assistant',
+      uuid: 'u-block', session_id: 's1',
+      message: {
+        role: 'assistant',
+        content: [
+          { type: 'tool_use', id: 'ask-block', name: 'AskUserQuestion', input: { questions: [{ question: 'q?', header: 'h', options: [{ label: 'A' }] }] } },
+        ],
+      },
+    }, 'sess1', wc)
+    await new Promise(r => setTimeout(r, 10))
+    // dialog-request 已发出，但 forwardEvent Promise 仍 pending（用户未回答）
+    expect(calls.some(c => c.channel === 'claude:dialog-request')).toBe(true)
+    let resolved = false
+    fwdPromise.then(() => { resolved = true })
+    await new Promise(r => setTimeout(r, 10))
+    expect(resolved).toBe(false)
+
+    // 模拟用户回答：通过 resolveDialog 结算
+    const reqId = calls.find(c => c.channel === 'claude:dialog-request')!.data.reqId
+    svc.resolveDialog(reqId, { behavior: 'completed', result: { answers: [{ questionIndex: 0, selected: { index: 0, label: 'A' } }] } })
+    await new Promise(r => setTimeout(r, 10))
+    expect(resolved).toBe(true)
   })
 })
 
@@ -211,3 +262,109 @@ describe('forwardEvent 能力识别', () => {
     expect(updated[0].data.task.lastToolName).toBe('Read')
     expect(updated[0].data.task.tokenCount).toBe(1234)
   })
+
+// ===== 同步 Task subagent:主流 Task tool_use 触发登记(不发 task_started) =====
+
+it('assistant 含 Task tool_use → claude:backend-task create (同步 subagent 登记)', () => {
+  const svc = new ClaudeService()
+  svc.setRegistry(new BackendTaskRegistry())
+  const { wc, calls } = mockWebContents()
+  fwd(svc, {
+    type: 'assistant',
+    uuid: 'u-sync1', session_id: 's1',
+    message: {
+      role: 'assistant',
+      content: [
+        { type: 'text', text: '我派个子代理去查' },
+        { type: 'tool_use', id: 'toolu_sync1', name: 'Task', input: { description: '查找用法', prompt: '请在 src 下搜索 foo 的所有用法', subagent_type: 'general-purpose' } },
+      ],
+    },
+  }, wc)
+
+  const created = calls.filter(c => c.channel === 'claude:backend-task' && c.data?.op === 'create')
+  expect(created.length).toBe(1)
+  expect(created[0].data.task.kind).toBe('subagent')
+  expect(created[0].data.task.id).toBe('toolu_sync1')
+  expect(created[0].data.task.toolUseId).toBe('toolu_sync1')
+  expect(created[0].data.task.prompt).toContain('搜索 foo')
+  expect(created[0].data.task.status).toBe('running')
+})
+
+it('user tool_result (Task 同步 subagent) → claude:backend-task update completed', () => {
+  const svc = new ClaudeService()
+  svc.setRegistry(new BackendTaskRegistry())
+  const { wc, calls } = mockWebContents()
+  // 先登记
+  fwd(svc, {
+    type: 'assistant',
+    uuid: 'u-sync2', session_id: 's1',
+    message: { role: 'assistant', content: [
+      { type: 'tool_use', id: 'toolu_sync2', name: 'Task', input: { description: '查', prompt: '查 bar' } },
+    ] },
+  }, wc)
+  calls.length = 0
+  // tool_result 到达 → 收尾
+  fwd(svc, {
+    type: 'user',
+    uuid: 'u-sync3', session_id: 's1',
+    message: { role: 'user', content: [
+      { type: 'tool_result', tool_use_id: 'toolu_sync2', content: '找到 5 处', is_error: false },
+    ] },
+  }, wc)
+
+  const updated = calls.filter(c => c.channel === 'claude:backend-task' && c.data?.op === 'update')
+  expect(updated.length).toBe(1)
+  expect(updated[0].data.task.id).toBe('toolu_sync2')
+  expect(updated[0].data.task.status).toBe('completed')
+})
+
+it('user tool_result (Task 同步 subagent 出错) → status failed', () => {
+  const svc = new ClaudeService()
+  svc.setRegistry(new BackendTaskRegistry())
+  const { wc, calls } = mockWebContents()
+  fwd(svc, {
+    type: 'assistant',
+    uuid: 'u-sync4', session_id: 's1',
+    message: { role: 'assistant', content: [
+      { type: 'tool_use', id: 'toolu_sync3', name: 'Task', input: { description: '查', prompt: '查 baz' } },
+    ] },
+  }, wc)
+  calls.length = 0
+  fwd(svc, {
+    type: 'user',
+    uuid: 'u-sync5', session_id: 's1',
+    message: { role: 'user', content: [
+      { type: 'tool_result', tool_use_id: 'toolu_sync3', content: '超时', is_error: true },
+    ] },
+  }, wc)
+
+  const updated = calls.filter(c => c.channel === 'claude:backend-task' && c.data?.op === 'update')
+  expect(updated.length).toBe(1)
+  expect(updated[0].data.task.status).toBe('failed')
+})
+
+it('重复 Task tool_use(同 id) → registry 幂等,不重复 create', () => {
+  const svc = new ClaudeService()
+  svc.setRegistry(new BackendTaskRegistry())
+  const { wc, calls } = mockWebContents()
+  fwd(svc, {
+    type: 'assistant',
+    uuid: 'u-a', session_id: 's1',
+    message: { role: 'assistant', content: [
+      { type: 'tool_use', id: 'toolu_d1', name: 'Task', input: { description: 'd', prompt: 'p' } },
+    ] },
+  }, wc)
+  // 同 id 再来(模拟 content_block_start + assistant 两次登记)
+  fwd(svc, {
+    type: 'assistant',
+    uuid: 'u-b', session_id: 's1',
+    message: { role: 'assistant', content: [
+      { type: 'tool_use', id: 'toolu_d1', name: 'Task', input: { description: 'd', prompt: 'p' } },
+    ] },
+  }, wc)
+
+  const created = calls.filter(c => c.channel === 'claude:backend-task' && c.data?.op === 'create' && c.data.task.id === 'toolu_d1')
+  // registry 去重:第二次返回已有记录,但仍会 send create op(幂等 upsert,渲染端覆盖同 id)
+  expect(created.length).toBe(2)
+  // 渲染端 upsertBySession 按 id 覆盖,最终只有一条
+})

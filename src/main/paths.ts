@@ -4,5 +4,20 @@
 // 不再散落到 electron 默认的 userData 目录，也不再用 dataPath 机制改写存储位置。
 import { join } from 'path'
 import { homedir } from 'os'
+import { mkdirSync, existsSync } from 'fs'
 
 export const CC_DESK_DIR = join(homedir(), '.cc-desk')
+
+// Claude Agent SDK / CLI 子进程的隔离配置目录：默认 ~/.cc-desk/claude。
+// 使 SDK 运行时不再读取 ~/.claude/settings.json（其 env 块会覆盖 options.env 注入的
+// 角色模型映射，导致 haiku 等后台子任务被 ~/.claude 的模型配置劫持）。
+// 改为隔离后，模型/供应商/代理全部由 ~/.cc-desk 自有配置决定。
+// 若已显式设置 process.env.CLAUDE_CONFIG_DIR（自定义部署 / 测试隔离），优先采用它。
+export const CLAUDE_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR || join(CC_DESK_DIR, 'claude')
+
+// 在应用启动最早期调用一次：创建隔离目录并写入 process.env.CLAUDE_CONFIG_DIR，
+// 使 Claude Agent SDK 的父进程（qt() memoized 读取）与 CLI 子进程 env 均指向此处。
+export function ensureClaudeConfigDir(): void {
+  if (!existsSync(CLAUDE_CONFIG_DIR)) mkdirSync(CLAUDE_CONFIG_DIR, { recursive: true })
+  process.env.CLAUDE_CONFIG_DIR = CLAUDE_CONFIG_DIR
+}

@@ -200,16 +200,10 @@ describe('ChatArea IPC 监听 → dispatch 链路', () => {
     expect(dispatch).toHaveBeenCalledWith({ type: 'SHOW_DIALOG', reqId: 'r1', dialogKind: 'ask_user_question', payload: { questions: [] }, toolUseId: 'tu1' })
   })
 
-  it('onPlan plan_proposed → SHOW_PLAN', () => {
+  it('onDialogRequest plan_proposed → SHOW_DIALOG（ExitPlanMode 走 dialog 通道）', () => {
     render(<ChatArea />)
-    handlers.onPlan({ localSessionId: 's1', op: 'plan_proposed', plan: '# 计划', toolUseId: 'p1' })
-    expect(dispatch).toHaveBeenCalledWith({ type: 'SHOW_PLAN', sessionId: 's1', plan: { toolUseId: 'p1', plan: '# 计划', allowedPrompts: undefined } })
-  })
-
-  it('onPlan 非 plan_proposed → 不 dispatch', () => {
-    render(<ChatArea />)
-    handlers.onPlan({ localSessionId: 's1', op: 'other', plan: 'x' })
-    expect(dispatch).not.toHaveBeenCalled()
+    handlers.onDialogRequest({ reqId: 'r2', localSessionId: 's1', dialogKind: 'plan_proposed', payload: { plan: '# 计划' }, toolUseId: 'p1' })
+    expect(dispatch).toHaveBeenCalledWith({ type: 'SHOW_DIALOG', reqId: 'r2', sessionId: 's1', dialogKind: 'plan_proposed', payload: { plan: '# 计划' }, toolUseId: 'p1' })
   })
 
   it('无 localSessionId 的 delta → 丢弃（不 dispatch）', () => {
