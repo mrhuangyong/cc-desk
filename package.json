@@ -1,6 +1,6 @@
 {
   "name": "cc-desk",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "",
   "main": "out/main/index.js",
   "scripts": {
@@ -70,19 +70,30 @@
   "build": {
     "appId": "com.cc-desk.app",
     "productName": "cc-desk",
-    "directories": { "output": "release" },
-    "files": ["out/**/*", "build/icons/**/*"],
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "build/icons/**/*"
+    ],
     "mac": {
       "icon": "build/icons/icon.icns",
-      "target": ["dmg"]
+      "target": [
+        "dmg"
+      ]
     },
     "win": {
       "icon": "build/icons/icon.png",
-      "target": ["nsis"]
+      "target": [
+        "nsis"
+      ]
     },
     "linux": {
       "icon": "build/icons/icon.png",
-      "target": ["AppImage"]
+      "target": [
+        "AppImage"
+      ]
     }
   }
 }
