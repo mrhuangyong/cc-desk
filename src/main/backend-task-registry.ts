@@ -25,6 +25,7 @@ export interface BackendTask {
   toolUses?: number          // 累计工具调用数
   durationMs?: number        // 累计耗时
   toolUseId?: string         // 触发该任务的 Task tool_use block id(主流隐藏/面板详情锚定)
+  prompt?: string            // 创建该 subagent 的原始 prompt(主流 Task tool_use input.prompt)
 }
 
 interface TaskStartedEvent {
@@ -112,6 +113,7 @@ export class BackendTaskRegistry {
       status: 'running',
       startedAt: now,
       lastKnownAt: now,
+      prompt: event.prompt || undefined,
     }
     this.tasks.set(task.id, task)
     return task
@@ -189,6 +191,27 @@ export class BackendTaskRegistry {
    */
   isManaged(taskId: string): boolean {
     return this.tasks.has(taskId)
+  }
+
+  /**
+   * 删除单个后台任务记录（用户在面板「移除」已结束任务时调用）。
+   * 返回是否删除成功。运行中的任务也可移除——面板已提供 kill 入口，
+   * remove 仅清理前端不再关心的记录，不影响实际进程。
+   */
+  remove(taskId: string): boolean {
+    return this.tasks.delete(taskId)
+  }
+
+  /**
+   * 批量删除后台任务记录（「清除已结束」按钮用）。
+   * 按 task_id 集合删除，返回实际删除数。
+   */
+  removeMany(taskIds: string[]): number {
+    let removed = 0
+    for (const id of taskIds) {
+      if (this.tasks.delete(id)) removed++
+    }
+    return removed
   }
 
   /**

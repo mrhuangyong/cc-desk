@@ -3,7 +3,6 @@ import type { CSSProperties } from 'react'
 import { Plus, Search, Zap, ChevronsUpDown, ArrowUpDown, FolderPlus } from 'lucide-react'
 import { ProjectTree } from './ProjectTree'
 import { FileTree } from './FileTree'
-import { SearchDialog } from './SearchDialog'
 import { useStore } from '../state/store'
 import { useI18n } from '../i18n/useI18n'
 import { useResizableWidth } from '../hooks/useResizableWidth'
@@ -11,13 +10,13 @@ import { usePanelAnimation } from '../hooks/usePanelAnimation'
 
 interface Props {
   collapsed: boolean
+  onOpenSearch: () => void
 }
 
-export function LeftPanel({ collapsed }: Props) {
+export function LeftPanel({ collapsed, onOpenSearch }: Props) {
   const { state, dispatch } = useStore()
   const { t } = useI18n()
   const [fileViewProjectId, setFileViewProjectId] = useState<string | null>(null)
-  const [searchOpen, setSearchOpen] = useState(false)
   const [hovered, setHovered] = useState<string | null>(null)
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(
     () => new Set(state.projects.map(p => p.id))
@@ -128,7 +127,7 @@ export function LeftPanel({ collapsed }: Props) {
           {/* 顶部功能区：新建会话/搜索/技能各独占一行 */}
           <div style={{ display: 'flex', flexDirection: 'column', borderBottom: '1px solid var(--border)' }}>
             <button onMouseEnter={() => setHovered('new')} onMouseLeave={() => setHovered(null)} onClick={handleNewSession} title={t('left.newSession')} style={topBtn('new')}><Plus size={14} /> {t('left.newSession')}</button>
-            <button onMouseEnter={() => setHovered('search')} onMouseLeave={() => setHovered(null)} onClick={() => setSearchOpen(true)} title="搜索" style={topBtn('search')}><Search size={14} /> 搜索</button>
+            <button onMouseEnter={() => setHovered('search')} onMouseLeave={() => setHovered(null)} onClick={onOpenSearch} title={t('left.search')} style={topBtn('search')}><Search size={14} /> {t('left.search')}</button>
             <button onMouseEnter={() => setHovered('skills')} onMouseLeave={() => setHovered(null)} onClick={() => dispatch({ type: 'SET_SETTINGS_SECTION', section: 'skills' })} title={t('left.skills')} style={topBtn('skills')}><Zap size={14} /> {t('left.skills')}</button>
           </div>
 
@@ -157,7 +156,6 @@ export function LeftPanel({ collapsed }: Props) {
         </div>
       </div>
 
-      {searchOpen && <SearchDialog onClose={() => setSearchOpen(false)} />}
     </>
   )
 }

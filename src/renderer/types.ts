@@ -101,6 +101,7 @@ export interface BackendTask {
   tokenCount?: number             // 累计 token
   toolUses?: number               // 累计工具调用数
   durationMs?: number             // 累计耗时
+  prompt?: string                 // 创建该 subagent 的原始 prompt
 }
 
 // 会话：归属于某个项目

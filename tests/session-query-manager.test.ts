@@ -5,13 +5,16 @@ import type { WebContents } from 'electron'
 function makeFakeQuery() {
   let interruptCalled = false
   let returnCalled = false
+  let lastSetMode: string | null = null
   const fakeQuery = {
     [Symbol.asyncIterator]() { return { next: async () => ({ value: undefined, done: true }) } },
     interrupt: async () => { interruptCalled = true },
     return: async () => { returnCalled = true; return { value: undefined, done: true } },
     stopTask: async (_id: string) => {},
+    setPermissionMode: async (mode: string) => { lastSetMode = mode },
     _interruptCalled: () => interruptCalled,
     _returnCalled: () => returnCalled,
+    _lastSetMode: () => lastSetMode,
   }
   return fakeQuery
 }
@@ -146,5 +149,19 @@ describe('SessionQueryManager', () => {
     mgr.ensureSession({ localSessionId: 's1', webContents: wc, onEvent: () => {}, onError: () => {}, buildQuery: () => fakeQuery as any })
     await mgr.stopTask('s1', 'task_xyz')
     expect(stoppedTask).toBe('task_xyz')
+  })
+
+  it('setPermissionMode 调用 query.setPermissionMode（动态切换权限）', async () => {
+    const fakeQuery = makeFakeQuery()
+    const mgr = new SessionQueryManager()
+    const wc = {} as WebContents
+    mgr.ensureSession({ localSessionId: 's1', webContents: wc, onEvent: () => {}, onError: () => {}, buildQuery: () => fakeQuery as any })
+    await mgr.setPermissionMode('s1', 'acceptEdits')
+    expect(fakeQuery._lastSetMode()).toBe('acceptEdits')
+  })
+
+  it('setPermissionMode 不存在的 session 不抛错', async () => {
+    const mgr = new SessionQueryManager()
+    await expect(mgr.setPermissionMode('nope', 'default')).resolves.toBeUndefined()
   })
 })

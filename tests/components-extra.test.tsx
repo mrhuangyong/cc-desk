@@ -12,37 +12,63 @@ import { BlockRenderer } from '../src/renderer/components/blocks/BlockRenderer'
 
 describe('PlanCard', () => {
   const dispatch = vi.fn()
-  const plan = { toolUseId: 'p1', plan: '# 重构方案\n\n1. 拆分模块\n2. 加测试' }
+  const pendingPlan = { reqId: 'req1', plan: '# 重构方案\n\n1. 拆分模块\n2. 加测试' }
 
-  beforeEach(() => { dispatch.mockClear() })
+  beforeEach(() => {
+    dispatch.mockClear()
+    ;(window as any).api = { claude: { dialogResponse: vi.fn() } }
+  })
 
-  it('plan 为 null → 不渲染', () => {
-    const { container } = render(<PlanCard sessionId="s1" plan={null} dispatch={dispatch} />)
+  it('pendingPlan 为 null → 不渲染', () => {
+    const { container } = render(<PlanCard sessionId="s1" pendingPlan={null} dispatch={dispatch} />)
     expect(container.firstChild).toBeNull()
   })
 
-  it('plan 为空串 → 不渲染', () => {
-    const { container } = render(<PlanCard sessionId="s1" plan={{ toolUseId: 'p1', plan: '' }} dispatch={dispatch} />)
+  it('pendingPlan.plan 为空串 → 不渲染', () => {
+    const { container } = render(<PlanCard sessionId="s1" pendingPlan={{ reqId: 'r', plan: '' }} dispatch={dispatch} />)
     expect(container.firstChild).toBeNull()
   })
 
   it('渲染计划 Markdown 内容', () => {
-    render(<PlanCard sessionId="s1" plan={plan} dispatch={dispatch} />)
+    render(<PlanCard sessionId="s1" pendingPlan={pendingPlan} dispatch={dispatch} />)
     expect(screen.getByText(/重构方案/)).toBeTruthy()
   })
 
-  it('点击「批准计划」→ SET_SESSION_PERMISSION(变更前确认) + DISMISS_PLAN', () => {
-    render(<PlanCard sessionId="s1" plan={plan} dispatch={dispatch} />)
-    fireEvent.click(screen.getByText('批准计划'))
-    expect(dispatch).toHaveBeenCalledWith({ type: 'SET_SESSION_PERMISSION', sessionId: 's1', permissionMode: '变更前确认' })
-    expect(dispatch).toHaveBeenCalledWith({ type: 'DISMISS_PLAN', sessionId: 's1' })
+  it('直接显示授权模式按钮（一步到位，无中间步骤）', () => {
+    render(<PlanCard sessionId="s1" pendingPlan={pendingPlan} dispatch={dispatch} />)
+    expect(screen.getByText('自动编辑')).toBeTruthy()
+    expect(screen.getByText('完全访问')).toBeTruthy()
+    expect(screen.getByText('再改改')).toBeTruthy()
   })
 
-  it('点击「再改改」→ 仅 DISMISS_PLAN（不切权限）', () => {
-    render(<PlanCard sessionId="s1" plan={plan} dispatch={dispatch} />)
+  it('选择「自动编辑」→ dialogResponse(completed, permissionMode=自动编辑) + ANSWER_DIALOG', () => {
+    render(<PlanCard sessionId="s1" pendingPlan={pendingPlan} dispatch={dispatch} />)
+    fireEvent.click(screen.getByText('自动编辑'))
+    expect((window as any).api.claude.dialogResponse).toHaveBeenCalledWith({
+      reqId: 'req1',
+      result: { behavior: 'completed', result: { permissionMode: '自动编辑' } },
+    })
+    expect(dispatch).toHaveBeenCalledWith({ type: 'ANSWER_DIALOG' })
+  })
+
+  it('选择「完全访问」→ dialogResponse(completed, permissionMode=完全访问)', () => {
+    render(<PlanCard sessionId="s1" pendingPlan={pendingPlan} dispatch={dispatch} />)
+    fireEvent.click(screen.getByText('完全访问'))
+    expect((window as any).api.claude.dialogResponse).toHaveBeenCalledWith({
+      reqId: 'req1',
+      result: { behavior: 'completed', result: { permissionMode: '完全访问' } },
+    })
+    expect(dispatch).toHaveBeenCalledWith({ type: 'ANSWER_DIALOG' })
+  })
+
+  it('点击「再改改」→ dialogResponse(cancelled) + ANSWER_DIALOG', () => {
+    render(<PlanCard sessionId="s1" pendingPlan={pendingPlan} dispatch={dispatch} />)
     fireEvent.click(screen.getByText('再改改'))
-    expect(dispatch).toHaveBeenCalledTimes(1)
-    expect(dispatch).toHaveBeenCalledWith({ type: 'DISMISS_PLAN', sessionId: 's1' })
+    expect((window as any).api.claude.dialogResponse).toHaveBeenCalledWith({
+      reqId: 'req1',
+      result: { behavior: 'cancelled' },
+    })
+    expect(dispatch).toHaveBeenCalledWith({ type: 'ANSWER_DIALOG' })
   })
 })
 

@@ -2,7 +2,7 @@
 // 复用主流 renderBlocks 渲染 subagentOutputByToolUseId[task.toolUseId]。
 // 无遮罩层;从右侧滑入/滑出(transform translateX + transition)。
 import { useEffect, useRef, useState } from 'react'
-import { X, Bot, Clock, Cpu, Wrench } from 'lucide-react'
+import { X, Bot, Clock, Cpu, Wrench, Terminal } from 'lucide-react'
 import type { BackendTask, ContentBlock } from '../types'
 import { renderBlocks } from './blocks/BlockRenderer'
 import { formatSessionTime } from '../utils/formatSessionTime'
@@ -113,6 +113,28 @@ export function SubagentDetailDrawer({ task, outputByToolUseId, onClose }: Props
           )}
         </div>
 
+        {/* 创建该 subagent 的原始 prompt(主流 Task tool_use input.prompt) */}
+        {task.prompt && (
+          <div style={{
+            padding: '12px 20px', borderBottom: '1px solid var(--border)',
+            flexShrink: 0,
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              fontSize: 11, color: 'var(--text-muted)', marginBottom: 6,
+              textTransform: 'uppercase', letterSpacing: 0.3,
+            }}>
+              <Terminal size={11} />
+              <span>创建指令</span>
+            </div>
+            <pre style={{
+              margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+              fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+              fontSize: 12.5, lineHeight: 1.6, color: 'var(--text)',
+              maxHeight: 240, overflowY: 'auto',
+            }}>{task.prompt}</pre>
+          </div>
+        )}
         {/* 对话输出区:可滚动 */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
           {blocks.length === 0 ? (

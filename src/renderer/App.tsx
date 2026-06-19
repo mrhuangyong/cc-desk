@@ -5,6 +5,8 @@ import { ChatArea } from './components/ChatArea'
 import { RightPanel } from './components/RightPanel'
 import { SettingsPage } from './components/settings/SettingsPage'
 import { useStore } from './state/store'
+import { SearchDialog } from './components/SearchDialog'
+import { resolveTerminalCwd } from './utils/terminal'
 
 export function App() {
   const { state, dispatch } = useStore()
@@ -13,6 +15,7 @@ export function App() {
 
   const [leftCollapsed, setLeftCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(true)  // 右栏默认隐藏
+  const [searchOpen, setSearchOpen] = useState(false)  // 全局搜索弹窗（Cmd/Ctrl+K 触发）
 
   // 文件树点击打开文件时，自动展开折叠的右栏。监听 lastFileOpenedSeq 计数：
   // 它只在 OPEN_FILE_TAB（文件树点击）时递增，切 tab/关 tab 不动它，
@@ -62,6 +65,30 @@ export function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
+
+  // 应用级快捷键：Cmd+K（macOS）/ Ctrl+K 打开全局搜索，Cmd+J / Ctrl+J 打开终端。
+  // 与 Cmd+B/Cmd+E 一致：setState 引用稳定、dispatch 来自 store，均无需进依赖数组。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return
+      const k = e.key.toLowerCase()
+      if (k === 'k') {
+        e.preventDefault()
+        setSearchOpen(o => !o)
+      } else if (k === 'j') {
+        e.preventDefault()
+        const cwd = resolveTerminalCwd(state)
+        dispatch({ type: 'OPEN_TAB', tabType: 'terminal', ...(cwd ? { cwd } : {}) })
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [state, dispatch])
+
+  // 设置页（currentView === 'settings'）下不渲染搜索弹窗，避免无承载视图
+  useEffect(() => {
+    if (state.currentView === 'settings') setSearchOpen(false)
+  }, [state.currentView])
 
   // 界面缩放：zoom 只作用于内容区（TitleBar 之外），避免缩放自定义 titleBar
   // 导致其按钮与 macOS 原生红绿灯（不受 CSS zoom 影响）错位。
@@ -176,10 +203,12 @@ export function App() {
       <div style={{ flex: 1, display: 'flex', minHeight: 0, zoom: zoomFactor }}>
         <LeftPanel
           collapsed={leftCollapsed}
+          onOpenSearch={() => setSearchOpen(true)}
         />
         <ChatArea />
         <RightPanel collapsed={rightCollapsed} />
       </div>
+      {searchOpen && <SearchDialog onClose={() => setSearchOpen(false)} />}
     </div>
   )
 }

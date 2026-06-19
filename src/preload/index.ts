@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('api', {
     onPlan: (cb: (data: any) => void) => { ipcRenderer.on('claude:plan', (_, data) => cb(data)) },
     onSubagentOutput: (cb: (data: any) => void) => { ipcRenderer.on('claude:subagent-output', (_, data) => cb(data)) },
     dialogResponse: (payload: { reqId: string; result: any }) => ipcRenderer.invoke('claude:dialog-response', payload),
+    setPermissionMode: (opts: { localSessionId: string; permission: string }) => ipcRenderer.invoke('claude:set-permission-mode', opts),
     removeAllListeners: () => {
       ['claude:system', 'claude:delta', 'claude:blocks', 'claude:notice', 'claude:task', 'claude:result', 'claude:error', 'claude:aborted', 'claude:dialog-request', 'claude:backend-task', 'claude:builtin-result', 'claude:plan', 'claude:subagent-output']
         .forEach(ch => ipcRenderer.removeAllListeners(ch))
@@ -104,6 +105,8 @@ contextBridge.exposeInMainWorld('api', {
   backendTask: {
     list: (localSessionId: string) => ipcRenderer.invoke('backend-task:list', localSessionId),
     kill: (localSessionId: string, taskId: string) => ipcRenderer.invoke('backend-task:kill', localSessionId, taskId),
+    // 从主进程 registry 删除任务记录（单个或批量），避免刷新后已移除任务复活。
+    remove: (localSessionId: string, taskIds: string | string[]) => ipcRenderer.invoke('backend-task:remove', localSessionId, taskIds),
     onEvent: (cb: (data: any) => void) => {
       const channel = 'claude:backend-task'
       const handler = (_: any, data: any) => cb(data)

@@ -10,12 +10,15 @@ const dict: Record<Lang, Record<string, string>> = {
     // 标题栏
     'title.newSession': '新建会话',
     'title.settings': '设置',
+    'title.taskPanelShow': '显示任务面板',
+    'title.taskPanelHide': '隐藏任务面板',
     // 左面板
     'left.projects': '项目',
     'left.sessions': '会话',
     'left.newSession': '新会话',
     'left.addProject': '添加项目',
     'left.skills': '技能',
+    'left.search': '搜索',
     'left.empty': '暂无项目',
     // 输入栏
     'input.placeholder': '输入消息，Enter 发送…',
@@ -66,11 +69,14 @@ const dict: Record<Lang, Record<string, string>> = {
   'en': {
     'title.newSession': 'New session',
     'title.settings': 'Settings',
+    'title.taskPanelShow': 'Show task panel',
+    'title.taskPanelHide': 'Hide task panel',
     'left.projects': 'Projects',
     'left.sessions': 'Sessions',
     'left.newSession': 'New session',
     'left.addProject': 'Add project',
     'left.skills': 'Skills',
+    'left.search': 'Search',
     'left.empty': 'No projects',
     'input.placeholder': 'Type a message, Enter to send…',
     'input.send': 'Send',
