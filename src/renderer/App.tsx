@@ -122,9 +122,11 @@ export function App() {
 
   // 自动归档：监听主进程定时信号，清理陈旧空会话
   useEffect(() => {
-    window.api?.onArchiveTick?.(({ beforeTs }) => {
+    // onArchiveTick 返回 unsubscribe；返回它作 cleanup，避免重 mount 时监听器累加
+    const unsubscribe = window.api?.onArchiveTick?.(({ beforeTs }) => {
       dispatch({ type: 'ARCHIVE_STALE', beforeTs })
     })
+    return () => { unsubscribe?.() }
   }, [dispatch])
 
   if (state.currentView === 'settings') {

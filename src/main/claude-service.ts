@@ -3,14 +3,14 @@ import { existsSync } from 'fs'
 import { writeFile } from 'fs/promises'
 import { join } from 'path'
 import { query } from '@anthropic-ai/claude-agent-sdk'
-import type { BackendTaskRegistry } from './backend-task-registry'
+import type { BackendTaskRegistry, BackendTask } from './backend-task-registry'
 import type { SessionQueryManager, PushController, SDKUserMessage } from './session-query-manager'
 import type { WebContents } from 'electron'
 import { getSettings } from './settings-store'
 import { getModelProvidersConfig, resolveActiveProviderModel, buildSdkEnv } from './cc-desk-store'
 import { getProjectsSnapshot } from './projects-store'
 import { getGeneralConfig } from './claude-config'
-import { normalizeBetaBlocks, extractToolResults, extractBackgroundTaskId, mkNotice } from './claude-normalize'
+import { normalizeBetaBlocks, extractToolResults, extractBackgroundTaskId, contentToText, mkNotice } from './claude-normalize'
 import { getPermissionMode } from './builtin-commands'
 
 /**
@@ -207,7 +207,13 @@ export class ClaudeService {
               ? 'Always respond in English, regardless of the language of the user message.'
               : '始终用简体中文回复，无论用户消息使用何种语言。',
           },
-          settings: { language: settings.lang === 'en' ? 'english' : 'chinese' },
+          settings: {
+            language: settings.lang === 'en' ? 'english' : 'chinese',
+            // 显式启用 SDK 内置自动压缩：context 接近满时，SDK 会真正摘要并替换内部
+            // 历史（产生 compact boundary），从而真实降低后续轮次的 token 消耗。
+            // cc-desk 手写的 /compact 仅压缩 UI 展示；SDK 侧的真实 context 压缩由此项负责。
+            autoCompactEnabled: true,
+          },
           maxTurns: 20,
           // Required to receive incremental stream_event deltas.
           includePartialMessages: true,
@@ -231,12 +237,21 @@ export class ClaudeService {
     switch (mtype) {
       case 'system': {
         const sys = message
-        if (sys.subtype === 'init') {
+        const subtype: string = sys.subtype
+        if (subtype === 'init') {
           webContents.send('claude:system', { localSessionId: lsid, sessionId: sys.session_id, model: sys.model, tools: sys.tools })
-        } else if (sys.subtype === 'permission_denied') {
+        } else if (subtype === 'permission_denied') {
           webContents.send('claude:notice', { ...mkNotice('permission_denied', `权限拒绝：${sys.tool_name}`, 'warn'), localSessionId: lsid })
-        } else if (sys.subtype === 'compact' || (sys.subtype && String(sys.subtype).startsWith('compact') && sys.compact_result === 'failed')) {
-          webContents.send('claude:notice', { ...mkNotice('compact', `上下文压缩失败：${sys.compact_error ?? sys.subtype}`, 'warn'), localSessionId: lsid })
+        } else if (subtype === 'compact' || (subtype && subtype.startsWith('compact') && sys.compact_result === 'failed')) {
+          webContents.send('claude:notice', { ...mkNotice('compact', `上下文压缩失败：${sys.compact_error ?? subtype}`, 'warn'), localSessionId: lsid })
+        } else if (subtype === 'task_started') {
+          // SDK 的 task_* 事件顶层 type 都是 'system'，靠 subtype 区分。
+          // 此前误写成顶层 case，导致普通 Task 子任务卡片与 local_workflow 后台任务均无法识别。
+          this.handleTaskStartedEvent(sys, lsid, webContents)
+        } else if (subtype === 'task_updated') {
+          this.handleTaskUpdatedEvent(sys, lsid, webContents)
+        } else if (subtype === 'task_notification') {
+          this.handleTaskNotificationEvent(sys, lsid, webContents)
         }
         // 其余 system 子类型（status 瞬态、hook 协议进度等）属内部噪声，不打扰用户。
         break
@@ -250,7 +265,8 @@ export class ClaudeService {
           const tb = evt.content_block
           // AskUserQuestion 由底部面板承载（见 assistant 分支拦截），不推 tool_use_start，
           // 否则它会先入 streaming blocks 渲染成卡片（assistant_blocks 的过滤此时已太晚）。
-          if (tb.name === 'AskUserQuestion') break
+          // ExitPlanMode 同理：由计划卡片承载（见 assistant 分支），不推普通工具卡片。
+          if (tb.name === 'AskUserQuestion' || tb.name === 'ExitPlanMode') break
           webContents.send('claude:blocks', { localSessionId: lsid, op: 'tool_use_start', block: { type: 'tool_use', id: tb.id, name: tb.name, input: tb.input, status: 'running' } })
           // 记录所有 tool_use 的 input，供 tool_result 阶段提取 auto-background 信息
           if (tb.name === 'Bash' || tb.name === 'Task') {
@@ -272,10 +288,19 @@ export class ClaudeService {
               void this.handleAskUserQuestion(lsid, ab, webContents)
             }
           }
+          // ExitPlanMode：计划模式下模型提交计划。input.plan 是 Markdown 计划文本。
+          // 推 claude:plan 由渲染端计划卡片承载（含批准/拒绝），不走普通工具卡片。
+          const planBlocks = aContent.filter((ab: any) => ab?.type === 'tool_use' && ab.name === 'ExitPlanMode')
+          for (const pb of planBlocks) {
+            const input = pb.input || {}
+            const plan = typeof input.plan === 'string' ? input.plan : ''
+            const allowedPrompts = Array.isArray(input.allowedPrompts) ? input.allowedPrompts : undefined
+            webContents.send('claude:plan', { localSessionId: lsid, op: 'plan_proposed', plan, allowedPrompts, toolUseId: pb.id })
+          }
         }
         const blocks = normalizeBetaBlocks(aContent)
-          // 过滤掉 AskUserQuestion tool_use：它由底部面板承载，不渲染成卡片
-          .filter((b: any) => !(b.type === 'tool_use' && b.name === 'AskUserQuestion'))
+          // 过滤掉 AskUserQuestion / ExitPlanMode tool_use：它们由专属面板/卡片承载，不渲染成普通工具卡片
+          .filter((b: any) => !(b.type === 'tool_use' && (b.name === 'AskUserQuestion' || b.name === 'ExitPlanMode')))
         // assistant 消息含完整 tool_use input（stream_event 的 content_block_start 时 input 还是空壳，
         // 这里补全，供 user 阶段提取后台命令文本）
         if (Array.isArray(aContent)) {
@@ -302,10 +327,7 @@ export class ClaudeService {
             if (!bgId || !this.registry) continue
             const toolUse = this.toolUseInputs.get(b.tool_use_id)
             // tool_result content 文本（用于兜底提取命令）
-            let resultText = ''
-            const bc = b.content
-            if (typeof bc === 'string') resultText = bc
-            else if (Array.isArray(bc)) resultText = bc.map((x: any) => x?.text ?? '').join('')
+            const resultText = (typeof b.content === 'string' || Array.isArray(b.content)) ? contentToText(b.content) : ''
             // 命令优先级：toolUse.input.command → toolUse.input.prompt → 结果文本头部 → 占位
             let cmd = toolUse?.input?.command || toolUse?.input?.prompt || ''
             if (!cmd) {
@@ -342,72 +364,71 @@ export class ClaudeService {
         webContents.send('claude:notice', { ...mkNotice('auth', text, am.error ? 'warn' : 'info'), localSessionId: lsid })
         break
       }
-      case 'task_started': {
-        const tm = message
-        if (tm.task_type === 'local_workflow' && this.registry) {
-          const t = this.registry.handleTaskStarted(lsid, {
-            task_id: tm.task_id,
-            description: tm.description ?? '',
-            prompt: tm.prompt ?? '',
-            task_type: tm.task_type,
-            subagent_type: tm.subagent_type,
-          })
-          if (t) {
-            webContents.send('claude:backend-task', { localSessionId: lsid, op: 'create', task: t })
-          }
-        } else {
-          webContents.send('claude:task', {
-            localSessionId: lsid, kind: 'started',
-            taskId: tm.task_id, description: tm.description ?? '', taskType: tm.task_type ?? '',
-          })
-        }
-        break
-      }
-      case 'task_updated': {
-        const tm = message
-        if (this.registry?.isManaged(tm.task_id)) {
-          const t = this.registry.handleTaskUpdated(lsid, {
-            task_id: tm.task_id,
-            patch: tm.patch ?? {},
-          })
-          if (t) {
-            webContents.send('claude:backend-task', { localSessionId: lsid, op: 'update', task: t })
-          }
-        } else {
-          webContents.send('claude:task', {
-            localSessionId: lsid, kind: 'updated',
-            taskId: tm.task_id, patch: tm.patch ?? {},
-          })
-        }
-        break
-      }
+      // task_started/updated/notification 的顶层 type 实为 'system'（见 system 分支按 subtype 分发）；
+      // 此处不再处理，避免重复与遗漏。
       case 'task_progress':
         webContents.send('claude:notice', { ...mkNotice('task', `任务事件：${message.type}`, 'info'), localSessionId: lsid }); break
-      case 'task_notification': {
-        const tm = message
-        if (this.registry?.isManaged(tm.task_id)) {
-          const t = this.registry.handleTaskNotification(lsid, {
-            task_id: tm.task_id,
-            status: tm.status ?? 'completed',
-          })
-          if (t) {
-            webContents.send('claude:backend-task', { localSessionId: lsid, op: 'update', task: t })
-          }
-        } else {
-          webContents.send('claude:task', {
-            localSessionId: lsid, kind: 'updated',
-            taskId: tm.task_id,
-            patch: { status: tm.status ?? 'completed' },
-          })
-        }
-        break
-      }
       case 'keep_alive':
       case 'worker_shutting_down':
       case 'commands_changed':
         break
       default:
         webContents.send('claude:notice', { ...mkNotice('info', `未分类事件：${message.type}`, 'info'), localSessionId: lsid })
+    }
+  }
+
+  /** system.subtype='task_started'：local_workflow 入注册表推 backend-task，否则推普通 task 卡片。 */
+  private handleTaskStartedEvent(tm: any, lsid: string, webContents: WebContents): void {
+    if (tm.task_type === 'local_workflow' && this.registry) {
+      const t = this.registry.handleTaskStarted(lsid, {
+        task_id: tm.task_id,
+        description: tm.description ?? '',
+        prompt: tm.prompt ?? '',
+        task_type: tm.task_type,
+        subagent_type: tm.subagent_type,
+      })
+      if (t) {
+        webContents.send('claude:backend-task', { localSessionId: lsid, op: 'create', task: t })
+      }
+    } else {
+      webContents.send('claude:task', {
+        localSessionId: lsid, kind: 'started',
+        taskId: tm.task_id, description: tm.description ?? '', taskType: tm.task_type ?? '',
+      })
+    }
+  }
+
+  /** system.subtype='task_updated'：已注册的后台任务走 registry，否则推普通 task patch。 */
+  private handleTaskUpdatedEvent(tm: any, lsid: string, webContents: WebContents): void {
+    this.delegateTaskEvent(tm, lsid, webContents,
+      () => this.registry?.handleTaskUpdated(lsid, { task_id: tm.task_id, patch: tm.patch ?? {} }),
+      { kind: 'updated', taskId: tm.task_id, patch: tm.patch ?? {} },
+    )
+  }
+
+  /** system.subtype='task_notification'：按是否已注册分发终态。 */
+  private handleTaskNotificationEvent(tm: any, lsid: string, webContents: WebContents): void {
+    this.delegateTaskEvent(tm, lsid, webContents,
+      () => this.registry?.handleTaskNotification(lsid, { task_id: tm.task_id, status: tm.status ?? 'completed' }),
+      { kind: 'updated', taskId: tm.task_id, patch: { status: tm.status ?? 'completed' } },
+    )
+  }
+
+  /**
+   * task_updated / task_notification 的共用分发骨架：
+   * 已注册（registry 管理）→ 调 registry handler 推 claude:backend-task(update)；否则推 claude:task。
+   * started 因用 task_type 判定 + op:create 不同，不走此路径。
+   */
+  private delegateTaskEvent(
+    tm: any, lsid: string, webContents: WebContents,
+    registryHandler: () => BackendTask | null | undefined,
+    fallbackPayload: Record<string, unknown>,
+  ): void {
+    if (this.registry?.isManaged(tm.task_id)) {
+      const t = registryHandler()
+      if (t) webContents.send('claude:backend-task', { localSessionId: lsid, op: 'update', task: t })
+    } else {
+      webContents.send('claude:task', { localSessionId: lsid, ...fallbackPayload })
     }
   }
 
@@ -426,7 +447,15 @@ export class ClaudeService {
     return this.manager?.stopTask(localSessionId, taskId) ?? Promise.resolve()
   }
 
-  /** /compact：读会话历史，调 SDK 摘要，回填（保留最近 6 条）。 */
+  /**
+   * /compact：生成历史摘要，压缩渲染端展示的消息（保留最近 N 条）。
+   *
+   * 重要语义：本方法压缩的是「渲染端展示的消息数组」，**不主动压缩 SDK 侧 context**——
+   * SDK streaming-input 持久 query 的内部历史由 query options.settings.autoCompactEnabled
+   * 控制（已显式开启）：context 接近满时 SDK 会自动真实摘要并替换内部历史。
+   * 故 /compact 的真实价值是：让用户主动整理 UI（用摘要替代早期消息），便于阅读；
+   * 真正的 token 压缩由 SDK autoCompact 负责。
+   */
   async compactSession(localSessionId: string, webContents: WebContents): Promise<void> {
     const snap = getProjectsSnapshot()
     const session = findSession(snap.projects, localSessionId)

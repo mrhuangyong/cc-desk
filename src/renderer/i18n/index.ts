@@ -121,6 +121,11 @@ export function translate(lang: Lang, key: string): string {
   return dict[lang]?.[key] ?? dict['zh-CN'][key] ?? key
 }
 
+// 返回某语言的全部 key（用于测试漏译检测，非运行时路径）
+export function dictKeys(lang: Lang): string[] {
+  return Object.keys(dict[lang] ?? {})
+}
+
 export const SUPPORTED_LANGS: { id: Lang; label: string }[] = [
   { id: 'zh-CN', label: '简体中文' },
   { id: 'en', label: 'English' },

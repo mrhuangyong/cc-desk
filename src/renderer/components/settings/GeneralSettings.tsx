@@ -55,11 +55,6 @@ export function GeneralSettings() {
     persist({ theme: t })
   }
 
-  const pickDataPath = async () => {
-    const dir = await window.api?.dialog?.openDirectory()
-    if (dir) persist({ dataPath: dir })
-  }
-
   return (
     <SettingsLayout title="常规">
       {/* 工作目录 */}
@@ -159,16 +154,6 @@ export function GeneralSettings() {
             <option value="7">7天后归档</option>
             <option value="30">30天后归档</option>
           </select>
-        </SettingsRow>
-      </SettingsCard>
-
-      {/* 数据存储路径 */}
-      <SettingsCard>
-        <SettingsRow title="数据存储路径" desc="应用数据根目录（默认用户主目录）。" noBorder>
-          <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <input value={s.dataPath} onChange={e => persist({ dataPath: e.target.value })} style={{ ...inputStyle, fontFamily: 'var(--font-mono)' }} />
-            <button onClick={pickDataPath} style={{ padding: '5px 12px', fontSize: 12, cursor: 'pointer', border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--bg)', color: 'var(--text)' }}>选择文件夹</button>
-          </span>
         </SettingsRow>
       </SettingsCard>
     </SettingsLayout>

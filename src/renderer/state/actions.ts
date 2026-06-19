@@ -70,6 +70,9 @@ export type Action =
   | { type: 'RESTORE_SESSION'; sessionId: string }
   // 右上角 Panel 折叠状态（三层独立）
   | { type: 'SET_PANEL_FOLD'; panel: 'root' | 'taskCard' | 'backendTaskCard'; folded: boolean }
+  // 计划模式（ExitPlanMode 提交的计划）
+  | { type: 'SHOW_PLAN'; sessionId: string; plan: import('../types').PlanProposal }
+  | { type: 'DISMISS_PLAN'; sessionId: string }
   // 内置命令相关
   | { type: 'CLEAR_SESSION_MESSAGES'; sessionId: string }
   | { type: 'SET_SESSION_PERMISSION'; sessionId: string; permissionMode: string }

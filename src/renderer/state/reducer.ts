@@ -39,6 +39,8 @@ export interface AppState {
   backendTasksBySession: Record<string, import('../types').BackendTask[]>
   // 右上角 Panel 折叠状态（三层独立）
   panelFold: { root: boolean; taskCard: boolean; backendTaskCard: boolean }
+  // 计划模式：模型提交的计划（ExitPlanMode）。按会话隔离，每次提交覆盖前一条。
+  planBySession: Record<string, import('../types').PlanProposal | null>
 }
 
 // TODO: idCounter is module-level mutable state — non-deterministic IDs. Acceptable for prototype; thread through state if persistence/time-travel needed later.
@@ -46,6 +48,26 @@ let idCounter = 0
 function nextId(prefix: string): string {
   idCounter += 1
   return `${prefix}${idCounter}`
+}
+
+// 按会话隔离的列表 upsert：tasksBySession / backendTasksBySession 共用。
+function upsertBySession<S extends AppState, K extends keyof S>(
+  state: S, field: K, sessionId: string, item: { id: string },
+): S {
+  const map = state[field] as unknown as Record<string, { id: string }[]>
+  const list = map[sessionId] ?? []
+  const idx = list.findIndex(t => t.id === item.id)
+  const next = idx >= 0 ? list.map(t => (t.id === item.id ? item : t)) : [...list, item]
+  return { ...state, [field]: { ...map, [sessionId]: next } }
+}
+
+// 按 sessionId 在 projects 树里 patch 单个会话字段（permission/thinking/extraDirs/messages 等共用）。
+function patchSession<S extends Session>(state: AppState, sessionId: string, patch: Partial<S>): AppState {
+  const projects = state.projects.map(p => ({
+    ...p,
+    sessions: p.sessions.map(s => (s.id === sessionId ? { ...s, ...patch } : s)),
+  }))
+  return { ...state, projects }
 }
 
 // 持久化恢复（HYDRATE）时，把 idCounter 重置为已恢复数据中的最大序号，
@@ -494,23 +516,13 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, queueBySession: { ...state.queueBySession, [action.sessionId]: [] } }
     }
     case 'UPSERT_TASK': {
-      const list = state.tasksBySession[action.sessionId] ?? []
-      const idx = list.findIndex(t => t.id === action.task.id)
-      const next = idx >= 0
-        ? list.map(t => t.id === action.task.id ? action.task : t)
-        : [...list, action.task]
-      return { ...state, tasksBySession: { ...state.tasksBySession, [action.sessionId]: next } }
+      return upsertBySession(state, 'tasksBySession', action.sessionId, action.task)
     }
     case 'CLEAR_TASKS': {
       return { ...state, tasksBySession: { ...state.tasksBySession, [action.sessionId]: [] } }
     }
     case 'UPSERT_BACKEND_TASK': {
-      const list = state.backendTasksBySession[action.sessionId] ?? []
-      const idx = list.findIndex(t => t.id === action.task.id)
-      const next = idx >= 0
-        ? list.map(t => t.id === action.task.id ? action.task : t)
-        : [...list, action.task]
-      return { ...state, backendTasksBySession: { ...state.backendTasksBySession, [action.sessionId]: next } }
+      return upsertBySession(state, 'backendTasksBySession', action.sessionId, action.task)
     }
     case 'CLEAR_BACKEND_TASKS': {
       return { ...state, backendTasksBySession: { ...state.backendTasksBySession, [action.sessionId]: [] } }
@@ -544,34 +556,23 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'SET_PANEL_FOLD': {
       return { ...state, panelFold: { ...state.panelFold, [action.panel]: action.folded } }
     }
+    case 'SHOW_PLAN': {
+      return { ...state, planBySession: { ...state.planBySession, [action.sessionId]: action.plan } }
+    }
+    case 'DISMISS_PLAN': {
+      return { ...state, planBySession: { ...state.planBySession, [action.sessionId]: null } }
+    }
     case 'CLEAR_SESSION_MESSAGES': {
-      const projects = state.projects.map(p => ({
-        ...p,
-        sessions: p.sessions.map(s =>
-          s.id === action.sessionId ? { ...s, messages: [] } : s
-        ),
-      }))
-      return { ...state, projects }
+      return patchSession(state, action.sessionId, { messages: [] })
     }
     case 'SET_SESSION_PERMISSION': {
-      const projects = state.projects.map(p => ({
-        ...p,
-        sessions: p.sessions.map(s =>
-          s.id === action.sessionId ? { ...s, permissionMode: action.permissionMode } : s
-        ),
-      }))
-      return { ...state, projects }
+      return patchSession(state, action.sessionId, { permissionMode: action.permissionMode })
     }
     case 'SET_SESSION_THINKING': {
-      const projects = state.projects.map(p => ({
-        ...p,
-        sessions: p.sessions.map(s =>
-          s.id === action.sessionId ? { ...s, thinking: action.thinking } : s
-        ),
-      }))
-      return { ...state, projects }
+      return patchSession(state, action.sessionId, { thinking: action.thinking })
     }
     case 'ADD_SESSION_DIR': {
+      // 依赖当前 extraDirs 追加，无法用 patchSession 的纯 patch；保持单次遍历。
       const projects = state.projects.map(p => ({
         ...p,
         sessions: p.sessions.map(s =>

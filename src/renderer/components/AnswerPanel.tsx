@@ -126,6 +126,7 @@ export function AnswerPanel() {
           {q.multiSelect
             ? Array.isArray(cur) && cur.filter((x: any) => x?.other).map((_: any, i: number) => (
                 <input key={i} type="text" placeholder="自定义回答" defaultValue=""
+                  onChange={e => setOtherText(e.target.value)}
                   onBlur={e => setOtherText(e.target.value)}
                   style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)' }} />
               ))

@@ -21,6 +21,7 @@ interface ClaudeAPI {
   onAborted(cb: (data: any) => void): void
   onDialogRequest(cb: (data: any) => void): void
   onBuiltinResult(cb: (data: any) => void): void
+  onPlan(cb: (data: any) => void): void
   dialogResponse(payload: { reqId: string; result: any }): Promise<void>
   removeAllListeners(): void
 }
@@ -87,7 +88,7 @@ interface DialogAPI {
 }
 
 interface MiscAPI {
-  onArchiveTick(cb: (data: { beforeTs: number }) => void): void
+  onArchiveTick(cb: (data: { beforeTs: number }) => void): () => void
 }
 
 // Claude 真实配置（读写 ~/.claude/）

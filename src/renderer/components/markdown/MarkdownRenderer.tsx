@@ -3,6 +3,7 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import { ExternalLink } from 'lucide-react'
+import { URL_RE, cleanUrl } from '../../utils/url'
 import { useStore } from '../../state/store'
 import { CodeBlock } from './CodeBlock'
 import { MermaidBlock } from './MermaidBlock'
@@ -16,13 +17,7 @@ function langFromClassName(className?: string): string {
 
 // remark 插件：自动识别文本中的 bare URL，转换为链接节点。
 // 不依赖 unist-util-visit，递归遍历 AST，仅处理 text 类型节点（跳过已有的 link/code 节点）。
-// 排除 CJK 标点避免吃掉 URL 后的中文；西文尾部标点用 cleanUrl 修剪。
-const URL_RE = /https?:\/\/[^\s<>)\]"'`，。、；：！？）】》*]+/g
-// 修剪 URL 尾部常见标点（URL 内部的 . 不修剪，但末尾孤立标点要剪掉）
-const TRAIL_PUNCT = /[.,;:!?)*]+$/
-function cleanUrl(url: string): string {
-  return url.replace(TRAIL_PUNCT, '')
-}
+// URL_RE / cleanUrl 见 utils/url.ts（与 TerminalTab 共用）。
 function remarkLinkify() {
   return (tree: any) => {
     walkAndLinkify(tree)

@@ -74,7 +74,13 @@ export interface TaskItem {
   status: TaskStatus
 }
 
-// 后台任务（Task 工具 run_in_background 起的长进程，悬浮面板展示）
+// 计划模式提交（ExitPlanMode）：模型在 plan 模式下产出的计划
+export interface PlanProposal {
+  toolUseId: string
+  plan: string               // Markdown 计划文本
+  allowedPrompts?: { tool: string; prompt: string }[]
+}
+
 export type BackendTaskStatus = 'running' | 'completed' | 'failed' | 'stopped'
 export interface BackendTask {
   id: string

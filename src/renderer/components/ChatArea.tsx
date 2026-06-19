@@ -4,6 +4,7 @@ import { useStore } from '../state/store'
 import { useI18n } from '../i18n/useI18n'
 import { AttachmentChip } from './AttachmentChip'
 import { BackendTaskPanel } from './BackendTaskPanel'
+import { PlanCard } from './PlanCard'
 import { InputBar } from './InputBar'
 import { InputDock } from './InputDock'
 import { BlockRenderer } from './blocks/BlockRenderer'
@@ -12,7 +13,7 @@ import { Notices } from './Notices'
 import type { ContentBlock } from '../types'
 
 // 从消息 content blocks 提取可复制的纯文本（text + thinking + 工具摘要）
-function extractText(blocks: ContentBlock[]): string {
+export function extractText(blocks: ContentBlock[]): string {
   return blocks.map(b => {
     if (b.type === 'text') return b.text
     if (b.type === 'thinking') return `(思考) ${b.text}`
@@ -24,7 +25,7 @@ function extractText(blocks: ContentBlock[]): string {
   }).join('\n').trim()
 }
 
-function CopyButton({ text, inline }: { text: string; inline?: boolean }) {
+export function CopyButton({ text, inline }: { text: string; inline?: boolean }) {
   const [copied, setCopied] = useState(false)
   const onCopy = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -199,6 +200,12 @@ export function ChatArea() {
     api.onDialogRequest((data) => {
       dispatch({ type: 'SHOW_DIALOG', reqId: data.reqId, dialogKind: data.dialogKind, payload: data.payload, toolUseId: data.toolUseId })
     })
+    // 计划模式：模型提交计划（ExitPlanMode）
+    api.onPlan((data) => {
+      const sid = data?.localSessionId
+      if (!sid || data.op !== 'plan_proposed') return
+      dispatch({ type: 'SHOW_PLAN', sessionId: sid, plan: { toolUseId: data.toolUseId, plan: data.plan ?? '', allowedPrompts: data.allowedPrompts } })
+    })
 
     return () => {
       unsubBackendTask()
@@ -223,6 +230,11 @@ export function ChatArea() {
         showBackendTask={state.settings.showBackendTask}
         folded={state.panelFold}
         activeSessionId={state.activeSessionId}
+        dispatch={dispatch}
+      />
+      <PlanCard
+        sessionId={state.activeSessionId}
+        plan={state.planBySession[state.activeSessionId] ?? null}
         dispatch={dispatch}
       />
       <div
