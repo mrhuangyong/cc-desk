@@ -126,9 +126,9 @@ describe('ChatArea IPC 监听 → dispatch 链路', () => {
       activeSessionId: 's1',
       projects: [{ id: 'p1', name: 'proj', sessions: [{ id: 's1', title: '会话1', messages: [] }] }],
       settings: { showTodo: false, showBackendTask: false, taskNotify: false, notifySound: false },
-      tasksBySession: {}, backendTasksBySession: {}, planBySession: {},
+      tasksBySession: {}, backendTasksBySession: {}, subagentOutputBySession: {}, planBySession: {},
       streamingBySession: {},
-      panelFold: { root: false, taskCard: false, backendTaskCard: false },
+      panelFold: { root: false, taskCard: false, subagentCard: false, backendTaskCard: false },
     }
   }
 
@@ -245,8 +245,8 @@ describe('ChatArea 渲染', () => {
         { id: 'm1', role: 'user', content: [{ type: 'text', text: '你好' }] as ContentBlock[] },
       ] }] }],
       settings: { showTodo: false, showBackendTask: false }, streamingBySession: {},
-      tasksBySession: {}, backendTasksBySession: {}, planBySession: {},
-      panelFold: { root: false, taskCard: false, backendTaskCard: false },
+      tasksBySession: {}, backendTasksBySession: {}, subagentOutputBySession: {}, planBySession: {},
+      panelFold: { root: false, taskCard: false, subagentCard: false, backendTaskCard: false },
     }
     const { container } = render(<ChatArea />)
     const userMsg = container.querySelector('.is-user')
@@ -261,8 +261,8 @@ describe('ChatArea 渲染', () => {
         { id: 'm1', role: 'assistant', content: [{ type: 'text', text: '回复' }] as ContentBlock[] },
       ] }] }],
       settings: { showTodo: false, showBackendTask: false }, streamingBySession: {},
-      tasksBySession: {}, backendTasksBySession: {}, planBySession: {},
-      panelFold: { root: false, taskCard: false, backendTaskCard: false },
+      tasksBySession: {}, backendTasksBySession: {}, subagentOutputBySession: {}, planBySession: {},
+      panelFold: { root: false, taskCard: false, subagentCard: false, backendTaskCard: false },
     }
     const { container } = render(<ChatArea />)
     expect(container.querySelector('.is-assistant')).toBeTruthy()
