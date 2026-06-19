@@ -284,6 +284,23 @@ export class ClaudeService {
       }
       case 'assistant': {
         const aContent = message.message?.content || []
+        // subagent 自己产生的消息（SDKAssistantMessage 带 subagent_type）：
+        // 不推主流 assistant_blocks，改推 claude:subagent-output，锚回触发它的 Task tool_use。
+        if (message.subagent_type) {
+          const parentToolUseId = message.parent_tool_use_id
+          if (parentToolUseId) {
+            webContents.send('claude:subagent-output', {
+              localSessionId: lsid,
+              toolUseId: parentToolUseId,
+              subagentType: message.subagent_type,
+              taskDescription: message.task_description,
+              block: normalizeBetaBlocks(aContent),
+            })
+          }
+          // subagent 消息不进主流 assistant_blocks（避免对话流重复/混乱），空 blocks 占位
+          webContents.send('claude:blocks', { localSessionId: lsid, op: 'assistant_blocks', blocks: [], uuid: message.uuid })
+          break
+        }
         // 经第三方代理（如 GLM）时，SDK 未把 AskUserQuestion 注册为内置工具，
         // 模型仍会输出该 tool_use 但不走 SDK dialog 通道（自动回填 dummy tool_result）。
         // 这里拦截：弹出渲染端面板，用户答完后把答案作为新 user message 推回，让对话续跑。

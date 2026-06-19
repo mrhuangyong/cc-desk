@@ -17,9 +17,10 @@ contextBridge.exposeInMainWorld('api', {
     onDialogRequest: (cb: (data: any) => void) => { ipcRenderer.on('claude:dialog-request', (_, data) => cb(data)) },
     onBuiltinResult: (cb: (data: any) => void) => { ipcRenderer.on('claude:builtin-result', (_, data) => cb(data)) },
     onPlan: (cb: (data: any) => void) => { ipcRenderer.on('claude:plan', (_, data) => cb(data)) },
+    onSubagentOutput: (cb: (data: any) => void) => { ipcRenderer.on('claude:subagent-output', (_, data) => cb(data)) },
     dialogResponse: (payload: { reqId: string; result: any }) => ipcRenderer.invoke('claude:dialog-response', payload),
     removeAllListeners: () => {
-      ['claude:system', 'claude:delta', 'claude:blocks', 'claude:notice', 'claude:task', 'claude:result', 'claude:error', 'claude:aborted', 'claude:dialog-request', 'claude:backend-task', 'claude:builtin-result', 'claude:plan']
+      ['claude:system', 'claude:delta', 'claude:blocks', 'claude:notice', 'claude:task', 'claude:result', 'claude:error', 'claude:aborted', 'claude:dialog-request', 'claude:backend-task', 'claude:builtin-result', 'claude:plan', 'claude:subagent-output']
         .forEach(ch => ipcRenderer.removeAllListeners(ch))
     },
   },
@@ -72,6 +73,7 @@ contextBridge.exposeInMainWorld('api', {
     readFile: (filePath: string) => ipcRenderer.invoke('fs:read-file', filePath),
     searchFiles: (dirPath: string) => ipcRenderer.invoke('fs:search-files', dirPath),
     writeFile: (filePath: string, content: string) => ipcRenderer.invoke('fs:write-file', filePath, content),
+    exists: (filePath: string) => ipcRenderer.invoke('fs:exists', filePath),
   },
   dialog: {
     openDirectory: () => ipcRenderer.invoke('dialog:open-directory'),

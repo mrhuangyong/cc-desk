@@ -7,7 +7,7 @@ import { BackendTaskPanel } from './BackendTaskPanel'
 import { PlanCard } from './PlanCard'
 import { InputBar } from './InputBar'
 import { InputDock } from './InputDock'
-import { BlockRenderer } from './blocks/BlockRenderer'
+import { renderBlocks } from './blocks/BlockRenderer'
 import { Notices } from './Notices'
 
 import type { ContentBlock } from '../types'
@@ -149,7 +149,20 @@ export function ChatArea() {
     api.onTask((data: any) => {
       const sid = data?.localSessionId
       if (!sid) return
-      if (data.kind === 'started') {
+      if (data.kind === 'todo_sync') {
+        // TodoWrite 全量同步：把 input.todos 映射成 TaskItem，整体替换任务列表
+        const todos = Array.isArray(data.todos) ? data.todos : []
+        const tasks: import('../types').TaskItem[] = todos.map((td: any, idx: number) => ({
+          id: td.id ?? `todo-${idx}`,
+          description: td.content ?? td.activeForm ?? '',
+          taskType: 'todo',
+          status: td.status === 'completed' ? 'completed'
+            : td.status === 'in_progress' ? 'running'
+            : td.status === 'failed' ? 'failed'
+            : 'pending',
+        }))
+        dispatch({ type: 'SET_TASKS', sessionId: sid, tasks })
+      } else if (data.kind === 'started') {
         dispatch({ type: 'UPSERT_TASK', sessionId: sid, task: {
           id: data.taskId, description: data.description ?? '', taskType: data.taskType ?? '', status: 'running',
         } })
@@ -166,6 +179,16 @@ export function ChatArea() {
       if (!data || !data.task) return
       if (data.op === 'create' || data.op === 'update') {
         dispatch({ type: 'UPSERT_BACKEND_TASK', sessionId: data.localSessionId, task: data.task })
+      }
+    })
+    // subagent 自己的对话输出：按 toolUseId 累积进 subagentOutputBySession，
+    // 供 Task 工具卡片下方的折叠区展示（不进主消息流）。
+    api.onSubagentOutput((data: any) => {
+      const sid = data?.localSessionId
+      if (!sid) return
+      const blocks = Array.isArray(data.block) ? data.block : []
+      for (const b of blocks) {
+        dispatch({ type: 'APPEND_SUBAGENT_OUTPUT', sessionId: sid, toolUseId: data.toolUseId, block: b })
       }
     })
     api.onResult((data: any) => {
@@ -198,7 +221,7 @@ export function ChatArea() {
     })
     // AskUserQuestion 等用户对话请求
     api.onDialogRequest((data) => {
-      dispatch({ type: 'SHOW_DIALOG', reqId: data.reqId, dialogKind: data.dialogKind, payload: data.payload, toolUseId: data.toolUseId })
+      dispatch({ type: 'SHOW_DIALOG', reqId: data.reqId, sessionId: data.localSessionId, dialogKind: data.dialogKind, payload: data.payload, toolUseId: data.toolUseId })
     })
     // 计划模式：模型提交计划（ExitPlanMode）
     api.onPlan((data) => {
@@ -240,27 +263,27 @@ export function ChatArea() {
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        style={{ flex: 1, overflowY: 'auto', padding: '24px 28px 40px', display: 'flex', flexDirection: 'column', gap: 50, width: '100%', maxWidth: 'var(--chat-max-width)', margin: '0 auto' }}
+        style={{ flex: 1, overflowY: 'auto', padding: '20px 28px 48px', display: 'flex', flexDirection: 'column', gap: 28, width: '100%', maxWidth: 'var(--chat-max-width)', margin: '0 auto' }}
       >
         {session.messages.length === 0 && !streaming && (
           <div style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: 60 }}>{t('chat.empty')}</div>
         )}
         {session.messages.map(m => (
           m.role === 'assistant' ? (
-            // AI 消息：左对齐，纯文本无背景
+            // AI 消息：全宽左对齐，无背景；block 之间用 hairline 分隔
             <div key={m.id} className="msg-row is-assistant" style={{
-              maxWidth: '80%', alignSelf: 'flex-start',
+              alignSelf: 'flex-start', width: '100%',
               color: 'var(--text)',
-              display: 'flex', flexDirection: 'column', gap: 6,
+              display: 'flex', flexDirection: 'column', gap: 0,
               userSelect: 'text', cursor: 'text',
             }}>
               {m.attachment && <AttachmentChip attachment={{ type: 'pickedElement', el: m.attachment }} />}
               <Notices notices={m.notices ?? []} />
-              {m.content.map((b, i) => <BlockRenderer key={i} block={b} />)}
-              {/* 底部行：cost 元数据 + 复制钮，同一水平线，距上方 md 内容 10px */}
+              {renderBlocks(m.content)}
+              {/* 底部行：cost 元数据 + 复制钮，mono 小字 */}
               <div className="msg-foot" style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
                 {(m.costUSD != null || m.durationMs != null) && (
-                  <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-faint)', fontFamily: 'var(--font-mono)' }}>
                     {m.costUSD != null && `$${m.costUSD.toFixed(4)} `}
                     {m.durationMs != null && `${(m.durationMs / 1000).toFixed(1)}s`}
                     {m.turns != null && ` · ${m.turns} 轮`}
@@ -270,17 +293,17 @@ export function ChatArea() {
               </div>
             </div>
           ) : (
-            // 用户消息：右对齐，浅灰块
+            // 用户消息：右对齐，收紧气泡（maxWidth 限制 + 小 padding，避免占满整行）
             <div key={m.id} className="msg-row is-user" style={{
-              maxWidth: '80%', alignSelf: 'flex-end',
-              background: 'var(--surface-1)', borderRadius: 'var(--radius-lg)', padding: '9px 14px',
+              alignSelf: 'flex-end', maxWidth: '75%',
+              background: 'var(--surface-1)', borderRadius: 'var(--radius)', padding: '5px 11px',
               color: 'var(--text)',
-              display: 'flex', flexDirection: 'column', gap: 6,
+              display: 'flex', flexDirection: 'column', gap: 2,
               userSelect: 'text', cursor: 'text',
             }}>
-              <CopyButton text={extractText(m.content)} />
               {m.attachment && <AttachmentChip attachment={{ type: 'pickedElement', el: m.attachment }} />}
-              {m.content.map((b, i) => <BlockRenderer key={i} block={b} />)}
+              {renderBlocks(m.content, true)}
+              <CopyButton text={extractText(m.content)} />
             </div>
           )
         ))}
@@ -288,7 +311,7 @@ export function ChatArea() {
         {streaming && (
           <div style={{ color: 'var(--text)', fontSize: 14, lineHeight: 1.6, padding: '0 28px', display: 'flex', flexDirection: 'column', gap: 8, userSelect: 'text' }}>
             <Notices notices={streaming.notices ?? []} />
-            {streaming.blocks.map((b, i) => <BlockRenderer key={i} block={b} />)}
+            {renderBlocks(streaming.blocks)}
             {streaming.error && <div style={{ color: '#ef4444', fontSize: 13 }}>❌ {streaming.error}</div>}
             <span style={{ animation: 'blink 1s step-end infinite' }}>▌</span>
           </div>
