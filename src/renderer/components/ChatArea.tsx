@@ -253,6 +253,7 @@ export function ChatArea() {
         showBackendTask={state.settings.showBackendTask}
         folded={state.panelFold}
         activeSessionId={state.activeSessionId}
+        subagentOutputByToolUseId={state.subagentOutputBySession[state.activeSessionId] ?? {}}
         dispatch={dispatch}
       />
       <PlanCard

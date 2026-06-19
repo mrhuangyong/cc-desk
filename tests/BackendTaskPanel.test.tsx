@@ -9,7 +9,7 @@ describe('BackendTaskPanel', () => {
 
   it('两张 Card 都空 → 不渲染', () => {
     const { container } = render(<BackendTaskPanel tasks={[]} backendTasks={[]}
-      showTodo showBackendTask folded={{ root: false, taskCard: false, backendTaskCard: false }}
+      showTodo showBackendTask folded={{ root: false, taskCard: false, subagentCard: false, backendTaskCard: false }}
       activeSessionId="s1" dispatch={dispatch} />)
     expect(container.firstChild).toBeNull()
   })
@@ -18,15 +18,15 @@ describe('BackendTaskPanel', () => {
     render(<BackendTaskPanel
       tasks={[{ id: 't1', description: '任务A', taskType: '', status: 'running' }]}
       backendTasks={[]} showTodo showBackendTask
-      folded={{ root: false, taskCard: false, backendTaskCard: false }}
+      folded={{ root: false, taskCard: false, subagentCard: false, backendTaskCard: false }}
       activeSessionId="s1" dispatch={dispatch} />)
     expect(screen.getByText('任务')).toBeTruthy()
   })
 
   it('仅 BackendTaskCard 有内容 → 渲染 BackendTaskCard', () => {
     render(<BackendTaskPanel tasks={[]}
-      backendTasks={[{ id: 'b1', localSessionId: 's1', command: 'pnpm dev', status: 'running', startedAt: Date.now(), lastKnownAt: Date.now() }]}
-      showTodo showBackendTask folded={{ root: false, taskCard: false, backendTaskCard: false }}
+      backendTasks={[{ id: 'b1', localSessionId: 's1', command: 'pnpm dev', kind: 'workflow', status: 'running', startedAt: Date.now(), lastKnownAt: Date.now() }]}
+      showTodo showBackendTask folded={{ root: false, taskCard: false, subagentCard: false, backendTaskCard: false }}
       activeSessionId="s1" dispatch={dispatch} />)
     expect(screen.getByText('后台任务')).toBeTruthy()
     expect(screen.getByText('pnpm dev')).toBeTruthy()
@@ -34,8 +34,8 @@ describe('BackendTaskPanel', () => {
 
   it('点击 Card 标题切换折叠（dispatch SET_PANEL_FOLD）', () => {
     render(<BackendTaskPanel tasks={[]}
-      backendTasks={[{ id: 'b1', localSessionId: 's1', command: 'pnpm dev', status: 'running', startedAt: 0, lastKnownAt: 0 }]}
-      showTodo showBackendTask folded={{ root: false, taskCard: false, backendTaskCard: false }}
+      backendTasks={[{ id: 'b1', localSessionId: 's1', command: 'pnpm dev', kind: 'workflow', status: 'running', startedAt: 0, lastKnownAt: 0 }]}
+      showTodo showBackendTask folded={{ root: false, taskCard: false, subagentCard: false, backendTaskCard: false }}
       activeSessionId="s1" dispatch={dispatch} />)
     fireEvent.click(screen.getByText('后台任务'))
     expect(dispatch).toHaveBeenCalledWith(
@@ -47,7 +47,7 @@ describe('BackendTaskPanel', () => {
     render(<BackendTaskPanel
       tasks={[{ id: 't1', description: '任务A', taskType: '', status: 'running' }]}
       backendTasks={[]} showTodo showBackendTask
-      folded={{ root: true, taskCard: false, backendTaskCard: false }}
+      folded={{ root: true, taskCard: false, subagentCard: false, backendTaskCard: false }}
       activeSessionId="s1" dispatch={dispatch} />)
     expect(screen.getByLabelText('展开面板')).toBeTruthy()
     expect(screen.queryByText('任务')).toBeNull()
@@ -55,16 +55,16 @@ describe('BackendTaskPanel', () => {
 
   it('running 任务显示终止按钮', () => {
     render(<BackendTaskPanel tasks={[]}
-      backendTasks={[{ id: 'b1', localSessionId: 's1', command: 'pnpm dev', status: 'running', startedAt: 0, lastKnownAt: 0 }]}
-      showTodo showBackendTask folded={{ root: false, taskCard: false, backendTaskCard: false }}
+      backendTasks={[{ id: 'b1', localSessionId: 's1', command: 'pnpm dev', kind: 'workflow', status: 'running', startedAt: 0, lastKnownAt: 0 }]}
+      showTodo showBackendTask folded={{ root: false, taskCard: false, subagentCard: false, backendTaskCard: false }}
       activeSessionId="s1" dispatch={dispatch} />)
     expect(screen.getByTitle('终止')).toBeTruthy()
   })
 
   it('completed 任务显示移除按钮（×）', () => {
     render(<BackendTaskPanel tasks={[]}
-      backendTasks={[{ id: 'b2', localSessionId: 's1', command: 'done', status: 'completed', startedAt: 0, lastKnownAt: 0 }]}
-      showTodo showBackendTask folded={{ root: false, taskCard: false, backendTaskCard: false }}
+      backendTasks={[{ id: 'b2', localSessionId: 's1', command: 'done', kind: 'workflow', status: 'completed', startedAt: 0, lastKnownAt: 0 }]}
+      showTodo showBackendTask folded={{ root: false, taskCard: false, subagentCard: false, backendTaskCard: false }}
       activeSessionId="s1" dispatch={dispatch} />)
     expect(screen.queryByTitle('终止')).toBeNull()
     expect(screen.getByTitle('移除')).toBeTruthy()
@@ -72,8 +72,8 @@ describe('BackendTaskPanel', () => {
 
   it('点击移除按钮 dispatch REMOVE_BACKEND_TASK', () => {
     render(<BackendTaskPanel tasks={[]}
-      backendTasks={[{ id: 'b2', localSessionId: 's1', command: 'done', status: 'completed', startedAt: 0, lastKnownAt: 0 }]}
-      showTodo showBackendTask folded={{ root: false, taskCard: false, backendTaskCard: false }}
+      backendTasks={[{ id: 'b2', localSessionId: 's1', command: 'done', kind: 'workflow', status: 'completed', startedAt: 0, lastKnownAt: 0 }]}
+      showTodo showBackendTask folded={{ root: false, taskCard: false, subagentCard: false, backendTaskCard: false }}
       activeSessionId="s1" dispatch={dispatch} />)
     fireEvent.click(screen.getByTitle('移除'))
     expect(dispatch).toHaveBeenCalledWith({ type: 'REMOVE_BACKEND_TASK', sessionId: 's1', taskId: 'b2' })
@@ -81,8 +81,8 @@ describe('BackendTaskPanel', () => {
 
   it('有已结束任务时显示清除按钮，点击 dispatch CLEAR_FINISHED_BACKEND_TASKS', () => {
     render(<BackendTaskPanel tasks={[]}
-      backendTasks={[{ id: 'b2', localSessionId: 's1', command: 'done', status: 'completed', startedAt: 0, lastKnownAt: 0 }]}
-      showTodo showBackendTask folded={{ root: false, taskCard: false, backendTaskCard: false }}
+      backendTasks={[{ id: 'b2', localSessionId: 's1', command: 'done', kind: 'workflow', status: 'completed', startedAt: 0, lastKnownAt: 0 }]}
+      showTodo showBackendTask folded={{ root: false, taskCard: false, subagentCard: false, backendTaskCard: false }}
       activeSessionId="s1" dispatch={dispatch} />)
     fireEvent.click(screen.getByTitle('清除已结束'))
     expect(dispatch).toHaveBeenCalledWith({ type: 'CLEAR_FINISHED_BACKEND_TASKS', sessionId: 's1' })
@@ -90,9 +90,53 @@ describe('BackendTaskPanel', () => {
 
   it('只有 running 任务时不显示清除按钮', () => {
     render(<BackendTaskPanel tasks={[]}
-      backendTasks={[{ id: 'b1', localSessionId: 's1', command: 'dev', status: 'running', startedAt: 0, lastKnownAt: 0 }]}
-      showTodo showBackendTask folded={{ root: false, taskCard: false, backendTaskCard: false }}
+      backendTasks={[{ id: 'b1', localSessionId: 's1', command: 'dev', kind: 'workflow', status: 'running', startedAt: 0, lastKnownAt: 0 }]}
+      showTodo showBackendTask folded={{ root: false, taskCard: false, subagentCard: false, backendTaskCard: false }}
       activeSessionId="s1" dispatch={dispatch} />)
     expect(screen.queryByTitle('清除已结束')).toBeNull()
   })
+
+  // ===== 三段式:subagent 区 =====
+  it('有 subagent 任务 → 渲染子代理区(显示 Bot 标题与 subagentType)', () => {
+    render(<BackendTaskPanel tasks={[]}
+      backendTasks={[{ id: 'sub1', localSessionId: 's1', command: '审查 src', kind: 'subagent', subagentType: 'general-purpose', status: 'running', startedAt: 0, lastKnownAt: 0 }]}
+      showTodo showBackendTask folded={{ root: false, taskCard: false, subagentCard: false, backendTaskCard: false }}
+      activeSessionId="s1" dispatch={dispatch} />)
+    expect(screen.getByText('子代理')).toBeTruthy()
+    expect(screen.getByText('审查 src')).toBeTruthy()
+    expect(screen.getByText('general-purpose')).toBeTruthy()
+  })
+
+  it('只有 workflow 后台任务 → 不渲染子代理区', () => {
+    render(<BackendTaskPanel tasks={[]}
+      backendTasks={[{ id: 'b1', localSessionId: 's1', command: 'pnpm dev', kind: 'workflow', status: 'running', startedAt: 0, lastKnownAt: 0 }]}
+      showTodo showBackendTask folded={{ root: false, taskCard: false, subagentCard: false, backendTaskCard: false }}
+      activeSessionId="s1" dispatch={dispatch} />)
+    expect(screen.queryByText('子代理')).toBeNull()
+    expect(screen.getByText('后台任务')).toBeTruthy()
+  })
+
+  it('subagent 与 workflow 混合 → 两区都渲染', () => {
+    render(<BackendTaskPanel tasks={[]}
+      backendTasks={[
+        { id: 'sub1', localSessionId: 's1', command: '审查', kind: 'subagent', subagentType: 'general-purpose', status: 'running', startedAt: 0, lastKnownAt: 0 },
+        { id: 'b1', localSessionId: 's1', command: 'pnpm dev', kind: 'workflow', status: 'running', startedAt: 0, lastKnownAt: 0 },
+      ]}
+      showTodo showBackendTask folded={{ root: false, taskCard: false, subagentCard: false, backendTaskCard: false }}
+      activeSessionId="s1" dispatch={dispatch} />)
+    expect(screen.getByText('子代理')).toBeTruthy()
+    expect(screen.getByText('后台任务')).toBeTruthy()
+  })
+
+  it('点击子代理区标题切换折叠(dispatch SET_PANEL_FOLD subagentCard)', () => {
+    render(<BackendTaskPanel tasks={[]}
+      backendTasks={[{ id: 'sub1', localSessionId: 's1', command: '审查', kind: 'subagent', subagentType: 'general-purpose', status: 'running', startedAt: 0, lastKnownAt: 0 }]}
+      showTodo showBackendTask folded={{ root: false, taskCard: false, subagentCard: false, backendTaskCard: false }}
+      activeSessionId="s1" dispatch={dispatch} />)
+    fireEvent.click(screen.getByText('子代理'))
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'SET_PANEL_FOLD', panel: 'subagentCard', folded: true })
+    )
+  })
+
 })
