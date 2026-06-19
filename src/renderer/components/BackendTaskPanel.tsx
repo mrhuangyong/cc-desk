@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { PanelRightOpen, PanelRightClose } from 'lucide-react'
+import { SubagentDetailDrawer } from './SubagentDetailDrawer'
 import { TaskCard } from './TaskPanel'
 import { BackendTaskCard } from './BackendTaskCard'
 import { SubagentCard } from './SubagentCard'
@@ -21,6 +23,7 @@ interface Props {
 export function BackendTaskPanel({
   tasks, backendTasks, showTodo, showBackendTask, folded, activeSessionId, subagentOutputByToolUseId, dispatch,
 }: Props) {
+  const [activeSubagent, setActiveSubagent] = useState<BackendTask | null>(null)
   const subagents = backendTasks.filter(t => t.kind === 'subagent')
   const backends = backendTasks.filter(t => t.kind !== 'subagent')
   const taskVisible = showTodo && tasks.length > 0
@@ -77,8 +80,15 @@ export function BackendTaskPanel({
           onKill={(taskId) => { void window.api.backendTask.kill(activeSessionId, taskId) }}
           onRemove={(taskId) => dispatch({ type: 'REMOVE_BACKEND_TASK', sessionId: activeSessionId, taskId })}
           onClearFinished={() => dispatch({ type: 'CLEAR_FINISHED_BACKEND_TASKS', sessionId: activeSessionId })}
+          onClickTask={(task) => setActiveSubagent(task)}
         />
       )}
+      {/* 子代理详情抽屉:点击面板 subagent 行弹出 */}
+      <SubagentDetailDrawer
+        task={activeSubagent}
+        outputByToolUseId={subagentOutputByToolUseId ?? {}}
+        onClose={() => setActiveSubagent(null)}
+      />
       {bgVisible && (
         <BackendTaskCard
           tasks={backends}

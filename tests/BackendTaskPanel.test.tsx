@@ -139,4 +139,35 @@ describe('BackendTaskPanel', () => {
     )
   })
 
+
+  // ===== 抽屉:点击 subagent 行弹出详情(需求2) =====
+  it('点击 subagent 行 → 弹出详情抽屉(显示标题与输出)', () => {
+    render(<BackendTaskPanel tasks={[]}
+      backendTasks={[{ id: 'sub-d1', localSessionId: 's1', command: '审查 src', kind: 'subagent', subagentType: 'general-purpose', toolUseId: 'toolu_d1', status: 'running', startedAt: 0, lastKnownAt: 0 }]}
+      showTodo showBackendTask folded={{ root: false, taskCard: false, subagentCard: false, backendTaskCard: false }}
+      activeSessionId="s1"
+      subagentOutputByToolUseId={{ toolu_d1: [{ type: 'text', text: '子代理的输出内容' }] }}
+      dispatch={dispatch} />)
+    // 初始无抽屉
+    expect(screen.queryByText('子代理的输出内容')).toBeNull()
+    // 点击 subagent 行(command 文本所在行)
+    fireEvent.click(screen.getByText('审查 src'))
+    // 抽屉出现,展示输出
+    expect(screen.getByText('子代理的输出内容')).toBeTruthy()
+  })
+
+  it('抽屉关闭按钮 → 收起', () => {
+    const { rerender } = render(<BackendTaskPanel tasks={[]}
+      backendTasks={[{ id: 'sub-d2', localSessionId: 's1', command: '审查', kind: 'subagent', subagentType: 'general-purpose', toolUseId: 'toolu_d2', status: 'running', startedAt: 0, lastKnownAt: 0 }]}
+      showTodo showBackendTask folded={{ root: false, taskCard: false, subagentCard: false, backendTaskCard: false }}
+      activeSessionId="s1"
+      subagentOutputByToolUseId={{ toolu_d2: [{ type: 'text', text: '输出X' }] }}
+      dispatch={dispatch} />)
+    fireEvent.click(screen.getByText('审查'))
+    expect(screen.getByText('输出X')).toBeTruthy()
+    // 点关闭
+    fireEvent.click(screen.getByLabelText('关闭'))
+    expect(screen.queryByText('输出X')).toBeNull()
+  })
+
 })

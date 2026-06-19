@@ -25,7 +25,7 @@ interface Props {
   onKill: (taskId: string) => void
   onRemove: (taskId: string) => void
   onClearFinished: () => void
-  onClickTask?: (taskId: string) => void
+  onClickTask?: (task: BackendTask) => void
 }
 
 export function SubagentCard({ tasks, folded, onToggleFold, onKill, onRemove, onClearFinished, onClickTask }: Props) {
@@ -89,11 +89,11 @@ function SubagentRow({ t, onKill, onRemove, onClick }: {
   t: BackendTask
   onKill: (id: string) => void
   onRemove: (id: string) => void
-  onClick?: (taskId: string) => void
+  onClick?: (task: BackendTask) => void
 }) {
   return (
     <div
-      onClick={onClick ? () => onClick(t.id) : undefined}
+      onClick={onClick ? () => onClick(t) : undefined}
       style={{
         display: 'flex', alignItems: 'flex-start', gap: 8,
         padding: '6px 8px', borderRadius: 6,
