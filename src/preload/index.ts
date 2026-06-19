@@ -16,9 +16,10 @@ contextBridge.exposeInMainWorld('api', {
     onAborted: (cb: (data: any) => void) => { ipcRenderer.on('claude:aborted', (_, data) => cb(data)) },
     onDialogRequest: (cb: (data: any) => void) => { ipcRenderer.on('claude:dialog-request', (_, data) => cb(data)) },
     onBuiltinResult: (cb: (data: any) => void) => { ipcRenderer.on('claude:builtin-result', (_, data) => cb(data)) },
+    onPlan: (cb: (data: any) => void) => { ipcRenderer.on('claude:plan', (_, data) => cb(data)) },
     dialogResponse: (payload: { reqId: string; result: any }) => ipcRenderer.invoke('claude:dialog-response', payload),
     removeAllListeners: () => {
-      ['claude:system', 'claude:delta', 'claude:blocks', 'claude:notice', 'claude:task', 'claude:result', 'claude:error', 'claude:aborted', 'claude:dialog-request', 'claude:backend-task', 'claude:builtin-result']
+      ['claude:system', 'claude:delta', 'claude:blocks', 'claude:notice', 'claude:task', 'claude:result', 'claude:error', 'claude:aborted', 'claude:dialog-request', 'claude:backend-task', 'claude:builtin-result', 'claude:plan']
         .forEach(ch => ipcRenderer.removeAllListeners(ch))
     },
   },
@@ -76,7 +77,11 @@ contextBridge.exposeInMainWorld('api', {
     openDirectory: () => ipcRenderer.invoke('dialog:open-directory'),
   },
   onArchiveTick: (cb: (data: { beforeTs: number }) => void) => {
-    ipcRenderer.on('archive:tick', (_, data) => cb(data))
+    const channel = 'archive:tick'
+    const handler = (_: unknown, data: { beforeTs: number }) => cb(data)
+    ipcRenderer.on(channel, handler)
+    // 返回 unsubscribe，供 useEffect cleanup 调用，避免组件重 mount 时监听器累加泄漏
+    return () => ipcRenderer.removeListener(channel, handler)
   },
   pty: {
     create: (opts: any) => ipcRenderer.invoke('pty:create', opts),

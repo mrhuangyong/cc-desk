@@ -12,6 +12,9 @@ import { BackendTaskRegistry } from './backend-task-registry'
 
 const isDev = !app.isPackaged
 
+// 应用图标：out/main → 项目根 ../../build/icons/。dev 与 build 均输出到 out/，路径一致。
+const iconPath = join(__dirname, '../../build/icons/icon.png')
+
 const claude = new ClaudeService()
 const backendTaskRegistry = new BackendTaskRegistry()
 claude.setRegistry(backendTaskRegistry)
@@ -25,6 +28,7 @@ function createWindow() {
     height: 1040,
     minWidth: 960,
     minHeight: 640,
+    icon: iconPath,  // 窗口/dock 图标（替换 Electron 默认图标）
     frame: false, // 无系统边框，用自定义 titleBar
     // macOS: 用原生红绿灯但隐藏标题栏；hiddenInset 让红绿灯内嵌、留出空间给左侧内容
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
@@ -122,8 +126,8 @@ function createWindow() {
   ipcMain.handle('backend-task:kill', async (_e, localSessionId: string, taskId: string) => {
     try {
       await claude.stopTask(localSessionId, taskId)
-      backendTaskRegistry.handleTaskNotification(localSessionId, { task_id: taskId, status: 'stopped' })
-      const t = backendTaskRegistry.listBySession(localSessionId).find(x => x.id === taskId)
+      // handleTaskNotification 返回更新后的 task，直接用，免去 listBySession 线性扫描
+      const t = backendTaskRegistry.handleTaskNotification(localSessionId, { task_id: taskId, status: 'stopped' })
       if (t) win.webContents.send('claude:backend-task', { localSessionId, op: 'update', task: t })
       return { ok: true }
     } catch (err) {
@@ -132,9 +136,10 @@ function createWindow() {
     }
   })
 
-  // 会话归档：杀持久进程
+  // 会话归档：杀持久进程 + 清理该会话后台任务记录（避免 registry Map 无限增长）
   ipcMain.handle('session:archive', async (_e, localSessionId: string) => {
     await claude.closeSession(localSessionId)
+    backendTaskRegistry.clearBySession(localSessionId)
   })
 
   // 开发态加载 dev server，生产态加载打包文件
@@ -152,6 +157,10 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // macOS dev 下 BrowserWindow.icon 不覆盖 dock 图标，需显式设 dock icon
+  if (process.platform === 'darwin') {
+    try { app.dock?.setIcon(iconPath) } catch { /* ignore */ }
+  }
   createWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -179,6 +188,10 @@ function startArchiveTimer() {
 }
 
 app.on('before-quit', async () => {
+  // Cmd+Q（macOS）走 before-quit，window-all-closed 此时未必触发；
+  // 这里统一清理 PTY 子进程 + SDK 持久 query + 后台任务记录，避免孤儿进程与泄漏。
+  ptyManager.killAll()
+  backendTaskRegistry.clearAll()
   await sessionQueryManager.closeAll()
 })
 

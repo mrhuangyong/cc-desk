@@ -3,6 +3,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { useStore } from '../state/store'
+import { URL_RE, cleanUrl } from '../utils/url'
 
 interface Props {
   tabId: string
@@ -45,8 +46,6 @@ export function TerminalTab({ tabId, cwd }: Props) {
     window.api?.pty.create({ tabId, cols: term.cols, rows: term.rows, cwd })
 
     // 链接检测：终端中的 URL 可点击，用内置浏览器打开（非系统浏览器）。
-    const URL_RE = /https?:\/\/[^\s<>)\]"'`，。、；：！？）】》*]+/g
-    const TRAIL_PUNCT = /[.,;:!?)*]+$/
     const linkProvider = term.registerLinkProvider({
       provideLinks(bufferLineNumber, callback) {
         const line = term.buffer.active.getLine(bufferLineNumber - 1)
@@ -57,7 +56,7 @@ export function TerminalTab({ tabId, cwd }: Props) {
         URL_RE.lastIndex = 0
         while ((m = URL_RE.exec(text)) !== null) {
           const raw = m[0]
-          const url = raw.replace(TRAIL_PUNCT, '')
+          const url = cleanUrl(raw)
           if (!url) continue
           const startX = m.index + 1  // xterm buffer 1-indexed
           const endX = m.index + url.length

@@ -5,37 +5,8 @@ import type { Project } from '../types'
 
 // 真实会话来自 Claude（通过 INIT_SESSIONS 等动作注入），初始为空
 function makeInitialState(seedProjects?: Project[]): AppState {
-  if (seedProjects && seedProjects.length > 0) {
-    const firstSessionId = seedProjects[0]?.sessions[0]?.id ?? ''
-    return {
-      projects: seedProjects,
-      activeSessionId: firstSessionId,
-      tabsBySession: Object.fromEntries(seedProjects.flatMap(p => p.sessions.map(s => [s.id, []]))),
-      activeTabIdBySession: Object.fromEntries(seedProjects.flatMap(p => p.sessions.map(s => [s.id, null]))),
-      theme: themeFromStorage(),
-      draft: { doc: null, attachments: [] },
-      currentView: 'workspace',
-      activeSettingsSection: 'general',
-      streamingBySession: {},
-      settings: {
-        apiKey: '', model: 'model-sonnet', cwd: '', providers: [], models: [], modelRoleMap: {},
-        theme: 'codex-light', lang: 'zh-CN', zoom: 'normal', proxy: '', inheritTerminal: true,
-        terminalFont: 'MesloLGS NF, monospace', taskNotify: true, notifySound: true, queueMode: 'queue',
-        showThinking: false, showTodo: false, showBackendTask: true, autoArchive: true, archiveDays: '7', dataPath: '',
-        codePreview: { lightTheme: 'GitHub Light', darkTheme: 'GitHub Dark', showLineNumbers: true, wordWrap: false, fontSize: 12 },
-        skills: [], mcpServers: [], plugins: [], commands: [], hooks: [],
-      },
-      claudeSessionMap: {},
-      pendingDialog: null,
-      dirtyTabIds: {},
-      lastFileOpenedSeq: 0,
-      queueBySession: {},
-      tasksBySession: {},
-      backendTasksBySession: {},
-      panelFold: { root: false, taskCard: false, backendTaskCard: false },
-    }
-  }
-  return {
+  // 共享默认值：两分支仅 projects / activeSessionId / 两张会话级 map 不同，其余全部一致。
+  const base: AppState = {
     projects: [],
     activeSessionId: '',
     tabsBySession: {},
@@ -49,7 +20,7 @@ function makeInitialState(seedProjects?: Project[]): AppState {
       apiKey: '', model: 'model-sonnet', cwd: '', providers: [], models: [], modelRoleMap: {},
       theme: 'codex-light', lang: 'zh-CN', zoom: 'normal', proxy: '', inheritTerminal: true,
       terminalFont: 'MesloLGS NF, monospace', taskNotify: true, notifySound: true, queueMode: 'queue',
-      showThinking: false, showTodo: false, showBackendTask: true, autoArchive: true, archiveDays: '7', dataPath: '',
+      showThinking: false, showTodo: false, showBackendTask: true, autoArchive: true, archiveDays: '7',
       codePreview: { lightTheme: 'GitHub Light', darkTheme: 'GitHub Dark', showLineNumbers: true, wordWrap: false, fontSize: 12 },
       skills: [], mcpServers: [], plugins: [], commands: [], hooks: [],
     },
@@ -61,6 +32,16 @@ function makeInitialState(seedProjects?: Project[]): AppState {
     tasksBySession: {},
     backendTasksBySession: {},
     panelFold: { root: false, taskCard: false, backendTaskCard: false },
+    planBySession: {},
+  }
+  if (!seedProjects || seedProjects.length === 0) return base
+  const sessions = seedProjects.flatMap(p => p.sessions)
+  return {
+    ...base,
+    projects: seedProjects,
+    activeSessionId: sessions[0]?.id ?? '',
+    tabsBySession: Object.fromEntries(sessions.map(s => [s.id, []])),
+    activeTabIdBySession: Object.fromEntries(sessions.map(s => [s.id, null])),
   }
 }
 

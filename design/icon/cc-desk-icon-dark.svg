@@ -1,0 +1,47 @@
+<svg viewBox="0 0 1024 1024" width="1024" height="1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- 深色壁纸变体：夜曲墨蓝底 + 亮 C 棱镜（浅色版的反相搭配，用于深色壁纸）。 -->
+  <defs>
+    <path id="squircle" d="M 512 0 C 774 0 880 8 948 76 C 1016 144 1024 250 1024 512 C 1024 774 1016 880 948 948 C 880 1016 774 1024 512 1024 C 250 1024 144 1016 76 948 C 8 880 0 774 0 512 C 0 250 8 144 76 76 C 144 8 250 0 512 0 Z"/>
+    <radialGradient id="bgD" cx="34%" cy="26%" r="95%">
+      <stop offset="0%"  stop-color="#2b3850"/>
+      <stop offset="45%" stop-color="#17202f"/>
+      <stop offset="100%" stop-color="#070b12"/>
+    </radialGradient>
+    <linearGradient id="prismD" x1="15%" y1="10%" x2="85%" y2="95%">
+      <stop offset="0%"  stop-color="#f4eee0"/>
+      <stop offset="42%" stop-color="#cdc9bd"/>
+      <stop offset="100%" stop-color="#7d7a72"/>
+    </linearGradient>
+    <linearGradient id="prismDarkD" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"  stop-color="#5a574f"/>
+      <stop offset="100%" stop-color="#34322d"/>
+    </linearGradient>
+    <linearGradient id="bracketD" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%"  stop-color="#ffd28a"/>
+      <stop offset="50%" stop-color="#e8a857"/>
+      <stop offset="100%" stop-color="#b5641f"/>
+    </linearGradient>
+    <linearGradient id="sheenD" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%"  stop-color="#ffffff" stop-opacity="0.12"/>
+      <stop offset="42%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="clipD"><use href="#squircle"/></clipPath>
+  </defs>
+
+  <g clip-path="url(#clipD)">
+    <rect width="1024" height="1024" fill="url(#bgD)"/>
+    <g opacity="0.5">
+      <circle cx="178" cy="208" r="1.3" fill="#46546b"/>
+      <circle cx="832" cy="196" r="1"   fill="#46556d"/>
+      <circle cx="752" cy="762" r="1.4" fill="#46556d"/>
+      <circle cx="500" cy="120" r="1.2" fill="#46556d"/>
+    </g>
+    <path d="M 712 348 A 300 300 0 1 0 712 676 L 640 612 A 208 208 0 1 1 640 412 Z" fill="url(#prismDarkD)"/>
+    <path d="M 700 362 A 286 286 0 1 0 700 662 L 636 602 A 196 196 0 1 1 636 422 Z" fill="url(#prismD)"/>
+    <path d="M 700 362 A 286 286 0 1 0 360 270" fill="none" stroke="#ffffff" stroke-opacity="0.4" stroke-width="6" stroke-linecap="round"/>
+    <path d="M 556 432 L 508 512 L 556 592" fill="none" stroke="url(#bracketD)" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M 668 432 L 716 512 L 668 592" fill="none" stroke="url(#bracketD)" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect width="1024" height="1024" fill="url(#sheenD)"/>
+  </g>
+  <use href="#squircle" fill="none" stroke="#000000" stroke-opacity="0.28" stroke-width="2"/>
+</svg>

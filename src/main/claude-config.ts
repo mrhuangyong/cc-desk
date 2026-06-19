@@ -234,7 +234,10 @@ export async function setPluginEnabled(id: string, enabled: boolean): Promise<vo
   const map: Record<string, boolean> = { ...(settings.enabledPlugins ?? {}) }
   if (enabled) map[id] = true
   else delete map[id]
-  await saveSettingsJson({ enabledPlugins: map })
+  // 注意：不能用 saveSettingsJson({ enabledPlugins: map })——其对象字段深合并会让被 delete 的旧 key 复活。
+  // 直接整对象替换，确保删除生效。
+  settings.enabledPlugins = map
+  await writeJson(SETTINGS_PATH, settings)
 }
 
 // ---- 技能（扫描已启用插件的 skills/ + 用户级 ~/.claude/skills/）----

@@ -41,10 +41,9 @@ export function InputBar() {
   const project = state.projects.find(p => p.sessions.some(s => s.id === state.activeSessionId))
   const getCwd = () => project?.path || state.settings?.cwd || ''
 
-  // 会话级权限/思考：读会话字段，undefined 时用默认
-  const activeSession = state.projects
-    .flatMap(p => p.sessions)
-    .find(s => s.id === state.activeSessionId)
+  // 会话级权限/思考：读会话字段，undefined 时用默认。
+  // 从已找到的 project 内取 session，避免对全量 projects 再做一次 flatMap 扫描。
+  const activeSession = project?.sessions.find(s => s.id === state.activeSessionId)
   const permission = activeSession?.permissionMode ?? '变更前确认'
   const thinking: 'low' | 'medium' | 'high' = activeSession?.thinking ?? 'medium'
 
@@ -192,7 +191,8 @@ export function InputBar() {
   // preload 的 onBuiltinResult 用 ipcRenderer.on，无去重——用 ref + mount-only effect 避免累积 listener。
   const builtinResultHandlerRef = useRef<(data: any) => void>(() => {})
   builtinResultHandlerRef.current = (data: any) => {
-    if (data.localSessionId !== state.activeSessionId) return
+    // 不按 activeSessionId 过滤：compact 是异步的，结果返回前用户可能已切到别的会话。
+    // COMPACT_DONE 按 data.localSessionId 路由，会正确更新触发压缩的那个会话，不会串台。
     if (data.op === 'compact' && data.summary && data.keepRecent) {
       dispatch({ type: 'COMPACT_DONE', sessionId: data.localSessionId, summary: data.summary, keepRecent: data.keepRecent })
     }

@@ -2,8 +2,7 @@
 // cc-desk 自有的配置存储。模型供应商配置写入 ~/.cc-desk/config.json，
 // 不读写 ~/.claude/。ClaudeService 从这里取数注入 SDK。
 import Store from 'electron-store'
-import { join } from 'path'
-import { homedir } from 'os'
+import { CC_DESK_DIR } from './paths'
 
 export interface ModelProvider {
   id: string
@@ -27,8 +26,6 @@ export interface ModelProvidersConfig {
 }
 
 const EMPTY: ModelProvidersConfig = { providers: [], models: [], modelRoleMap: {}, activeModelId: '' }
-
-const CC_DESK_DIR = join(homedir(), '.cc-desk')
 
 function createStore(): Store<{ config: ModelProvidersConfig }> {
   return new Store<{ config: ModelProvidersConfig }>({

@@ -124,6 +124,28 @@ export class BackendTaskRegistry {
     return this.tasks.has(taskId)
   }
 
+  /**
+   * 清理指定会话的所有后台任务记录（归档/关闭会话时调用，避免 Map 无限增长）。
+   * 返回被移除的任务数。
+   */
+  clearBySession(localSessionId: string): number {
+    let removed = 0
+    for (const [id, task] of this.tasks) {
+      if (task.localSessionId === localSessionId) {
+        this.tasks.delete(id)
+        removed++
+      }
+    }
+    return removed
+  }
+
+  /**
+   * 清空所有后台任务记录（应用退出前调用）。
+   */
+  clearAll(): void {
+    this.tasks.clear()
+  }
+
   /** 内部：将 SDK patch.status 字符串映射到 BackendTaskStatus */
   private mapStatus(s: string): BackendTaskStatus {
     switch (s) {

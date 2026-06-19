@@ -97,7 +97,6 @@ function TaskRow({ t, onKill, onRemove }: {
         <div style={{
           color: t.status === 'running' ? 'var(--text)' : 'var(--text-muted)',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          textDecoration: t.status === 'running' ? 'none' : 'none',
         }}>
           {t.command}
         </div>
