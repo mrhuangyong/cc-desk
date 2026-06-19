@@ -91,13 +91,13 @@ jobs:
       matrix:
         include:
           - os: macos-latest
-            target: dmg
+            target: mac          # electron-builder 平台标志，目标格式(dmg)由 package.json build.mac.target 提供
             artifact: cc-desk-*.dmg
           - os: windows-latest
-            target: nsis
+            target: win          # 目标格式(nsis)由 build.win.target 提供
             artifact: cc-desk Setup *.exe
           - os: ubuntu-latest
-            target: AppImage
+            target: linux        # 目标格式(AppImage)由 build.linux.target 提供
             artifact: cc-desk-*.AppImage
     runs-on: ${{ matrix.os }}
     steps:
