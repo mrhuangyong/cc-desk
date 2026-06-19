@@ -280,7 +280,7 @@ export function ChatArea() {
             }}>
               {m.attachment && <AttachmentChip attachment={{ type: 'pickedElement', el: m.attachment }} />}
               <Notices notices={m.notices ?? []} />
-              {renderBlocks(m.content)}
+              {renderBlocks(m.content, false, state.subagentOutputBySession[state.activeSessionId] ?? {})}
               {/* 底部行：cost 元数据 + 复制钮，mono 小字 */}
               <div className="msg-foot" style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
                 {(m.costUSD != null || m.durationMs != null) && (
@@ -303,7 +303,7 @@ export function ChatArea() {
               userSelect: 'text', cursor: 'text',
             }}>
               {m.attachment && <AttachmentChip attachment={{ type: 'pickedElement', el: m.attachment }} />}
-              {renderBlocks(m.content, true)}
+              {renderBlocks(m.content, true, state.subagentOutputBySession[state.activeSessionId] ?? {})}
               <CopyButton text={extractText(m.content)} />
             </div>
           )
@@ -312,7 +312,7 @@ export function ChatArea() {
         {streaming && (
           <div style={{ color: 'var(--text)', fontSize: 14, lineHeight: 1.6, padding: '0 28px', display: 'flex', flexDirection: 'column', gap: 8, userSelect: 'text' }}>
             <Notices notices={streaming.notices ?? []} />
-            {renderBlocks(streaming.blocks)}
+            {renderBlocks(streaming.blocks, false, state.subagentOutputBySession[state.activeSessionId] ?? {})}
             {streaming.error && <div style={{ color: '#ef4444', fontSize: 13 }}>❌ {streaming.error}</div>}
             <span style={{ animation: 'blink 1s step-end infinite' }}>▌</span>
           </div>
