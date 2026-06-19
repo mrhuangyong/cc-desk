@@ -55,6 +55,10 @@ contextBridge.exposeInMainWorld('api', {
       get: () => ipcRenderer.invoke('cc:hooks:get'),
       setEnabled: (name: string, enabled: boolean) => ipcRenderer.invoke('cc:hook:set-enabled', name, enabled),
     },
+    memory: {
+      get: () => ipcRenderer.invoke('cc:memory:get'),
+      save: (content: string) => ipcRenderer.invoke('cc:memory:save', content),
+    },
     model: {
       get: () => ipcRenderer.invoke('cc:model:get'),
       save: (cfg: any) => ipcRenderer.invoke('cc:model:save', cfg),
