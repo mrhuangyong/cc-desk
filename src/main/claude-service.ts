@@ -48,8 +48,11 @@ export class ClaudeService {
     request: { dialogKind: string; payload: unknown; toolUseID?: string },
     signal: AbortSignal,
   ): Promise<any> {
-    return this.askUserViaPanel(webContents, request.dialogKind, request.payload, request.toolUseID, signal)
+    return this.askUserViaPanel(webContents, request.dialogKind, request.payload, request.toolUseID, signal, this.currentLsid)
   }
+
+  // 当前流绑定的 localSessionId：send 时设置，供 onUserDialog 回调取用（SDK 回调无 lsid 参数）
+  private currentLsid: string | null = null
 
   /**
    * 经渲染端底部面板问用户问题（AskUserQuestion 拦截场景与 SDK dialog 场景共用）。
@@ -62,10 +65,12 @@ export class ClaudeService {
     payload: unknown,
     toolUseId: string | undefined,
     signal?: AbortSignal,
+    localSessionId?: string | null,
   ): Promise<any> {
     const reqId = `dlg${Date.now()}_${Math.floor(performance.now())}`
     webContents.send('claude:dialog-request', {
       reqId,
+      localSessionId: localSessionId ?? undefined,
       dialogKind,
       payload,
       toolUseId,
@@ -102,7 +107,7 @@ export class ClaudeService {
     if (questions.length === 0) return
     let result: any
     try {
-      result = await this.askUserViaPanel(webContents, 'ask_user_question', input, toolUse.id)
+      result = await this.askUserViaPanel(webContents, 'ask_user_question', input, toolUse.id, undefined, localSessionId)
     } catch {
       result = { behavior: 'cancelled' }
     }
@@ -147,6 +152,7 @@ export class ClaudeService {
     // 本次流绑定的渲染端会话 id。所有事件载荷带上它，渲染端据此路由到正确会话，
     // 避免「在 A 发送后切到 B，A 的流式输出串到 B」。
     const lsid = localSessionId ?? ''
+    this.currentLsid = lsid
     if (!this.manager) {
       webContents.send('claude:error', { localSessionId: lsid, error: 'SessionQueryManager 未初始化' })
       return
@@ -214,7 +220,8 @@ export class ClaudeService {
             // cc-desk 手写的 /compact 仅压缩 UI 展示；SDK 侧的真实 context 压缩由此项负责。
             autoCompactEnabled: true,
           },
-          maxTurns: 20,
+          // 轮次上限：授权等待/长对话会消耗 turn 预算，调大避免 error_max_turns
+          maxTurns: 200,
           // Required to receive incremental stream_event deltas.
           includePartialMessages: true,
           // Bridge the SDK's blocking `onUserDialog` to a renderer-side dialog UI.
@@ -266,7 +273,7 @@ export class ClaudeService {
           // AskUserQuestion 由底部面板承载（见 assistant 分支拦截），不推 tool_use_start，
           // 否则它会先入 streaming blocks 渲染成卡片（assistant_blocks 的过滤此时已太晚）。
           // ExitPlanMode 同理：由计划卡片承载（见 assistant 分支），不推普通工具卡片。
-          if (tb.name === 'AskUserQuestion' || tb.name === 'ExitPlanMode') break
+          if (tb.name === 'AskUserQuestion' || tb.name === 'ExitPlanMode' || tb.name === 'TodoWrite') break
           webContents.send('claude:blocks', { localSessionId: lsid, op: 'tool_use_start', block: { type: 'tool_use', id: tb.id, name: tb.name, input: tb.input, status: 'running' } })
           // 记录所有 tool_use 的 input，供 tool_result 阶段提取 auto-background 信息
           if (tb.name === 'Bash' || tb.name === 'Task') {
@@ -298,9 +305,16 @@ export class ClaudeService {
             webContents.send('claude:plan', { localSessionId: lsid, op: 'plan_proposed', plan, allowedPrompts, toolUseId: pb.id })
           }
         }
+        // TodoWrite：提取待办列表，全量推送给悬浮任务面板。
+        // TodoWrite 的 input.todos 每次都是完整的当前任务集合（全量替换语义）。
+        const todoBlocks = aContent.filter((ab: any) => ab?.type === 'tool_use' && ab.name === 'TodoWrite')
+        for (const tb of todoBlocks) {
+          const todos = Array.isArray(tb.input?.todos) ? tb.input.todos : []
+          webContents.send('claude:task', { localSessionId: lsid, kind: 'todo_sync', todos })
+        }
         const blocks = normalizeBetaBlocks(aContent)
           // 过滤掉 AskUserQuestion / ExitPlanMode tool_use：它们由专属面板/卡片承载，不渲染成普通工具卡片
-          .filter((b: any) => !(b.type === 'tool_use' && (b.name === 'AskUserQuestion' || b.name === 'ExitPlanMode')))
+          .filter((b: any) => !(b.type === 'tool_use' && (b.name === 'AskUserQuestion' || b.name === 'ExitPlanMode' || b.name === 'TodoWrite')))
         // assistant 消息含完整 tool_use input（stream_event 的 content_block_start 时 input 还是空壳，
         // 这里补全，供 user 阶段提取后台命令文本）
         if (Array.isArray(aContent)) {
@@ -377,24 +391,20 @@ export class ClaudeService {
     }
   }
 
-  /** system.subtype='task_started'：local_workflow 入注册表推 backend-task，否则推普通 task 卡片。 */
+  /** system.subtype='task_started'：委托 registry（内部 resolveKind 决定是否创建）。
+   *  registry 返回 null（未知 task_type）时事件被丢弃——不回退到 claude:task，
+   *  因为 task_started 只对长生命周期任务发出，无对应 kind 的属噪声。 */
   private handleTaskStartedEvent(tm: any, lsid: string, webContents: WebContents): void {
-    if (tm.task_type === 'local_workflow' && this.registry) {
-      const t = this.registry.handleTaskStarted(lsid, {
-        task_id: tm.task_id,
-        description: tm.description ?? '',
-        prompt: tm.prompt ?? '',
-        task_type: tm.task_type,
-        subagent_type: tm.subagent_type,
-      })
-      if (t) {
-        webContents.send('claude:backend-task', { localSessionId: lsid, op: 'create', task: t })
-      }
-    } else {
-      webContents.send('claude:task', {
-        localSessionId: lsid, kind: 'started',
-        taskId: tm.task_id, description: tm.description ?? '', taskType: tm.task_type ?? '',
-      })
+    if (!this.registry) return
+    const t = this.registry.handleTaskStarted(lsid, {
+      task_id: tm.task_id,
+      description: tm.description ?? '',
+      prompt: tm.prompt ?? '',
+      task_type: tm.task_type,
+      subagent_type: tm.subagent_type,
+    })
+    if (t) {
+      webContents.send('claude:backend-task', { localSessionId: lsid, op: 'create', task: t })
     }
   }
 
