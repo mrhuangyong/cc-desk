@@ -4,6 +4,7 @@ import { SettingsMenu } from './SettingsMenu'
 import { GeneralSettings } from './GeneralSettings'
 import { CodePreviewSettings } from './CodePreviewSettings'
 import { ModelSettings } from './ModelSettings'
+import { MemorySettings } from './MemorySettings'
 import { SkillsSettings } from './SkillsSettings'
 import { McpSettings } from './McpSettings'
 import { PluginSettings } from './PluginSettings'
@@ -27,6 +28,7 @@ export function SettingsPage() {
       case 'general': return <GeneralSettings />
       case 'code-preview': return <CodePreviewSettings />
       case 'model': return <ModelSettings />
+      case 'memory': return <MemorySettings />
       case 'skills': return <SkillsSettings />
       case 'mcp': return <McpSettings />
       case 'plugins': return <PluginSettings />

@@ -163,7 +163,7 @@ export interface FileNode {
 
 // 设置子页标识
 export type SettingsSection =
-  | 'general' | 'code-preview' | 'model' | 'skills'
+  | 'general' | 'code-preview' | 'model' | 'memory' | 'skills'
   | 'mcp' | 'plugins' | 'commands' | 'hooks' | 'archived'
 
 // 顶层视图
