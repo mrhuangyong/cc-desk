@@ -18,6 +18,12 @@ export interface BackendTask {
   status: BackendTaskStatus
   startedAt: number
   lastKnownAt: number
+  // 实时进度(task_progress 事件刷新,~30s 一次)
+  progressSummary?: string   // AI 生成的进度摘要
+  lastToolName?: string      // 最近调用的工具名
+  tokenCount?: number        // 累计 token
+  toolUses?: number          // 累计工具调用数
+  durationMs?: number        // 累计耗时
 }
 
 interface TaskStartedEvent {
@@ -26,6 +32,18 @@ interface TaskStartedEvent {
   prompt?: string
   task_type?: string
   subagent_type?: string
+}
+
+interface TaskProgressEvent {
+  task_id: string
+  description?: string
+  usage: {
+    total_tokens: number
+    tool_uses: number
+    duration_ms: number
+  }
+  last_tool_name?: string
+  summary?: string
 }
 
 interface TaskUpdatedEvent {
@@ -93,6 +111,25 @@ export class BackendTaskRegistry {
       lastKnownAt: now,
     }
     this.tasks.set(task.id, task)
+    return task
+  }
+
+  /**
+   * 处理 task_progress 事件(SDK 每 ~30s 发一次)。
+   * 实时刷新进度字段(摘要/工具/token/耗时),让面板 subagent 行「活」起来。
+   * 仅更新已注册任务;未注册返回 null。
+   */
+  handleTaskProgress(localSessionId: string, event: TaskProgressEvent): BackendTask | null {
+    const task = this.tasks.get(event.task_id)
+    if (!task) return null
+    if (task.localSessionId !== localSessionId) return null
+
+    task.progressSummary = event.summary
+    task.lastToolName = event.last_tool_name
+    task.tokenCount = event.usage.total_tokens
+    task.toolUses = event.usage.tool_uses
+    task.durationMs = event.usage.duration_ms
+    task.lastKnownAt = Date.now()
     return task
   }
 

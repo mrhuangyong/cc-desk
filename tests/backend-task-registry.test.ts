@@ -379,3 +379,51 @@ describe('BackendTaskRegistry 清理（防内存泄漏）', () => {
 
     expect(task).toBeNull()
   })
+
+  // ===== task_progress: 实时进度更新 =====
+  it('handleTaskProgress 更新已注册任务的进度字段', () => {
+    const reg = new BackendTaskRegistry()
+    reg.handleTaskStarted('session1', {
+      task_id: 'sub-p1', task_type: 'subagent', subagent_type: 'general-purpose',
+      description: '审查代码',
+    })
+    const updated = reg.handleTaskProgress('session1', {
+      task_id: 'sub-p1',
+      description: '正在分析 src 目录',
+      usage: { total_tokens: 1234, tool_uses: 3, duration_ms: 5000 },
+      last_tool_name: 'Read',
+      summary: '已读取 3 个文件',
+    })
+
+    expect(updated).not.toBeNull()
+    expect(updated!.progressSummary).toBe('已读取 3 个文件')
+    expect(updated!.lastToolName).toBe('Read')
+    expect(updated!.tokenCount).toBe(1234)
+    expect(updated!.toolUses).toBe(3)
+    expect(updated!.durationMs).toBe(5000)
+  })
+
+  it('handleTaskProgress 未注册任务 → 返回 null', () => {
+    const reg = new BackendTaskRegistry()
+    const updated = reg.handleTaskProgress('session1', {
+      task_id: 'nope',
+      description: 'x',
+      usage: { total_tokens: 1, tool_uses: 0, duration_ms: 0 },
+    })
+    expect(updated).toBeNull()
+  })
+
+  it('handleTaskProgress 同步刷新 lastKnownAt', () => {
+    const reg = new BackendTaskRegistry()
+    reg.handleTaskStarted('session1', {
+      task_id: 'sub-p2', task_type: 'subagent', subagent_type: 'general-purpose',
+      description: 'x',
+    })
+    const before = reg.listBySession('session1')[0].lastKnownAt
+    // 确保时间推进
+    const updated = reg.handleTaskProgress('session1', {
+      task_id: 'sub-p2', description: 'x',
+      usage: { total_tokens: 1, tool_uses: 0, duration_ms: 0 },
+    })
+    expect(updated!.lastKnownAt).toBeGreaterThanOrEqual(before)
+  })

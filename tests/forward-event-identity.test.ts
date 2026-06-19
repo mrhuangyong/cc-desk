@@ -184,3 +184,30 @@ describe('forwardEvent 能力识别', () => {
     expect(created[0].data.task.kind).toBe('subagent')
     expect(created[0].data.task.subagentType).toBe('general-purpose')
   })
+
+  it('system.subtype=task_progress (已注册 subagent) → claude:backend-task update 含进度', () => {
+    const svc = new ClaudeService()
+    svc.setRegistry(new BackendTaskRegistry())
+    const { wc, calls } = mockWebContents()
+    // 先 started 注册 subagent
+    fwd(svc, {
+      type: 'system', subtype: 'task_started',
+      task_id: 't-prog', task_type: 'subagent', subagent_type: 'general-purpose',
+      description: '审查', uuid: 'u20', session_id: 's1',
+    }, wc)
+    calls.length = 0
+    // progress
+    fwd(svc, {
+      type: 'system', subtype: 'task_progress',
+      task_id: 't-prog', description: '分析中', summary: '已读 3 文件',
+      last_tool_name: 'Read',
+      usage: { total_tokens: 1234, tool_uses: 3, duration_ms: 5000 },
+      uuid: 'u21', session_id: 's1',
+    }, wc)
+
+    const updated = calls.filter(c => c.channel === 'claude:backend-task' && c.data?.op === 'update')
+    expect(updated.length).toBe(1)
+    expect(updated[0].data.task.progressSummary).toBe('已读 3 文件')
+    expect(updated[0].data.task.lastToolName).toBe('Read')
+    expect(updated[0].data.task.tokenCount).toBe(1234)
+  })

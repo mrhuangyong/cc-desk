@@ -259,6 +259,8 @@ export class ClaudeService {
           this.handleTaskUpdatedEvent(sys, lsid, webContents)
         } else if (subtype === 'task_notification') {
           this.handleTaskNotificationEvent(sys, lsid, webContents)
+        } else if (subtype === 'task_progress') {
+          this.handleTaskProgressEvent(sys, lsid, webContents)
         }
         // 其余 system 子类型（status 瞬态、hook 协议进度等）属内部噪声，不打扰用户。
         break
@@ -397,8 +399,6 @@ export class ClaudeService {
       }
       // task_started/updated/notification 的顶层 type 实为 'system'（见 system 分支按 subtype 分发）；
       // 此处不再处理，避免重复与遗漏。
-      case 'task_progress':
-        webContents.send('claude:notice', { ...mkNotice('task', `任务事件：${message.type}`, 'info'), localSessionId: lsid }); break
       case 'keep_alive':
       case 'worker_shutting_down':
       case 'commands_changed':
@@ -438,6 +438,21 @@ export class ClaudeService {
     this.delegateTaskEvent(tm, lsid, webContents,
       () => this.registry?.handleTaskNotification(lsid, { task_id: tm.task_id, status: tm.status ?? 'completed' }),
       { kind: 'updated', taskId: tm.task_id, patch: { status: tm.status ?? 'completed' } },
+    )
+  }
+
+  /** system.subtype='task_progress':已注册任务走 registry 刷新进度,否则丢弃。 */
+  private handleTaskProgressEvent(tm: any, lsid: string, webContents: WebContents): void {
+    this.delegateTaskEvent(tm, lsid, webContents,
+      () => this.registry?.handleTaskProgress(lsid, {
+        task_id: tm.task_id,
+        description: tm.description ?? '',
+        usage: tm.usage ?? { total_tokens: 0, tool_uses: 0, duration_ms: 0 },
+        last_tool_name: tm.last_tool_name,
+        summary: tm.summary,
+      }),
+      // task_progress 不回退 claude:task(进度只对已注册任务有意义)
+      {},
     )
   }
 
