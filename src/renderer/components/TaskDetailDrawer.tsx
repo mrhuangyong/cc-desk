@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { X, ListChecks, Clock, Tag } from 'lucide-react'
 import type { TaskItem } from '../types'
 import { formatSessionTime } from '../utils/formatSessionTime'
+import { Tooltip } from './Tooltip'
 
 interface Props {
   task: TaskItem | null
@@ -85,12 +86,12 @@ export function TaskDetailDrawer({ task, onClose }: Props) {
                 {task.subject || task.description || '(任务)'}
               </span>
             </div>
-            <button onClick={handleClose} title="关闭" aria-label="关闭" style={{
+            <Tooltip label="关闭"><button onClick={handleClose} title="关闭" aria-label="关闭" style={{
               width: 28, height: 28, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', borderRadius: 6,
             }}>
               <X size={16} />
-            </button>
+            </button></Tooltip>
           </div>
           {/* 状态元信息条 */}
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 11, color: 'var(--text-muted)' }}>

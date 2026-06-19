@@ -3,6 +3,7 @@ import type { ClaudeMcpServer } from '../../../main/claude-config'
 import { Toggle } from './Toggle'
 import { McpEditDialog } from './McpEditDialog'
 import { Plus, Plug, Pencil, Trash2 } from 'lucide-react'
+import { Tooltip } from '../Tooltip'
 
 const iconBtn: React.CSSProperties = {
   padding: '4px 6px', fontSize: 13, cursor: 'pointer',
@@ -65,7 +66,7 @@ export function McpSettings() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
         <h2 style={{ color: 'var(--text)', fontSize: 18, margin: 0 }}>MCP 服务器</h2>
         <div style={{ display: 'flex', gap: 4 }}>
-          <button title="添加" onClick={addNew} style={topIconBtn}><Plus size={14} /></button>
+          <Tooltip label="添加"><button title="添加" onClick={addNew} style={topIconBtn}><Plus size={14} /></button></Tooltip>
         </div>
       </div>
       <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 14 }}>
@@ -100,11 +101,11 @@ export function McpSettings() {
               <span style={{ color: 'var(--text)', fontSize: 13, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
               <span style={{ padding: '1px 7px', borderRadius: 999, fontSize: 10, border: '1px solid var(--border)', color: 'var(--text-muted)' }}>{s.transport}</span>
               <Toggle on={s.enabled} onChange={() => toggle(s.id)} aria-label={`${s.enabled ? '禁用' : '启用'} ${s.name}`} />
-              <button title="编辑" onClick={() => setEditingId(s.id)} style={iconBtn}><Pencil size={13} /></button>
+              <Tooltip label="编辑"><button title="编辑" onClick={() => setEditingId(s.id)} style={iconBtn}><Pencil size={13} /></button></Tooltip>
               {confirmingId === s.id ? (
                 <button onClick={() => remove(s.id)} style={{ ...iconBtn, color: 'var(--danger)' }}>确认？</button>
               ) : (
-                <button title="删除" onClick={() => setConfirmingId(s.id)} style={{ ...iconBtn, color: 'var(--danger)' }}><Trash2 size={13} /></button>
+                <Tooltip label="删除"><button title="删除" onClick={() => setConfirmingId(s.id)} style={{ ...iconBtn, color: 'var(--danger)' }}><Trash2 size={13} /></button></Tooltip>
               )}
             </div>
             <div style={{ padding: '0 14px 12px 40px', color: 'var(--text-muted)', fontSize: 12, fontFamily: 'var(--font-mono)' }}>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useStore } from '../state/store'
 import { ArrowRight, Check, X } from 'lucide-react'
+import { Tooltip } from './Tooltip'
 
 // AskUserQuestion 形态：payload.questions = [{ question, header, options:[{label,description,preview?}], multiSelect? }]
 // 逐步向导：一次只显示一个问题，答完「下一步」推进；最后一题显示「提交」。
@@ -97,9 +98,11 @@ export function AnswerPanel() {
       {/* 进度 + 关闭 */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{step + 1} / {total}</span>
-        <button onClick={cancel} title="取消" style={{ padding: 4, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}>
-          <X size={14} />
-        </button>
+        <Tooltip label="取消">
+          <button onClick={cancel} title="取消" style={{ padding: 4, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}>
+            <X size={14} />
+          </button>
+        </Tooltip>
       </div>
       {/* 当前问题 */}
       <div>
