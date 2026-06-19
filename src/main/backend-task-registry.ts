@@ -6,12 +6,15 @@
 // 输出由 claude-service.ts 注入 IPC 推送到渲染进程的任务面板。
 
 export type BackendTaskStatus = 'running' | 'completed' | 'failed' | 'stopped'
+export type BackendTaskKind = 'subagent' | 'workflow' | 'shell' | 'monitor'
 
 export interface BackendTask {
   id: string              // SDK task_id
   localSessionId: string
   command: string         // task_started 的 description || prompt
-  taskType?: string       // SDK task_type
+  taskType?: string       // SDK 原始 task_type
+  kind: BackendTaskKind   // 归一化类型,驱动 UI 分区/图标
+  subagentType?: string   // subagent 专属(如 general-purpose)
   status: BackendTaskStatus
   startedAt: number
   lastKnownAt: number
@@ -43,13 +46,35 @@ export class BackendTaskRegistry {
   private tasks = new Map<string, BackendTask>()
 
   /**
+   * 归一化 task_type/subagent_type → BackendTaskKind。
+   * 优先级:subagent_type 非空 > task_type 字面值。
+   * 无法明确归类（均无）时返回 null，registry 不创建。
+   *
+   * task_type 值域（见 SDK BackgroundTaskSummary.type）：
+   * 'shell' | 'subagent' | 'monitor' | 'local_workflow'。
+   * 历史版本也曾发过 'agent'，按 subagent 兜底。
+   */
+  private resolveKind(event: TaskStartedEvent): BackendTaskKind | null {
+    if (event.subagent_type) return 'subagent'
+    switch (event.task_type) {
+      case 'subagent':
+      case 'agent':          return 'subagent'   // 'agent' 历史值兜底
+      case 'local_workflow': return 'workflow'
+      case 'shell':          return 'shell'
+      case 'monitor':        return 'monitor'
+      default:               return null          // 未知不创建
+    }
+  }
+
+  /**
    * 处理 task_started 事件。
-   * 仅当 event.task_type === 'local_workflow' 时创建后台任务。
+   * 由 resolveKind 决定是否创建（subagent/workflow/shell/monitor 四类才创建）。
    * 重复 task_id 不会覆盖已存在的记录。
-   * 返回创建的 BackendTask，或 null（条件不满足时）。
+   * 返回创建的 BackendTask，或 null（无法归类时）。
    */
   handleTaskStarted(localSessionId: string, event: TaskStartedEvent): BackendTask | null {
-    if (event.task_type !== 'local_workflow') return null
+    const kind = this.resolveKind(event)
+    if (!kind) return null
 
     // 重复 task_id → 返回已存在的记录，不覆盖
     const existing = this.tasks.get(event.task_id)
@@ -61,6 +86,8 @@ export class BackendTaskRegistry {
       localSessionId,
       command: event.description || event.prompt || '(后台任务)',
       taskType: event.task_type,
+      kind,
+      subagentType: event.subagent_type,
       status: 'running',
       startedAt: now,
       lastKnownAt: now,
