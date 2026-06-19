@@ -170,4 +170,25 @@ describe('BackendTaskPanel', () => {
     expect(screen.queryByText('输出X')).toBeNull()
   })
 
+  // ===== 实时进度展示(需求3 UI) =====
+  it('running subagent 有进度字段 → 行内显示摘要/工具/token', () => {
+    render(<BackendTaskPanel tasks={[]}
+      backendTasks={[{ id: 'sub-p', localSessionId: 's1', command: '审查', kind: 'subagent', subagentType: 'general-purpose', status: 'running', startedAt: 0, lastKnownAt: 0, progressSummary: '正在读取文件', lastToolName: 'Read', tokenCount: 1234, toolUses: 3 }]}
+      showTodo showBackendTask folded={{ root: false, taskCard: false, subagentCard: false, backendTaskCard: false }}
+      activeSessionId="s1" dispatch={dispatch} />)
+    expect(screen.getByText('正在读取文件')).toBeTruthy()
+    expect(screen.getByText('⏵ Read')).toBeTruthy()
+    expect(screen.getByText('1.2k tok')).toBeTruthy()
+    expect(screen.getByText('3 工具')).toBeTruthy()
+  })
+
+  it('completed subagent → 不显示进度行', () => {
+    const { container } = render(<BackendTaskPanel tasks={[]}
+      backendTasks={[{ id: 'sub-pc', localSessionId: 's1', command: '完成', kind: 'subagent', subagentType: 'general-purpose', status: 'completed', startedAt: 0, lastKnownAt: 0, progressSummary: '摘要', lastToolName: 'Read', tokenCount: 100 }]}
+      showTodo showBackendTask folded={{ root: false, taskCard: false, subagentCard: false, backendTaskCard: false }}
+      activeSessionId="s1" dispatch={dispatch} />)
+    expect(screen.queryByText('摘要')).toBeNull()
+    expect(screen.queryByText('⏵ Read')).toBeNull()
+  })
+
 })
