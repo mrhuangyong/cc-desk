@@ -292,3 +292,42 @@ describe('BackendTaskRegistry', () => {
     expect(second!.command).toBe('第一次')
   })
 })
+
+describe('BackendTaskRegistry 清理（防内存泄漏）', () => {
+  it('clearBySession 移除指定会话的所有任务，返回移除数', () => {
+    const reg = new BackendTaskRegistry()
+    reg.handleTaskStarted('s1', { task_id: 'a', task_type: 'local_workflow', description: 'x' })
+    reg.handleTaskStarted('s1', { task_id: 'b', task_type: 'local_workflow', description: 'y' })
+    reg.handleTaskStarted('s2', { task_id: 'c', task_type: 'local_workflow', description: 'z' })
+    const removed = reg.clearBySession('s1')
+    expect(removed).toBe(2)
+    expect(reg.listBySession('s1')).toEqual([])
+    // 其他会话不受影响
+    expect(reg.listBySession('s2').length).toBe(1)
+    expect(reg.isManaged('c')).toBe(true)
+  })
+
+  it('clearBySession 不存在的会话 → 返回 0，不报错', () => {
+    const reg = new BackendTaskRegistry()
+    expect(reg.clearBySession('none')).toBe(0)
+  })
+
+  it('clearAll 清空全部', () => {
+    const reg = new BackendTaskRegistry()
+    reg.handleTaskStarted('s1', { task_id: 'a', task_type: 'local_workflow', description: 'x' })
+    reg.handleTaskStarted('s2', { task_id: 'b', task_type: 'local_workflow', description: 'y' })
+    reg.clearAll()
+    expect(reg.listBySession('s1')).toEqual([])
+    expect(reg.listBySession('s2')).toEqual([])
+    expect(reg.isManaged('a')).toBe(false)
+  })
+
+  it('清理后同 task_id 可重新注册（无残留）', () => {
+    const reg = new BackendTaskRegistry()
+    reg.handleTaskStarted('s1', { task_id: 'reuse', task_type: 'local_workflow', description: 'old' })
+    reg.clearBySession('s1')
+    const t = reg.handleTaskStarted('s1', { task_id: 'reuse', task_type: 'local_workflow', description: 'new' })
+    expect(t).not.toBeNull()
+    expect(t!.command).toBe('new')
+  })
+})
