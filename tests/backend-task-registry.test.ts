@@ -331,3 +331,51 @@ describe('BackendTaskRegistry 清理（防内存泄漏）', () => {
     expect(t!.command).toBe('new')
   })
 })
+
+  // ===== resolveKind: subagent 识别 =====
+  it('task_started 带 subagent_type → 创建 kind=subagent 任务', () => {
+    const reg = new BackendTaskRegistry()
+    const task = reg.handleTaskStarted('session1', {
+      task_id: 'sub1',
+      task_type: 'subagent',
+      subagent_type: 'general-purpose',
+      description: '审查 src 目录',
+    })
+
+    expect(task).not.toBeNull()
+    expect(task!.kind).toBe('subagent')
+    expect(task!.subagentType).toBe('general-purpose')
+    expect(task!.command).toBe('审查 src 目录')
+  })
+
+  it('task_started subagent_type 非空但 task_type 为 agent → 仍归 subagent', () => {
+    const reg = new BackendTaskRegistry()
+    const task = reg.handleTaskStarted('session1', {
+      task_id: 'sub2',
+      task_type: 'agent',
+      subagent_type: 'code-reviewer',
+      description: '代码评审',
+    })
+
+    expect(task).not.toBeNull()
+    expect(task!.kind).toBe('subagent')
+  })
+
+  it('local_workflow 事件 kind=workflow', () => {
+    const reg = new BackendTaskRegistry()
+    const task = reg.handleTaskStarted('session1', {
+      task_id: 'wf1', task_type: 'local_workflow', description: '跑脚本',
+    })
+
+    expect(task).not.toBeNull()
+    expect(task!.kind).toBe('workflow')
+  })
+
+  it('无 task_type 且无 subagent_type → 不创建(兼容旧 todo 行为)', () => {
+    const reg = new BackendTaskRegistry()
+    const task = reg.handleTaskStarted('session1', {
+      task_id: 'unknown1', description: '神秘任务',
+    })
+
+    expect(task).toBeNull()
+  })
