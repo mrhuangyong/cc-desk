@@ -14,13 +14,29 @@ export interface TipTapNodeJSON {
   text?: string
 }
 
-// / 菜单项（命令 + 技能混合）
+// / 菜单项（命令 + 技能 + 内置 混合）
 export interface SlashMenuItem {
-  kind: 'command' | 'skill'
-  id: string        // command: 'user:review'；skill: 'superpowers:frontend-design'
-  name: string      // command: '/review'（含斜杠）；skill: 'frontend-design'
+  kind: 'command' | 'skill' | 'builtin'
+  id: string        // command: 'user:review'；skill: 'superpowers:frontend-design'；builtin: 'builtin:init'
+  name: string      // command: '/review'（含斜杠）；skill: 'frontend-design'；builtin: '/init'
   desc: string
+  builtinAction?: BuiltinAction   // 仅 builtin 有
 }
+
+// 内置命令的动作描述：渲染端据此分发到 handler
+export type BuiltinAction =
+  | { type: 'open-settings'; section: import('../types').SettingsSection }
+  | { type: 'open-permission-menu' }
+  | { type: 'clear-session' }
+  | { type: 'compact' }
+  | { type: 'show-cost' }
+  | { type: 'init-project' }
+  | { type: 'add-dir' }
+  | { type: 'export-session' }
+  | { type: 'show-status' }
+  | { type: 'resume' }
+  | { type: 'run-review' }
+  | { type: 'insert-text' }
 
 // @ 菜单项（文件/目录）
 export interface FileMenuItem {

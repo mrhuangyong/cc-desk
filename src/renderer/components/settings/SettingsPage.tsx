@@ -9,13 +9,14 @@ import { McpSettings } from './McpSettings'
 import { PluginSettings } from './PluginSettings'
 import { CommandSettings } from './CommandSettings'
 import { HooksSettings } from './HooksSettings'
+import { ArchivedSessionsSettings } from './ArchivedSessionsSettings'
 
 // WebkitAppRegion 是 Electron/WebKit CSS 属性，React CSSProperties 未收录，定义局部超集
 type DragStyle = CSSProperties & { WebkitAppRegion?: 'drag' | 'no-drag' }
 const drag: DragStyle = { WebkitAppRegion: 'drag' }
 
 export function SettingsPage() {
-  const { state } = useStore()
+  const { state, dispatch } = useStore()
   // 缩放只作用于内容，不含顶部 36px 拖动条（与红绿灯区对齐，不可缩放）
   const z = state.settings.zoom
   const zoomFactor = z === 'small' ? 0.85 : z === 'large' ? 1.2 : 1
@@ -31,6 +32,7 @@ export function SettingsPage() {
       case 'plugins': return <PluginSettings />
       case 'commands': return <CommandSettings />
       case 'hooks': return <HooksSettings />
+      case 'archived': return <ArchivedSessionsSettings projects={state.projects} dispatch={dispatch as any} />
     }
   }
 

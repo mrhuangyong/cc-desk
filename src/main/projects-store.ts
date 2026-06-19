@@ -4,6 +4,7 @@
 import Store from 'electron-store'
 import type { Project, Tab } from '../renderer/types'
 import { computeLastSeq } from './seq-utils'
+import { CC_DESK_DIR } from './paths'
 
 // 持久化的工作区快照：只含需要恢复的稳定字段。
 // 刻意排除 streamingBySession / draft / theme / currentView / settings 等临时态或已有独立存储的字段。
@@ -29,9 +30,11 @@ const EMPTY: ProjectsSnapshot = {
 }
 
 // 独立文件名 projects.json（electron-store 默认 config.json）
+// 固定写入 ~/.cc-desk/projects.json
 function createStore(): Store<{ snapshot: ProjectsSnapshot }> {
   return new Store<{ snapshot: ProjectsSnapshot }>({
     name: 'projects',
+    cwd: CC_DESK_DIR,
     defaults: { snapshot: EMPTY },
   })
 }

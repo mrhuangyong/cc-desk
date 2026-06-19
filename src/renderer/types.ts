@@ -58,12 +58,64 @@ export interface Draft {
   attachments: DraftAttachment[]
 }
 
+// 排队消息（queue 模式：AI 流式中发送的消息先排队，完成后自动发送）
+export interface QueuedMessage {
+  id: string
+  prompt: string
+  attachments: DraftAttachment[]
+}
+
+// Claude task（Task 工具创建的子任务，悬浮面板展示）
+export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'killed' | 'paused'
+export interface TaskItem {
+  id: string                  // SDK 的 task_id
+  description: string
+  taskType: string
+  status: TaskStatus
+}
+
+// 计划模式提交（ExitPlanMode）：模型在 plan 模式下产出的计划
+export interface PlanProposal {
+  toolUseId: string
+  plan: string               // Markdown 计划文本
+  allowedPrompts?: { tool: string; prompt: string }[]
+}
+
+export type BackendTaskKind = 'subagent' | 'workflow' | 'shell' | 'monitor'
+
+export type BackendTaskStatus = 'running' | 'completed' | 'failed' | 'stopped'
+export interface BackendTask {
+  id: string
+  localSessionId: string
+  command: string
+  taskType?: string
+  kind: BackendTaskKind
+  subagentType?: string
+  status: BackendTaskStatus
+  startedAt: number
+  lastKnownAt: number
+  toolUseId?: string              // 触发该任务的 Task tool_use block id(主流隐藏/面板详情锚定)
+  // 实时进度(task_progress 事件刷新,~30s 一次)
+  progressSummary?: string        // AI 生成的进度摘要
+  lastToolName?: string           // 最近调用的工具名
+  tokenCount?: number             // 累计 token
+  toolUses?: number               // 累计工具调用数
+  durationMs?: number             // 累计耗时
+}
+
 // 会话：归属于某个项目
 export interface Session {
   id: string
   title: string
   messages: Message[]
+  archived?: boolean
+  archivedAt?: number
   updatedAt?: number    // 最后活动时间戳（ms），用于自动归档判断
+  // 会话级权限/思考（持久化到 projects.json）；undefined 时用默认
+  permissionMode?: string          // '变更前确认' | '自动编辑' | '计划模式' | '完全访问'
+  thinking?: 'low' | 'medium' | 'high'   // SDK EffortLevel 子集
+  extraDirs?: string[]             // /add-dir 追加的可访问目录
+  notices?: SystemNotice[]         // 会话级系统提示（cost/status/compact 等固化通知）
 }
 
 // 项目：包含多个会话
@@ -86,6 +138,8 @@ export interface Tab {
   filePath?: string
   // browser 类型独有：当前网址
   url?: string
+  // terminal 类型独有：终端工作目录
+  cwd?: string
 }
 
 // 主题 ID
@@ -104,7 +158,7 @@ export interface FileNode {
 // 设置子页标识
 export type SettingsSection =
   | 'general' | 'code-preview' | 'model' | 'skills'
-  | 'mcp' | 'plugins' | 'commands' | 'hooks'
+  | 'mcp' | 'plugins' | 'commands' | 'hooks' | 'archived'
 
 // 顶层视图
 export type AppView = 'workspace' | 'settings'
@@ -162,9 +216,9 @@ export interface AppSettings {
   queueMode: string
   showThinking: boolean
   showTodo: boolean
+  showBackendTask: boolean
   autoArchive: boolean
   archiveDays: string
-  dataPath: string
 
   // ===== 各设置子页 =====
   codePreview: CodePreviewSettings

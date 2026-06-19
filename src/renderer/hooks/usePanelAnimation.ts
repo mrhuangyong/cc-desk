@@ -33,6 +33,7 @@ export function usePanelAnimation(collapsed: boolean) {
         })
       })
     } else {
+      if (phase === 'idle') return
       expandingRef.current = false
       setPhase('collapsing')
       setTargetWidth(0)

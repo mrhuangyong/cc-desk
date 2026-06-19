@@ -15,6 +15,7 @@ export function McpSettings() {
   const [q, setQ] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
+  const [pendingNewId, setPendingNewId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   // 挂载与刷新：从 ~/.claude.json 的 mcpServers 读取真实配置
@@ -43,8 +44,17 @@ export function McpSettings() {
   }
   const addNew = () => {
     const id = `mcp-${Date.now()}`
-    persist([...servers, { id, name: `new-mcp-${servers.length + 1}`, transport: 'stdio', command: '', args: '', env: '', enabled: true, scope: '用户' }])
+    setServers([...servers, { id, name: `new-mcp-${servers.length + 1}`, transport: 'stdio', command: '', args: '', env: '', enabled: true, scope: '用户' }])
+    setPendingNewId(id)
     setEditingId(id)
+  }
+
+  const closeEditor = () => {
+    if (editingId && editingId === pendingNewId) {
+      setServers(servers.filter(s => s.id !== editingId))
+      setPendingNewId(null)
+    }
+    setEditingId(null)
   }
 
   const editing = servers.find(s => s.id === editingId) ?? null
@@ -108,8 +118,8 @@ export function McpSettings() {
       {editing && (
         <McpEditDialog
           server={editing}
-          onSave={(patch) => { update(editing.id, patch); setEditingId(null) }}
-          onCancel={() => setEditingId(null)}
+          onSave={(patch) => { update(editing.id, patch); setPendingNewId(null); setEditingId(null) }}
+          onCancel={closeEditor}
         />
       )}
     </div>

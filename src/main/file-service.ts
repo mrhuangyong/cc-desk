@@ -1,5 +1,5 @@
 // src/main/file-service.ts
-import { readdir, readFile, stat } from 'fs/promises'
+import { readdir, readFile, stat, writeFile, rename, unlink } from 'fs/promises'
 import { join } from 'path'
 import ignore from 'ignore'
 
@@ -32,10 +32,38 @@ export async function readDirTree(dirPath: string, depth = 3): Promise<FileNode[
   })
 }
 
+// 判断路径是否存在（文件或目录）。供渲染进程在把疑似路径识别为可点击链接前校验，
+// 避免把普通文本误判成路径后点击打不开。任何异常都视为不存在。
+export async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await stat(filePath)
+    return true
+  } catch {
+    return false
+  }
+}
+
 export async function readFileContent(filePath: string): Promise<string> {
   const s = await stat(filePath)
   if (s.size > 1024 * 200) throw new Error('文件过大（>200KB）')
   return readFile(filePath, 'utf-8')
+}
+
+// 原子写：先写临时文件再 rename 覆盖，避免写一半崩溃损坏原文件。
+// 任一步失败均不触碰原文件，并清理 tmp。
+export async function writeFileContent(filePath: string, content: string): Promise<void> {
+  const tmp = `${filePath}.ccdesk-tmp`
+  try {
+    await writeFile(tmp, content, 'utf-8')
+    await rename(tmp, filePath)
+  } catch (err) {
+    try { await rmQuiet(tmp) } catch { /* 忽略清理失败 */ }
+    throw err
+  }
+}
+
+async function rmQuiet(p: string): Promise<void> {
+  try { await unlink(p) } catch { /* noop */ }
 }
 
 // 读单个目录的 .gitignore / .aiignore，返回合并后的模式行（去空行/注释）。

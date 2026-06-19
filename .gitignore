@@ -4,3 +4,7 @@ dist/
 out/
 *.log
 .tsbuild/
+# codegraph 代码索引（本地工具产物）
+.codegraph/
+# iconset 中间产物（iconutil 用，成品 icns/png 已提交）
+build/icons/icon.iconset/

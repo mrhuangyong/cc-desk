@@ -19,13 +19,36 @@ export interface AppState {
     blocks: ContentBlock[]
     notices: SystemNotice[]
     error?: string
+    // 进行中 assistant message 在 projects.messages 中的 id（实时持久化锚点）。
+    // 流式内容同步写入该 message，刷新后 HYDRATE 可恢复到截断点。
+    draftMessageId?: string
   }>
   // 应用设置：apiKey / model / cwd / providers / models（与主进程 AppSettings 一致）
   settings: AppSettings
   // 本地会话 ID → Claude SDK 返回的真实 session ID 映射，用于 resume 续接
   claudeSessionMap: Record<string, string>
   // 待处理的用户对话请求（AskUserQuestion 等），Task 10 使用
-  pendingDialog: { reqId: string; dialogKind: string; payload: any; toolUseId?: string } | null
+  pendingDialog: { reqId: string; sessionId?: string; dialogKind: string; payload: any; toolUseId?: string } | null
+  // 脏 tab 记录：key = tabId，value = true（未保存改动）。FileTab 上报，TabBar 读取消耗。
+  dirtyTabIds: Record<string, boolean>
+  // 用户点击文件树打开文件的递增计数：每次 OPEN_FILE_TAB +1。App 监听它，
+  // 检测到文件被点击时自动展开折叠的右栏。切 tab/关 tab 不动它。
+  lastFileOpenedSeq: number
+  // 消息排队（queue 模式）：按会话隔离的待发送队列
+  queueBySession: Record<string, import('../types').QueuedMessage[]>
+  // Claude task：按会话隔离的 task 列表（悬浮面板）
+  tasksBySession: Record<string, import('../types').TaskItem[]>
+  // 后台任务：按会话隔离的后台任务列表（悬浮面板）
+  backendTasksBySession: Record<string, import('../types').BackendTask[]>
+  // 右上角 Panel 折叠状态（四层独立）
+  panelFold: { root: boolean; taskCard: boolean; subagentCard: boolean; backendTaskCard: boolean }
+  // 子代理对话输出：按会话 + 触发它的 Task tool_use id 索引，累积 ContentBlock[]
+  subagentOutputBySession: Record<string, Record<string, import('../types').ContentBlock[]>>
+  // 计划模式：模型提交的计划（ExitPlanMode）。按会话隔离，每次提交覆盖前一条。
+  planBySession: Record<string, import('../types').PlanProposal | null>
+  // 用户主动中止的 session 标志:interrupt 可能不立即生效,SDK 续推的 delta 会被忽略,
+  // 直到用户发新消息(STREAM_START)清除。避免停止后 streaming 被重建(停止按钮闪烁)。
+  abortedBySession: Record<string, boolean>
 }
 
 // TODO: idCounter is module-level mutable state — non-deterministic IDs. Acceptable for prototype; thread through state if persistence/time-travel needed later.
@@ -35,7 +58,64 @@ function nextId(prefix: string): string {
   return `${prefix}${idCounter}`
 }
 
-// 持久化恢复（HYDRATE）时，把 idCounter 重置为已恢复数据中的最大序号，
+// 按会话隔离的列表 upsert：tasksBySession / backendTasksBySession 共用。
+function upsertBySession<S extends AppState, K extends keyof S>(
+  state: S, field: K, sessionId: string, item: { id: string },
+): S {
+  const map = state[field] as unknown as Record<string, { id: string }[]>
+  const list = map[sessionId] ?? []
+  const idx = list.findIndex(t => t.id === item.id)
+  const next = idx >= 0 ? list.map(t => (t.id === item.id ? item : t)) : [...list, item]
+  return { ...state, [field]: { ...map, [sessionId]: next } }
+}
+
+// 按 sessionId 在 projects 树里 patch 单个会话字段（permission/thinking/extraDirs/messages 等共用）。
+function patchSession<S extends Session>(state: AppState, sessionId: string, patch: Partial<S>): AppState {
+  const projects = state.projects.map(p => ({
+    ...p,
+    sessions: p.sessions.map(s => (s.id === sessionId ? { ...s, ...patch } : s)),
+  }))
+  return { ...state, projects }
+}
+
+// 把 streaming blocks 同步写入 projects.messages 中 draftMessageId 对应的进行中 message。
+// 实时持久化锚点:刷新后 HYDRATE 可恢复到截断点,新事件续接。
+// 兜底:若 streaming 没有 draftMessageId(刷新后第一个事件先于 RESTORE_STREAMING 到达),
+// 懒创建一个 draft message 并关联回去。
+function syncDraftMessage(state: AppState, sessionId: string): AppState {
+  let stream = state.streamingBySession[sessionId]
+  if (!stream) return state
+  // 无 draftMessageId:懒创建(竞态兜底)
+  if (!stream.draftMessageId) {
+    const draftId = `m${Date.now()}`
+    const draftMsg = { id: draftId, role: 'assistant' as const, content: [{ type: 'text' as const, text: '' }] }
+    const seeded = state.projects.map(p => ({
+      ...p,
+      sessions: p.sessions.map(s => s.id === sessionId ? { ...s, messages: [...s.messages, draftMsg] } : s),
+    }))
+    state = { ...state, projects: seeded, streamingBySession: { ...state.streamingBySession, [sessionId]: { ...stream, draftMessageId: draftId } } }
+    stream = state.streamingBySession[sessionId]!
+  }
+  const draftId = stream.draftMessageId!
+  const projects = state.projects.map(p => ({
+    ...p,
+    sessions: p.sessions.map(s => {
+      if (s.id !== sessionId) return s
+      const idx = s.messages.findIndex(m => m.id === draftId)
+      if (idx < 0) return s
+      const msgs = [...s.messages]
+      msgs[idx] = {
+        ...msgs[idx],
+        content: stream!.blocks.length ? stream!.blocks : [{ type: 'text' as const, text: '' }],
+        ...(stream!.notices.length ? { notices: stream!.notices } : {}),
+      }
+      return { ...s, messages: msgs, updatedAt: Date.now() }
+    }),
+  }))
+  return { ...state, projects }
+}
+
+// 持久化恢复（HYDRATE）时，把 idCounter 重置为已恢复数据中的最大序号，// 持久化恢复（HYDRATE）时，把 idCounter 重置为已恢复数据中的最大序号，
 // 避免新增 ID 与已恢复的 p1/p2/s1... 冲突。
 export function setIdCounter(n: number): void {
   idCounter = n
@@ -54,7 +134,7 @@ function isEmptySession(s: Session): boolean {
 // 删除后，找一个存活的会话 id 作为新的 activeSessionId
 function pickSurvivingSessionId(projects: Project[], excludedId: string): string | null {
   for (const p of projects) {
-    const found = p.sessions.find(s => s.id !== excludedId)
+    const found = p.sessions.find(s => s.id !== excludedId && !s.archived)
     if (found) return found.id
   }
   return null
@@ -150,7 +230,8 @@ export function reducer(state: AppState, action: Action): AppState {
       if (existing) {
         return {
           ...state,
-          activeTabIdBySession: { ...state.activeTabIdBySession, [activeSessionId]: existing.id }
+          activeTabIdBySession: { ...state.activeTabIdBySession, [activeSessionId]: existing.id },
+          lastFileOpenedSeq: state.lastFileOpenedSeq + 1
         }
       }
       const newTab: Tab = {
@@ -162,7 +243,8 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         tabsBySession: { ...state.tabsBySession, [activeSessionId]: [...tabs, newTab] },
-        activeTabIdBySession: { ...state.activeTabIdBySession, [activeSessionId]: newTab.id }
+        activeTabIdBySession: { ...state.activeTabIdBySession, [activeSessionId]: newTab.id },
+        lastFileOpenedSeq: state.lastFileOpenedSeq + 1
       }
     }
     case 'OPEN_TAB': {
@@ -171,13 +253,22 @@ export function reducer(state: AppState, action: Action): AppState {
       const newTab: Tab = {
         id: nextId('t'),
         type: action.tabType,
-        title: action.tabType === 'browser' ? '浏览器' : action.tabType === 'terminal' ? '终端' : action.tabType === 'review' ? '审查' : '文件'
+        title: action.tabType === 'browser' ? (action.url || '浏览器') : action.tabType === 'terminal' ? '终端' : action.tabType === 'review' ? '审查' : '文件',
+        ...(action.cwd ? { cwd: action.cwd } : {}),
+        ...(action.url ? { url: action.url } : {})
       }
       return {
         ...state,
         tabsBySession: { ...state.tabsBySession, [activeSessionId]: [...tabs, newTab] },
-        activeTabIdBySession: { ...state.activeTabIdBySession, [activeSessionId]: newTab.id }
+        activeTabIdBySession: { ...state.activeTabIdBySession, [activeSessionId]: newTab.id },
+        lastFileOpenedSeq: state.lastFileOpenedSeq + 1
       }
+    }
+    case 'TAB_DIRTY': {
+      const dirtyTabIds = { ...state.dirtyTabIds }
+      if (action.dirty) dirtyTabIds[action.tabId] = true
+      else delete dirtyTabIds[action.tabId]
+      return { ...state, dirtyTabIds }
     }
     case 'CLOSE_TAB': {
       const activeSessionId = state.activeSessionId
@@ -187,10 +278,13 @@ export function reducer(state: AppState, action: Action): AppState {
       if (currentActive === action.tabId) {
         activeTabIdBySession[activeSessionId] = tabs.length > 0 ? tabs[tabs.length - 1].id : null
       }
+      const dirtyTabIds = { ...state.dirtyTabIds }
+      delete dirtyTabIds[action.tabId]
       return {
         ...state,
         tabsBySession: { ...state.tabsBySession, [activeSessionId]: tabs },
-        activeTabIdBySession
+        activeTabIdBySession,
+        dirtyTabIds
       }
     }
     case 'SELECT_TAB': {
@@ -254,15 +348,31 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, activeSettingsSection: action.section, currentView: 'settings' }
     }
     case 'STREAM_START': {
+      // 创建进行中 assistant message 并放入 projects.messages,作为实时持久化锚点。
+      // 流式 blocks 会同步写入它,刷新后 HYDRATE 恢复到截断点。
+      const draftId = `m${Date.now()}`
+      const draftMsg = { id: draftId, role: 'assistant' as const, content: [{ type: 'text' as const, text: '' }] }
+      const projects = state.projects.map(p => ({
+        ...p,
+        sessions: p.sessions.map(s => s.id === action.sessionId
+          ? { ...s, messages: [...s.messages, draftMsg], updatedAt: Date.now() }
+          : s),
+      }))
+      // 清除中止标志:用户发新消息表示开始新一轮,不再忽略 delta
+      const { [action.sessionId]: _ab, ...restAb } = state.abortedBySession
       return {
         ...state,
+        projects,
         streamingBySession: {
           ...state.streamingBySession,
-          [action.sessionId]: { blocks: [], notices: [] },
+          [action.sessionId]: { blocks: [], notices: [], draftMessageId: draftId },
         },
+        abortedBySession: restAb,
       }
     }
     case 'STREAM_DELTA': {
+      // 用户已中止该 session:interrupt 可能不立即生效,SDK 续推的 delta 被忽略
+      if (state.abortedBySession[action.sessionId]) return state
       const prev = state.streamingBySession[action.sessionId] || { blocks: [], notices: [] }
       const blocks = [...prev.blocks]
       const last = blocks[blocks.length - 1]
@@ -272,45 +382,30 @@ export function reducer(state: AppState, action: Action): AppState {
       } else {
         blocks.push({ type: blockType, text: action.delta } as ContentBlock)
       }
-      return {
-        ...state,
-        streamingBySession: {
-          ...state.streamingBySession,
-          [action.sessionId]: { ...prev, blocks },
-        },
-      }
+      const next = { ...state, streamingBySession: { ...state.streamingBySession, [action.sessionId]: { ...prev, blocks } } }
+      return syncDraftMessage(next, action.sessionId)
     }
     case 'STREAM_TOOL_USE_START': {
+      if (state.abortedBySession[action.sessionId]) return state
       const prev = state.streamingBySession[action.sessionId] || { blocks: [], notices: [] }
-      return {
-        ...state,
-        streamingBySession: {
-          ...state.streamingBySession,
-          [action.sessionId]: { ...prev, blocks: [...prev.blocks, action.block] },
-        },
-      }
+      const next = { ...state, streamingBySession: { ...state.streamingBySession, [action.sessionId]: { ...prev, blocks: [...prev.blocks, action.block] } } }
+      return syncDraftMessage(next, action.sessionId)
     }
     case 'STREAM_TOOL_RESULT': {
+      if (state.abortedBySession[action.sessionId]) return state
       const prev = state.streamingBySession[action.sessionId] || { blocks: [], notices: [] }
       const blocks = prev.blocks.map(b =>
         b.type === 'tool_use' && b.id === action.toolUseId
           ? { ...b, result: action.result, status: action.result.isError ? 'error' as const : 'completed' as const }
           : b
       )
-      return {
-        ...state,
-        streamingBySession: { ...state.streamingBySession, [action.sessionId]: { ...prev, blocks } },
-      }
+      const next = { ...state, streamingBySession: { ...state.streamingBySession, [action.sessionId]: { ...prev, blocks } } }
+      return syncDraftMessage(next, action.sessionId)
     }
     case 'STREAM_NOTICE': {
       const prev = state.streamingBySession[action.sessionId] || { blocks: [], notices: [] }
-      return {
-        ...state,
-        streamingBySession: {
-          ...state.streamingBySession,
-          [action.sessionId]: { ...prev, notices: [...prev.notices, action.notice] },
-        },
-      }
+      const next = { ...state, streamingBySession: { ...state.streamingBySession, [action.sessionId]: { ...prev, notices: [...prev.notices, action.notice] } } }
+      return syncDraftMessage(next, action.sessionId)
     }
     case 'STREAM_ERROR': {
       const prev = state.streamingBySession[action.sessionId] || { blocks: [], notices: [] }
@@ -320,6 +415,7 @@ export function reducer(state: AppState, action: Action): AppState {
       }
     }
     case 'STREAM_ASSISTANT_BLOCKS': {
+      if (state.abortedBySession[action.sessionId]) return state
       const prev = state.streamingBySession[action.sessionId] || { blocks: [], notices: [] }
       const seen = (prev as any)._seenUuids as string[] | undefined
       if (seen?.includes(action.uuid)) {
@@ -356,40 +452,112 @@ export function reducer(state: AppState, action: Action): AppState {
           merged.push(nb)
         }
       }
-      return {
+      const next = {
         ...state,
         streamingBySession: {
           ...state.streamingBySession,
           [action.sessionId]: { ...prev, blocks: merged, _seenUuids: [...(seen || []), action.uuid] } as any,
         },
       }
+      return syncDraftMessage(next, action.sessionId)
     }
     case 'STREAM_END': {
       // 若该 session 没有进行中的流（竞态：未 STREAM_START 就收到 result，
       // 或已被 STREAM_ABORTED 清理），不追加幽灵空消息，仅原样返回。
       const existing = state.streamingBySession[action.sessionId]
-      if (!existing) return state
-      const stream = existing
-      const assistantMsg = {
-        id: `m${Date.now()}`,
-        role: 'assistant' as const,
-        content: stream.blocks.length ? stream.blocks : [{ type: 'text' as const, text: '' }],
-        ...(stream.notices.length ? { notices: stream.notices } : {}),
-        ...(action.costUSD != null ? { costUSD: action.costUSD } : {}),
-        ...(action.durationMs != null ? { durationMs: action.durationMs } : {}),
-        ...(action.turns != null ? { turns: action.turns } : {}),
-        ...(action.isError ? { isError: true } : {}),
+      if (!existing) {
+        // 即便没有 streaming(已被 aborted 清),也清除中止标志,允许后续新消息正常工作
+        const { [action.sessionId]: _a, ...restA } = state.abortedBySession
+        return { ...state, abortedBySession: restA }
       }
+      const stream = existing
+      // finalize draft message:补全 cost/turns 等,保留同一 id(不新建)。
+      // 这样进行中内容已实时持久化,完成时只需补元数据。
       const projects = state.projects.map(p => ({
         ...p,
-        sessions: p.sessions.map(s => s.id === action.sessionId ? { ...s, messages: [...s.messages, assistantMsg] } : s),
+        sessions: p.sessions.map(s => {
+          if (s.id !== action.sessionId) return s
+          // 有 draftMessageId 时 finalize 它;否则(老数据/竞态)回退到新建追加
+          if (stream.draftMessageId) {
+            const idx = s.messages.findIndex(m => m.id === stream.draftMessageId)
+            if (idx >= 0) {
+              const msgs = [...s.messages]
+              msgs[idx] = {
+                ...msgs[idx],
+                content: stream.blocks.length ? stream.blocks : [{ type: 'text' as const, text: '' }],
+                ...(stream.notices.length ? { notices: stream.notices } : {}),
+                ...(action.costUSD != null ? { costUSD: action.costUSD } : {}),
+                ...(action.durationMs != null ? { durationMs: action.durationMs } : {}),
+                ...(action.turns != null ? { turns: action.turns } : {}),
+                ...(action.isError ? { isError: true } : {}),
+              }
+              return { ...s, messages: msgs }
+            }
+          }
+          const fallback = {
+            id: `m${Date.now()}`, role: 'assistant' as const,
+            content: stream.blocks.length ? stream.blocks : [{ type: 'text' as const, text: '' }],
+            ...(stream.notices.length ? { notices: stream.notices } : {}),
+            ...(action.costUSD != null ? { costUSD: action.costUSD } : {}),
+            ...(action.durationMs != null ? { durationMs: action.durationMs } : {}),
+            ...(action.turns != null ? { turns: action.turns } : {}),
+            ...(action.isError ? { isError: true } : {}),
+          }
+          return { ...s, messages: [...s.messages, fallback] }
+        }),
       }))
+      // 防护：若该 session 有未答的 pendingDialog（授权等待期间 SDK 提前结束），
+      // 保留 streaming 状态——用户回答后 SDK 会续跑，此时不应清流，避免按钮在
+      // 「可发送/停止」间反复跳动。续跑的最终 result（无 pendingDialog 时）才真正清流。
+      const dialogPending = state.pendingDialog?.sessionId === action.sessionId
+      if (dialogPending) {
+        // 固化本轮消息，但重置 streaming blocks 为空（续跑输出会重新追加）
+        return { ...state, projects, streamingBySession: { ...state.streamingBySession, [action.sessionId]: { blocks: [], notices: [] } } }
+      }
       const { [action.sessionId]: _, ...rest } = state.streamingBySession
-      return { ...state, projects, streamingBySession: rest }
+      const { [action.sessionId]: _a2, ...restA2 } = state.abortedBySession
+      return { ...state, projects, streamingBySession: rest, abortedBySession: restA2 }
     }
     case 'STREAM_ABORTED': {
+      // draft message 已含已输出内容,保留在 messages 里(刷新后可见)。
+      // 仅清理 streaming 状态。若 blocks 为空则移除空占位 message。
+      const stream = state.streamingBySession[action.sessionId]
+      let projects = state.projects
+      if (stream?.draftMessageId) {
+        projects = state.projects.map(p => ({
+          ...p,
+          sessions: p.sessions.map(s => {
+            if (s.id !== action.sessionId) return s
+            const idx = s.messages.findIndex(m => m.id === stream.draftMessageId)
+            if (idx < 0) return s
+            // 若 draft 内容为空,移除占位;否则保留已输出内容
+            const draft = s.messages[idx]
+            const isEmpty = draft.content.length === 0 || (draft.content.length === 1 && draft.content[0].type === 'text' && !(draft.content[0] as any).text)
+            const msgs = isEmpty ? s.messages.filter(m => m.id !== stream.draftMessageId) : s.messages
+            return { ...s, messages: msgs }
+          }),
+        }))
+      }
       const { [action.sessionId]: _, ...rest } = state.streamingBySession
-      return { ...state, streamingBySession: rest }
+      // 标记该 session 已中止:interrupt 不立即生效时,SDK 续推的 delta 会被忽略,
+      // 直到用户发新消息(STREAM_START 清除)。避免停止后 streaming 被重建。
+      return { ...state, projects, streamingBySession: rest, abortedBySession: { ...state.abortedBySession, [action.sessionId]: true } }
+    }
+    case 'RESTORE_STREAMING': {
+      // 刷新后:把已恢复的 draft message 重建为 streaming 状态。
+      // blocks/notices 来自该 message 的 content,draftMessageId 关联回去。
+      // 续推的 STREAM_DELTA 会追加到同一 draft,实现无缝恢复。
+      return {
+        ...state,
+        streamingBySession: {
+          ...state.streamingBySession,
+          [action.sessionId]: {
+            blocks: action.blocks,
+            notices: action.notices,
+            draftMessageId: action.draftMessageId,
+          },
+        },
+      }
     }
     case 'SET_SETTINGS': {
       return { ...state, settings: { ...state.settings, ...action.settings } }
@@ -447,10 +615,155 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, projects }
     }
     case 'SHOW_DIALOG': {
-      return { ...state, pendingDialog: { reqId: action.reqId, dialogKind: action.dialogKind, payload: action.payload, toolUseId: action.toolUseId } }
+      return { ...state, pendingDialog: { reqId: action.reqId, sessionId: action.sessionId, dialogKind: action.dialogKind, payload: action.payload, toolUseId: action.toolUseId } }
     }
     case 'ANSWER_DIALOG': {
       return { ...state, pendingDialog: null }
+    }
+    case 'ENQUEUE_MESSAGE': {
+      const q = state.queueBySession[action.sessionId] ?? []
+      const item: import('../types').QueuedMessage = {
+        id: nextId('q'), prompt: action.prompt, attachments: action.attachments,
+      }
+      return { ...state, queueBySession: { ...state.queueBySession, [action.sessionId]: [...q, item] } }
+    }
+    case 'DEQUEUE_MESSAGE': {
+      const q = state.queueBySession[action.sessionId] ?? []
+      return { ...state, queueBySession: { ...state.queueBySession, [action.sessionId]: q.filter(m => m.id !== action.queueId) } }
+    }
+    case 'CLEAR_QUEUE': {
+      return { ...state, queueBySession: { ...state.queueBySession, [action.sessionId]: [] } }
+    }
+    case 'UPSERT_TASK': {
+      return upsertBySession(state, 'tasksBySession', action.sessionId, action.task)
+    }
+    case 'SET_TASKS': {
+      // TodoWrite 全量替换任务列表：每次调用都是完整的当前 todo 集合
+      return { ...state, tasksBySession: { ...state.tasksBySession, [action.sessionId]: action.tasks } }
+    }
+    case 'CLEAR_TASKS': {
+      return { ...state, tasksBySession: { ...state.tasksBySession, [action.sessionId]: [] } }
+    }
+    case 'UPSERT_BACKEND_TASK': {
+      return upsertBySession(state, 'backendTasksBySession', action.sessionId, action.task)
+    }
+    case 'CLEAR_BACKEND_TASKS': {
+      return { ...state, backendTasksBySession: { ...state.backendTasksBySession, [action.sessionId]: [] } }
+    }
+    case 'REMOVE_BACKEND_TASK': {
+      const list = state.backendTasksBySession[action.sessionId] ?? []
+      return { ...state, backendTasksBySession: { ...state.backendTasksBySession, [action.sessionId]: list.filter(t => t.id !== action.taskId) } }
+    }
+    case 'CLEAR_FINISHED_BACKEND_TASKS': {
+      const list = state.backendTasksBySession[action.sessionId] ?? []
+      return { ...state, backendTasksBySession: { ...state.backendTasksBySession, [action.sessionId]: list.filter(t => t.status === 'running') } }
+    }
+    case 'ARCHIVE_SESSION': {
+      const projects = state.projects.map(p => ({
+        ...p,
+        sessions: p.sessions.map(s => s.id === action.sessionId ? { ...s, archived: true, archivedAt: Date.now() } : s),
+      }))
+      let activeSessionId = state.activeSessionId
+      if (state.activeSessionId === action.sessionId) {
+        activeSessionId = pickSurvivingSessionId(projects, action.sessionId) ?? state.activeSessionId
+      }
+      return { ...state, projects, activeSessionId }
+    }
+    case 'RESTORE_SESSION': {
+      const projects = state.projects.map(p => ({
+        ...p,
+        sessions: p.sessions.map(s => s.id === action.sessionId ? { ...s, archived: false, archivedAt: undefined } : s),
+      }))
+      return { ...state, projects }
+    }
+    case 'MOVE_SESSION': {
+      // 把会话从当前所属项目移到目标项目。仅在会话为空(无消息)时允许——
+      // 参考 Codex:新建空会话可修改关联项目,已有对话的会话锁定归属。
+      const srcProject = state.projects.find(p => p.sessions.some(s => s.id === action.sessionId))
+      if (!srcProject) return state
+      const target = srcProject.sessions.find(s => s.id === action.sessionId)
+      if (!target) return state
+      const projects = state.projects.map(p =>
+        p.id === srcProject.id
+          ? { ...p, sessions: p.sessions.filter(s => s.id !== action.sessionId) }
+          : p.id === action.toProjectId
+            ? { ...p, sessions: [...p.sessions, target] }
+            : p
+      )
+      return { ...state, projects }
+    }
+    case 'APPEND_SUBAGENT_OUTPUT': {
+      const bySession = state.subagentOutputBySession[action.sessionId] ?? {}
+      const existing = bySession[action.toolUseId] ?? []
+      return {
+        ...state,
+        subagentOutputBySession: {
+          ...state.subagentOutputBySession,
+          [action.sessionId]: {
+            ...bySession,
+            [action.toolUseId]: [...existing, action.block],
+          },
+        },
+      }
+    }
+    case 'SET_PANEL_FOLD': {
+      return { ...state, panelFold: { ...state.panelFold, [action.panel]: action.folded } }
+    }
+    case 'SHOW_PLAN': {
+      return { ...state, planBySession: { ...state.planBySession, [action.sessionId]: action.plan } }
+    }
+    case 'DISMISS_PLAN': {
+      return { ...state, planBySession: { ...state.planBySession, [action.sessionId]: null } }
+    }
+    case 'CLEAR_SESSION_MESSAGES': {
+      return patchSession(state, action.sessionId, { messages: [] })
+    }
+    case 'SET_SESSION_PERMISSION': {
+      return patchSession(state, action.sessionId, { permissionMode: action.permissionMode })
+    }
+    case 'SET_SESSION_THINKING': {
+      return patchSession(state, action.sessionId, { thinking: action.thinking })
+    }
+    case 'ADD_SESSION_DIR': {
+      // 依赖当前 extraDirs 追加，无法用 patchSession 的纯 patch；保持单次遍历。
+      const projects = state.projects.map(p => ({
+        ...p,
+        sessions: p.sessions.map(s =>
+          s.id === action.sessionId
+            ? { ...s, extraDirs: [...(s.extraDirs ?? []), action.dir] }
+            : s
+        ),
+      }))
+      return { ...state, projects }
+    }
+    case 'SHOW_COST': {
+      const projects = state.projects.map(p => ({
+        ...p,
+        sessions: p.sessions.map(s => {
+          if (s.id !== action.sessionId) return s
+          let text = action.text
+          if (!text) {
+            const total = s.messages.reduce((sum, m) => sum + (m.costUSD ?? 0), 0)
+            const turns = s.messages.reduce((sum, m) => sum + (m.turns ?? 0), 0)
+            text = total > 0 ? `本会话累计：$${total.toFixed(4)} / ${turns} turns` : '暂无费用统计'
+          }
+          const notice: SystemNotice = { id: `n${Date.now()}`, kind: 'status', text, level: 'info' }
+          return { ...s, notices: [...(s.notices ?? []), notice] }
+        }),
+      }))
+      return { ...state, projects }
+    }
+    case 'COMPACT_DONE': {
+      const notice: SystemNotice = { id: `n${Date.now()}`, kind: 'compact', text: action.summary, level: 'info' }
+      const projects = state.projects.map(p => ({
+        ...p,
+        sessions: p.sessions.map(s => {
+          if (s.id !== action.sessionId) return s
+          const kept = s.messages.slice(-action.keepRecent)
+          return { ...s, messages: kept, notices: [...(s.notices ?? []), notice] }
+        }),
+      }))
+      return { ...state, projects }
     }
     default:
       return state

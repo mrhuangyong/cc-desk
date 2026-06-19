@@ -16,30 +16,32 @@ describe('LeftPanel 顶部新建会话', () => {
     // 先点 p2 的会话 s3（部署到 Vercel）激活它
     fireEvent.click(screen.getByText(/部署到 Vercel/))
     // 点顶部"新建会话"（取第一个——顶部功能区的）
-    fireEvent.click(screen.getAllByTitle('新建会话')[0])
-    // p2 应多出一条会话（标题"新会话"），渲染为 "💬 新会话"，用正则匹配
-    expect(screen.getByText(/新会话/)).toBeTruthy()
+    // 顶部新建按钮 title=t('left.newSession')='新会话'（图标按钮）；项目级按钮 title 仍为'新建会话'
+    fireEvent.click(screen.getAllByTitle('新会话')[0])
+    // p2 应多出一条会话（标题"新会话"）。顶部按钮文字也是"新会话"，
+    // 故至少 2 个匹配（按钮 1 + 新会话条目 1）
+    expect(screen.getAllByText(/新会话/).length).toBeGreaterThanOrEqual(2)
   })
 
   it('当前项目已有空会话时，点顶部"新建会话"切换过去（不新增）', () => {
     // 初始激活 s1 属于 p1，p1 已有空会话 s2（修样式 bug）
     renderWithProvider(<LeftPanel collapsed={false} />)
     const before = screen.getAllByText(/重构登录流程|修样式 bug|部署到 Vercel|新会话/).length
-    fireEvent.click(screen.getAllByTitle('新建会话')[0])
+    fireEvent.click(screen.getAllByTitle('新会话')[0])
     const after = screen.getAllByText(/重构登录流程|修样式 bug|部署到 Vercel|新会话/).length
     expect(after).toBe(before) // 数量不变，去重切换
   })
 
   it('展开/折叠按钮切换所有项目会话的显隐', () => {
     renderWithProvider(<LeftPanel collapsed={false} />)
-    // 初始全部展开：会话可见
-    expect(screen.queryByText(/重构登录流程/)).not.toBeNull()
+    // 初始全部展开：会话可见（用默认可见的"CI 配置"，updatedAt 最大排在折叠 5 条内）
+    expect(screen.queryByText(/CI 配置/)).not.toBeNull()
     // 点"展开/折叠"——全展开时变全收起
     fireEvent.click(screen.getByRole('button', { name: '展开/折叠' }))
-    expect(screen.queryByText(/重构登录流程/)).toBeNull()
+    expect(screen.queryByText(/CI 配置/)).toBeNull()
     // 再点——全收起时变全展开
     fireEvent.click(screen.getByRole('button', { name: '展开/折叠' }))
-    expect(screen.queryByText(/重构登录流程/)).not.toBeNull()
+    expect(screen.queryByText(/CI 配置/)).not.toBeNull()
   })
 
   it('顶部"搜索"按钮打开搜索弹窗', () => {

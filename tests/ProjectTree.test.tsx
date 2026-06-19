@@ -58,4 +58,62 @@ describe('ProjectTree', () => {
     // 会话被收起
     expect(screen.queryByText(/重构登录流程/)).toBeNull()
   })
+
+  it('会话纯按 updatedAt 倒序，点击激活不改变顺序', () => {
+    const { container } = renderWithProvider(<ProjectTree {...defaultProps} />)
+    const sessionTexts = ['重构登录流程', '修样式 bug', '优化首屏', '接入埋点', '国际化', '单元测试补全', 'CI 配置']
+    const titleSpans = () => Array.from(container.querySelectorAll('span')).filter(span => {
+      if (span.querySelector('span')) return false
+      const txt = (span.textContent ?? '').trim()
+      return sessionTexts.includes(txt)
+    })
+    const orderOf = () => titleSpans().map(span => sessionTexts.indexOf((span.textContent ?? '').trim()))
+
+    // 激活前：纯 updatedAt 倒序，默认 5 条可见 = CI 配置(6) > 单元测试补全(5) > 国际化(4) > 接入埋点(3) > 优化首屏(2)
+    expect(orderOf()).toEqual([6, 5, 4, 3, 2])
+
+    // 点击"优化首屏"(idx 2) 激活它——激活不应改变排序顺序
+    fireEvent.click(screen.getByText('优化首屏'))
+    expect(orderOf()).toEqual([6, 5, 4, 3, 2])
+  })
+
+  it('选中会话行标记为 active（高亮背景）', () => {
+    const { container } = renderWithProvider(<ProjectTree {...defaultProps} />)
+    // 点击激活"优化首屏"
+    fireEvent.click(screen.getByText('优化首屏'))
+    // 激活行带 data-active 属性
+    expect(container.querySelector('[data-active]')).not.toBeNull()
+  })
+
+  it('默认只显示最近 5 条，出现"展开更多"按钮', () => {
+    renderWithProvider(<ProjectTree {...defaultProps} />)
+    expect(screen.queryByText('修样式 bug')).toBeNull()
+    expect(screen.queryByText(/展开更多.*2/)).not.toBeNull()
+  })
+
+  it('点击展开更多后显示全部会话，按钮变为收起', () => {
+    renderWithProvider(<ProjectTree {...defaultProps} />)
+    fireEvent.click(screen.getByText(/展开更多/))
+    expect(screen.queryByText('修样式 bug')).not.toBeNull()
+    expect(screen.queryByText('收起')).not.toBeNull()
+    expect(screen.queryByText(/展开更多/)).toBeNull()
+  })
+
+  it('点击收起后回到默认 5 条', () => {
+    renderWithProvider(<ProjectTree {...defaultProps} />)
+    fireEvent.click(screen.getByText(/展开更多/))
+    fireEvent.click(screen.getByText('收起'))
+    expect(screen.queryByText('修样式 bug')).toBeNull()
+    expect(screen.queryByText(/展开更多.*2/)).not.toBeNull()
+  })
+
+  it('会话数 ≤ 5 的项目不显示展开更多按钮', () => {
+    renderWithProvider(<ProjectTree {...defaultProps} />)
+    expect(screen.queryAllByText(/展开更多/)).toHaveLength(1)
+  })
+
+  it('会话行渲染时间标签元素', () => {
+    const { container } = renderWithProvider(<ProjectTree {...defaultProps} />)
+    expect(container.querySelector('[data-testid="session-time"]')).not.toBeNull()
+  })
 })

@@ -84,7 +84,6 @@ export function LeftPanel({ collapsed }: Props) {
     borderRadius: 'var(--radius)', lineHeight: 1,
     transition: 'background .1s'
   })
-
   // 动画开始时锁定原始宽度，防止内容换行
   if (animating && originalWidthRef.current === 0) {
     originalWidthRef.current = width
@@ -126,7 +125,7 @@ export function LeftPanel({ collapsed }: Props) {
           width: animating ? originalWidthRef.current : undefined,
           overflow: 'hidden',
         }}>
-          {/* 顶部功能区 */}
+          {/* 顶部功能区：新建会话/搜索/技能各独占一行 */}
           <div style={{ display: 'flex', flexDirection: 'column', borderBottom: '1px solid var(--border)' }}>
             <button onMouseEnter={() => setHovered('new')} onMouseLeave={() => setHovered(null)} onClick={handleNewSession} title={t('left.newSession')} style={topBtn('new')}><Plus size={14} /> {t('left.newSession')}</button>
             <button onMouseEnter={() => setHovered('search')} onMouseLeave={() => setHovered(null)} onClick={() => setSearchOpen(true)} title="搜索" style={topBtn('search')}><Search size={14} /> 搜索</button>
@@ -142,7 +141,6 @@ export function LeftPanel({ collapsed }: Props) {
             <button onMouseEnter={() => setHovered('addProject')} onMouseLeave={() => setHovered(null)} onClick={handleAddProject} title={t('left.addProject')} aria-label={t('left.addProject')} style={toolBtn('addProject')}><FolderPlus size={13} /></button>
             <button onMouseEnter={() => setHovered('toggleAll')} onMouseLeave={() => setHovered(null)} onClick={toggleAll} title="展开/折叠" aria-label="展开/折叠" style={toolBtn('toggleAll')}><ChevronsUpDown size={13} /></button>
             <button onMouseEnter={() => setHovered('sort')} onMouseLeave={() => setHovered(null)} title="排序/筛选" aria-label="排序/筛选" style={toolBtn('sort')}><ArrowUpDown size={13} /></button>
-            <button onMouseEnter={() => setHovered('search2')} onMouseLeave={() => setHovered(null)} onClick={() => setSearchOpen(true)} title="搜索" aria-label="搜索" style={toolBtn('search2')}><Search size={13} /></button>
           </div>
 
           {/* 项目会话树 / 文件树 */}

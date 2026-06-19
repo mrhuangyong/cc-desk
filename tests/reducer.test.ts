@@ -20,12 +20,13 @@ function initialState(): AppState {
       apiKey: '', model: 'model-sonnet', cwd: '', providers: [], models: [], modelRoleMap: {},
       theme: 'codex-light', lang: 'zh-CN', zoom: 'normal', proxy: '', inheritTerminal: true,
       terminalFont: 'MesloLGS NF, monospace', taskNotify: true, notifySound: true, queueMode: 'queue',
-      showThinking: false, showTodo: false, autoArchive: true, archiveDays: '7', dataPath: '',
+      showThinking: false, showTodo: false, showBackendTask: true, autoArchive: true, archiveDays: '7', dataPath: '',
       codePreview: { lightTheme: 'GitHub Light', darkTheme: 'GitHub Dark', showLineNumbers: true, wordWrap: false, fontSize: 12 },
       skills: [], mcpServers: [], plugins: [], commands: [], hooks: [],
     },
     claudeSessionMap: {},
     pendingDialog: null,
+    dirtyTabIds: {}, lastFileOpenedSeq: 0, queueBySession: {}, tasksBySession: {}, backendTasksBySession: {}, panelFold: { root: false, taskCard: false, subagentCard: false, backendTaskCard: false }, subagentOutputBySession: {}, planBySession: {}, abortedBySession: {},
   }
 }
 
@@ -99,6 +100,33 @@ describe('reducer', () => {
     expect(s2.tabsBySession['s1'].length).toBe(2)
   })
 
+  it('OPEN_FILE_TAB 递增 lastFileOpenedSeq（新开与去重切换都计数）', () => {
+    const state = initialState()
+    expect(state.lastFileOpenedSeq).toBe(0)
+    // 新开
+    const s1 = reducer(state, { type: 'OPEN_FILE_TAB', filePath: 'a.ts', fileName: 'a.ts' })
+    expect(s1.lastFileOpenedSeq).toBe(1)
+    // 同文件再次点击（去重切换）也要计数——用户点击意图即应展开右栏
+    const s2 = reducer(s1, { type: 'OPEN_FILE_TAB', filePath: 'a.ts', fileName: 'a.ts' })
+    expect(s2.lastFileOpenedSeq).toBe(2)
+    expect(s2.tabsBySession['s1'].length).toBe(1) // 仍只有一个 tab
+  })
+
+  it('切换/关闭 Tab 不递增 lastFileOpenedSeq', () => {
+    const state = initialState()
+    const s1 = reducer(state, { type: 'OPEN_FILE_TAB', filePath: 'a.ts', fileName: 'a.ts' })
+    const openedAt = s1.lastFileOpenedSeq
+    const tabId = s1.activeTabIdBySession['s1']!
+    // 开第二个，切回第一个——SELECT_TAB 不递增
+    const s2 = reducer(s1, { type: 'OPEN_FILE_TAB', filePath: 'b.ts', fileName: 'b.ts' })
+    const s3 = reducer(s2, { type: 'SELECT_TAB', tabId })
+    expect(s3.lastFileOpenedSeq).toBe(s2.lastFileOpenedSeq) // SELECT_TAB 不动计数
+    // CLOSE_TAB 不递增
+    const s4 = reducer(s3, { type: 'CLOSE_TAB', tabId })
+    expect(s4.lastFileOpenedSeq).toBe(s2.lastFileOpenedSeq)
+    expect(openedAt).toBe(1)
+  })
+
   it('OPEN_TAB 开启 browser 类型 Tab', () => {
     const state = initialState()
     const next = reducer(state, { type: 'OPEN_TAB', tabType: 'browser' })
@@ -112,6 +140,20 @@ describe('reducer', () => {
     const s1 = reducer(state, { type: 'OPEN_TAB', tabType: 'browser' })
     const s2 = reducer(s1, { type: 'OPEN_TAB', tabType: 'browser' })
     expect(s2.tabsBySession['s1'].length).toBe(2) // browser 不去重，可多开
+  })
+
+  it('OPEN_TAB terminal 类型携带 cwd 写入 Tab', () => {
+    const state = initialState()
+    const next = reducer(state, { type: 'OPEN_TAB', tabType: 'terminal', cwd: '/proj' })
+    const tab = next.tabsBySession['s1'][0]
+    expect(tab.type).toBe('terminal')
+    expect(tab.cwd).toBe('/proj')
+  })
+
+  it('OPEN_TAB 未传 cwd 时 Tab.cwd 为 undefined', () => {
+    const state = initialState()
+    const next = reducer(state, { type: 'OPEN_TAB', tabType: 'browser' })
+    expect(next.tabsBySession['s1'][0].cwd).toBeUndefined()
   })
 
   it('CLOSE_TAB 关掉最后一个后 activeTabId 为 null', () => {
@@ -280,10 +322,16 @@ describe('reducer', () => {
     expect(next.activeSettingsSection).toBe('skills')
   })
 
-  it('STREAM_START 初始化空 blocks/notices', () => {
+  it('STREAM_START 初始化空 blocks/notices 并创建 draft message（实时持久化锚点）', () => {
     const state = initialState()
     const next = reducer(state, { type: 'STREAM_START', sessionId: 's1' })
-    expect(next.streamingBySession['s1']).toEqual({ blocks: [], notices: [] })
+    const st = next.streamingBySession['s1']
+    expect(st.blocks).toEqual([])
+    expect(st.notices).toEqual([])
+    expect(st.draftMessageId).toBeTruthy()
+    // draft message 已插入 projects.messages
+    const session = next.projects.find(p => p.id === 'p1')!.sessions.find(s => s.id === 's1')!
+    expect(session.messages.some(m => m.id === st.draftMessageId)).toBe(true)
   })
 
   it('STREAM_DELTA 增量拼接文本 (新 kind 签名)', () => {
@@ -294,10 +342,34 @@ describe('reducer', () => {
     expect(s3.streamingBySession['s1'].blocks[0]).toEqual({ type: 'text', text: 'Hello, World' })
   })
 
-  it('STREAM_END 把流式 blocks 固化为 assistant 消息并清理 streaming', () => {
+  it('STREAM_END 时该 session 有未答 pendingDialog → 保留 streaming（授权等待期间防误清）', () => {
+    const state = initialState()
+    const s1 = reducer(state, { type: 'STREAM_START', sessionId: 's1' })
+    const s2 = reducer(s1, { type: 'STREAM_DELTA', sessionId: 's1', kind: 'text', delta: '部分输出' })
+    // 弹出授权 dialog（带 sessionId）
+    const s3 = reducer(s2, { type: 'SHOW_DIALOG', reqId: 'dlg1', sessionId: 's1', dialogKind: 'tool_use', payload: {} })
+    // SDK 授权等待期间提前结束：STREAM_END 应保留 streaming，不清理
+    const next = reducer(s3, { type: 'STREAM_END', sessionId: 's1', costUSD: 0.01, durationMs: 100 })
+    expect(next.streamingBySession['s1']).toBeDefined()
+    // 但消息已固化
+    const session = next.projects.find(p => p.id === 'p1')!.sessions.find(s => s.id === 's1')!
+    expect(session.messages.length).toBeGreaterThan(0)
+    // streaming blocks 被重置为空，等续跑追加
+    expect(next.streamingBySession['s1'].blocks).toEqual([])
+  })
+
+  it('STREAM_END 时该 session 无 pendingDialog → 正常清理 streaming', () => {
+    const state = initialState()
+    const s1 = reducer(state, { type: 'STREAM_START', sessionId: 's1' })
+    const next = reducer(s1, { type: 'STREAM_END', sessionId: 's1' })
+    expect(next.streamingBySession['s1']).toBeUndefined()
+  })
+
+  it('STREAM_END finalize draft message（同一 id，不再新建）并清理 streaming', () => {
     const state = initialState() // s1 有 2 条消息
     const before = state.projects.find(p => p.id === 'p1')!.sessions.find(s => s.id === 's1')!.messages.length
     const s1 = reducer(state, { type: 'STREAM_START', sessionId: 's1' })
+    const draftId = s1.streamingBySession['s1'].draftMessageId!
     const s2 = reducer(s1, { type: 'STREAM_DELTA', sessionId: 's1', kind: 'text', delta: '最终回复' })
     const next = reducer(s2, {
       type: 'STREAM_END',
@@ -306,8 +378,10 @@ describe('reducer', () => {
       durationMs: 1234,
     })
     const session = next.projects.find(p => p.id === 'p1')!.sessions.find(s => s.id === 's1')!
+    // STREAM_START 创建 draft(+1),END finalize 同一个(不再 +1)
     expect(session.messages.length).toBe(before + 1)
     const last = session.messages[session.messages.length - 1]
+    expect(last.id).toBe(draftId) // 同一 id,未新建
     expect(last.role).toBe('assistant')
     expect(last.content).toEqual([{ type: 'text', text: '最终回复' }])
     expect(last.costUSD).toBe(0.01)
@@ -345,6 +419,25 @@ describe('reducer', () => {
     expect(next.projects).toBe(newProjects)
   })
 
+  it('TAB_DIRTY 标记与清除 dirtyTabIds', () => {
+    const state = initialState()
+    const a = reducer(state, { type: 'OPEN_FILE_TAB', filePath: 'a.ts', fileName: 'a.ts' })
+    const tabId = a.activeTabIdBySession['s1']!
+    const dirty = reducer(a, { type: 'TAB_DIRTY', tabId, dirty: true })
+    expect(dirty.dirtyTabIds[tabId]).toBe(true)
+    const clean = reducer(dirty, { type: 'TAB_DIRTY', tabId, dirty: false })
+    expect(clean.dirtyTabIds[tabId]).toBeFalsy()
+  })
+
+  it('CLOSE_TAB 清理对应 dirty 记录', () => {
+    const state = initialState()
+    const a = reducer(state, { type: 'OPEN_FILE_TAB', filePath: 'a.ts', fileName: 'a.ts' })
+    const tabId = a.activeTabIdBySession['s1']!
+    const dirty = reducer(a, { type: 'TAB_DIRTY', tabId, dirty: true })
+    const closed = reducer(dirty, { type: 'CLOSE_TAB', tabId })
+    expect(closed.dirtyTabIds[tabId]).toBeUndefined()
+  })
+
   it('SET_CLAUDE_SESSION_ID 建立 local→claude sessionId 映射', () => {
     const state = initialState()
     const next = reducer(state, {
@@ -355,6 +448,74 @@ describe('reducer', () => {
     expect(next.claudeSessionMap.s1).toBe('abc-123')
     // 不可变：原 state 未变
     expect(state.claudeSessionMap.s1).toBeUndefined()
+  })
+})
+
+describe('builtin-cmd reducer actions', () => {
+  it('CLEAR_SESSION_MESSAGES 清空消息保留 session', () => {
+    const s = initialState()
+    const withMsg = reducer(s, { type: 'ADD_MESSAGE', sessionId: 's1', message: { id: 'm1', role: 'user', content: [{ type: 'text', text: 'hi' }] } })
+    const cleared = reducer(withMsg, { type: 'CLEAR_SESSION_MESSAGES', sessionId: 's1' })
+    const sess = cleared.projects.flatMap(p => p.sessions).find(x => x.id === 's1')!
+    expect(sess.messages).toHaveLength(0)
+    expect(sess.id).toBe('s1')
+  })
+
+  it('SET_SESSION_PERMISSION 写会话 permissionMode', () => {
+    const s = initialState()
+    const r = reducer(s, { type: 'SET_SESSION_PERMISSION', sessionId: 's1', permissionMode: '计划模式' })
+    expect(r.projects.flatMap(p => p.sessions).find(x => x.id === 's1')!.permissionMode).toBe('计划模式')
+  })
+
+  it('SET_SESSION_THINKING 写会话 thinking', () => {
+    const s = initialState()
+    const r = reducer(s, { type: 'SET_SESSION_THINKING', sessionId: 's1', thinking: 'high' })
+    expect(r.projects.flatMap(p => p.sessions).find(x => x.id === 's1')!.thinking).toBe('high')
+  })
+
+  it('ADD_SESSION_DIR 追加目录到 extraDirs', () => {
+    const s = initialState()
+    const r = reducer(s, { type: 'ADD_SESSION_DIR', sessionId: 's1', dir: '/tmp/x' })
+    const r2 = reducer(r, { type: 'ADD_SESSION_DIR', sessionId: 's1', dir: '/tmp/y' })
+    expect(r2.projects.flatMap(p => p.sessions).find(x => x.id === 's1')!.extraDirs).toEqual(['/tmp/x', '/tmp/y'])
+  })
+
+  it('SHOW_COST text 非空时直接插入 notice', () => {
+    const s = initialState()
+    const r = reducer(s, { type: 'SHOW_COST', sessionId: 's1', text: '总费用 $0.5' })
+    const sess = r.projects.flatMap(p => p.sessions).find(x => x.id === 's1')!
+    expect(sess.notices?.some(n => n.kind === 'status' && n.text.includes('0.5'))).toBe(true)
+  })
+
+  it('SHOW_COST text 空时聚合会话 costUSD', () => {
+    const s = initialState()
+    // 先塞一条带 costUSD 的助手消息（注意 costUSD 在 Message 上）
+    const withMsg = reducer(s, {
+      type: 'ADD_MESSAGE', sessionId: 's1',
+      message: { id: 'm1', role: 'assistant', content: [{ type: 'text', text: 'ok' }], costUSD: 0.1234, turns: 5 },
+    })
+    const r = reducer(withMsg, { type: 'SHOW_COST', sessionId: 's1', text: '' })
+    const sess = r.projects.flatMap(p => p.sessions).find(x => x.id === 's1')!
+    expect(sess.notices?.some(n => n.kind === 'status' && n.text.includes('0.1234'))).toBe(true)
+  })
+
+  it('SHOW_COST 无费用数据时显示暂无统计', () => {
+    const s = initialState()
+    const r = reducer(s, { type: 'SHOW_COST', sessionId: 's1', text: '' })
+    const sess = r.projects.flatMap(p => p.sessions).find(x => x.id === 's1')!
+    expect(sess.notices?.some(n => n.text.includes('暂无费用统计'))).toBe(true)
+  })
+
+  it('COMPACT_DONE 用摘要替换历史保留最近 N 条', () => {
+    const s = initialState()
+    let cur = s
+    for (let i = 0; i < 10; i++) {
+      cur = reducer(cur, { type: 'ADD_MESSAGE', sessionId: 's1', message: { id: `m${i}`, role: 'user', content: [{ type: 'text', text: `msg${i}` }] } })
+    }
+    const r = reducer(cur, { type: 'COMPACT_DONE', sessionId: 's1', summary: '已压缩', keepRecent: 6 })
+    const sess = r.projects.flatMap(p => p.sessions).find(x => x.id === 's1')!
+    expect(sess.messages.length).toBeLessThanOrEqual(6)
+    expect(sess.notices?.some(n => n.kind === 'compact')).toBe(true)
   })
 })
 

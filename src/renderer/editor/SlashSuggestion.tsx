@@ -12,7 +12,7 @@ import type { SlashMenuItem } from './types'
 // 否则 ProseMirror 报 "Adding different instances of a keyed plugin (suggestion$)"。
 const slashPluginKey = new PluginKey('slashSuggestion')
 
-export function buildSlashExtension(getItems: () => SlashMenuItem[]): Extension {
+export function buildSlashExtension(getItems: () => SlashMenuItem[], onBuiltinRun?: (item: SlashMenuItem) => void): Extension {
   return Extension.create({
     name: 'slashSuggestion',
     addOptions() {
@@ -28,6 +28,12 @@ export function buildSlashExtension(getItems: () => SlashMenuItem[]): Extension 
           command: ({ editor, range, props }: { editor: any; range: any; props: SlashMenuItem }) => {
             // 单次 chain：删触发符 + 插内容，避免两次 run() 间光标/placeholder 状态异常
             const chain = editor.chain().focus().deleteRange(range)
+            if (props.kind === 'builtin') {
+              // 内置命令：删触发符，不插内容；副作用交给渲染端 handler
+              chain.run()
+              onBuiltinRun?.(props)
+              return
+            }
             if (props.kind === 'command') {
               chain.insertContent(props.name + ' ').run()
             } else {
@@ -51,7 +57,7 @@ export function buildSlashExtension(getItems: () => SlashMenuItem[]): Extension 
             },
             emptyHint: '无可用命令/技能',
             groupKey: (item) => item.kind,
-            groupLabel: (key) => key === 'command' ? '命令' : '技能',
+            groupLabel: (key) => key === 'builtin' ? '内置' : key === 'command' ? '命令' : '技能',
           }),
         },
       }

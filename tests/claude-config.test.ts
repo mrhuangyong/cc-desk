@@ -115,3 +115,28 @@ describe('claude-config 边界用例', () => {
     expect(typeof cfg.haikuModel).toBe('string')
   })
 })
+
+describe('getCommands 含内置命令', () => {
+  it('返回的命令里包含 /init /compact /clear 等 builtin', async () => {
+    const cmds = await getCommands()
+    const names = cmds.map(c => c.name)
+    expect(names).toContain('/init')
+    expect(names).toContain('/compact')
+    expect(names).toContain('/clear')
+    expect(names).toContain('/review')
+  })
+  it('内置命令 kind 为 builtin 且带 builtinAction', async () => {
+    const cmds = await getCommands()
+    const init = cmds.find(c => c.name === '/init')
+    expect(init).toBeDefined()
+    expect(init!.kind).toBe('builtin')
+    expect(init!.builtinAction).toBeDefined()
+    expect(init!.builtinAction!.type).toBe('init-project')
+  })
+  it('内置命令排在返回数组最前（前 17 条全是 builtin）', async () => {
+    const cmds = await getCommands()
+    // 17 = BUILTIN_COMMANDS.length，全部应在数组头部连续出现
+    const first17 = cmds.slice(0, 17)
+    expect(first17.every(c => c.kind === 'builtin')).toBe(true)
+  })
+})
