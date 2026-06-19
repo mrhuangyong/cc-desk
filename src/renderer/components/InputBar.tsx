@@ -6,6 +6,7 @@ import { AttachmentChip } from './AttachmentChip'
 import { PromptEditor } from '../editor/PromptEditor'
 import { serializeForPrompt } from '../editor/serialize'
 import { runBuiltin } from './builtinCommands'
+import { Tooltip } from './Tooltip'
 import type { SlashMenuItem } from '../editor/types'
 
 type MenuId = 'permission' | 'model' | 'thinking' | 'project' | 'add'
@@ -381,6 +382,7 @@ export function InputBar() {
 
           {/* 添加按钮：加号图标,展开菜单(添加附件 / @ 提及 / / 命令) */}
           <div style={{ position: 'relative' }}>
+            <Tooltip label="添加">
             <button
               onClick={() => toggleMenu('add')}
               style={{ ...btnBase, background: openMenu === 'add' ? 'var(--bg-hover)' : undefined, color: openMenu === 'add' ? 'var(--text)' : undefined }}
@@ -388,6 +390,7 @@ export function InputBar() {
             >
               <Plus size={14} />
             </button>
+            </Tooltip>
             {openMenu === 'add' && (
               <div style={menuStyle}>
                 <div
@@ -526,8 +529,10 @@ export function InputBar() {
           </div>
 
           {/* 发送钮三态 */}
+          <Tooltip label={isStreaming ? t('input.stop') : t('input.send')}>
           <button
             onClick={onSendClick}
+            title={isStreaming ? t('input.stop') : t('input.send')}
             aria-label={isStreaming ? t('input.stop') : t('input.send')}
             style={{
               width: 28, height: 28, borderRadius: '50%',
@@ -540,6 +545,7 @@ export function InputBar() {
           >
             {isStreaming ? <Square size={12} /> : <ArrowUp size={14} />}
           </button>
+          </Tooltip>
         </div>
       </div>
     </div>

@@ -71,7 +71,7 @@ describe('GeneralSettings', () => {
 
   it('界面主题切换 → 先 SET_THEME 再 SET_SETTINGS(theme)', () => {
     render(<GeneralSettings />)
-    const themeSelect = screen.getByDisplayValue('Codex 浅色') as HTMLSelectElement
+    const themeSelect = screen.getByDisplayValue('浅色') as HTMLSelectElement
     fireEvent.change(themeSelect, { target: { value: 'codex-dark' } })
     expect(dispatch).toHaveBeenCalledWith({ type: 'SET_THEME', theme: 'codex-dark' })
     expect(dispatch).toHaveBeenCalledWith({ type: 'SET_SETTINGS', settings: { theme: 'codex-dark' } })

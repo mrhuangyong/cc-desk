@@ -1,6 +1,7 @@
 import { Loader2, Square, X, Trash2, CheckCircle2, AlertCircle } from 'lucide-react'
 import type { BackendTask } from '../types'
 import { formatSessionTime } from '../utils/formatSessionTime'
+import { Tooltip } from './Tooltip'
 
 const STATUS_LABEL: Record<BackendTask['status'], string> = {
   running: '运行中', completed: '已完成', failed: '已退出', stopped: '已终止',
@@ -106,20 +107,24 @@ function TaskRow({ t, onKill, onRemove }: {
         </div>
       </div>
       {t.status === 'running' ? (
-        <button onClick={() => onKill(t.id)} title="终止" style={{
-          padding: '2px 6px', color: 'var(--text-muted)', background: 'var(--surface-2)',
-          border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 11,
-          display: 'inline-flex', alignItems: 'center',
-        }}>
-          <Square size={10} />
-        </button>
+        <Tooltip label="终止">
+          <button onClick={() => onKill(t.id)} title="终止" style={{
+            padding: '2px 6px', color: 'var(--text-muted)', background: 'var(--surface-2)',
+            border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 11,
+            display: 'inline-flex', alignItems: 'center',
+          }}>
+            <Square size={10} />
+          </button>
+        </Tooltip>
       ) : (
-        <button onClick={() => onRemove(t.id)} title="移除" style={{
-          padding: '2px 4px', color: 'var(--text-muted)', background: 'none',
-          border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center',
-        }}>
-          <X size={13} />
-        </button>
+        <Tooltip label="移除">
+          <button onClick={() => onRemove(t.id)} title="移除" style={{
+            padding: '2px 4px', color: 'var(--text-muted)', background: 'none',
+            border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center',
+          }}>
+            <X size={13} />
+          </button>
+        </Tooltip>
       )}
     </div>
   )

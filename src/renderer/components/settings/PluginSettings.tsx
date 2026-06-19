@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { ClaudePlugin } from '../../../main/claude-config'
 import { Toggle } from './Toggle'
 import { RefreshCw, Plug } from 'lucide-react'
+import { Tooltip } from '../Tooltip'
 
 const topIconBtn: React.CSSProperties = {
   padding: '4px 8px', fontSize: 14, cursor: 'pointer',
@@ -36,7 +37,7 @@ export function PluginSettings() {
       {/* 标题 + 刷新 */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
         <h2 style={{ color: 'var(--text)', fontSize: 18, margin: 0 }}>插件管理</h2>
-        <button title="刷新" onClick={reload} style={topIconBtn}><RefreshCw size={14} /></button>
+        <Tooltip label="刷新"><button title="刷新" onClick={reload} style={topIconBtn}><RefreshCw size={14} /></button></Tooltip>
       </div>
       <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 14 }}>
         来自 ~/.claude/plugins/installed_plugins.json + 各插件 manifest，启用状态读写 settings.json 的 enabledPlugins。

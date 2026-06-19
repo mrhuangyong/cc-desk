@@ -9,6 +9,7 @@ import { InputBar } from './InputBar'
 import { InputDock } from './InputDock'
 import { renderBlocks } from './blocks/BlockRenderer'
 import { Notices } from './Notices'
+import { Tooltip } from './Tooltip'
 
 import type { ContentBlock } from '../types'
 
@@ -35,9 +36,9 @@ export function CopyButton({ text, inline }: { text: string; inline?: boolean })
     })
   }
   return (
-    <button className={inline ? 'msg-copy msg-copy-inline' : 'msg-copy'} onClick={onCopy} title="复制" aria-label="复制">
+    <Tooltip label="复制"><button className={inline ? 'msg-copy msg-copy-inline' : 'msg-copy'} onClick={onCopy} title="复制" aria-label="复制">
       {copied ? <Check size={13} /> : <Copy size={13} />}
-    </button>
+    </button></Tooltip>
   )
 }
 
@@ -326,6 +327,7 @@ export function ChatArea() {
       <div style={{ padding: '0 28px 20px', width: '100%', maxWidth: 'var(--chat-max-width)', margin: '0 auto', position: 'relative' }}>
         {/* 回到底部按钮：相对输入框容器定位，底边恒在输入框上边框上方 20px */}
         {showScrollBtn && (
+          <Tooltip label="回到底部" placement="top">
           <button
             onClick={() => scrollToBottom('smooth')}
             aria-label="回到底部"
@@ -341,6 +343,7 @@ export function ChatArea() {
           >
             <ArrowDown size={16} />
           </button>
+          </Tooltip>
         )}
         <InputDock />
       </div>

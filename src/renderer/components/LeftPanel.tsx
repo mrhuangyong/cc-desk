@@ -1,8 +1,9 @@
 import { useMemo, useState, useCallback, useRef } from 'react'
 import type { CSSProperties } from 'react'
-import { Plus, Search, Zap, ChevronsUpDown, ArrowUpDown, FolderPlus } from 'lucide-react'
+import { Plus, Search, Zap, ChevronsUpDown, ArrowUpDown, FolderPlus, Settings } from 'lucide-react'
 import { ProjectTree } from './ProjectTree'
 import { FileTree } from './FileTree'
+import { Tooltip } from './Tooltip'
 import { useStore } from '../state/store'
 import { useI18n } from '../i18n/useI18n'
 import { useResizableWidth } from '../hooks/useResizableWidth'
@@ -137,9 +138,9 @@ export function LeftPanel({ collapsed, onOpenSearch }: Props) {
             borderBottom: '1px solid var(--border)'
           }}>
             <span style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginRight: 'auto' }}>工作区</span>
-            <button onMouseEnter={() => setHovered('addProject')} onMouseLeave={() => setHovered(null)} onClick={handleAddProject} title={t('left.addProject')} aria-label={t('left.addProject')} style={toolBtn('addProject')}><FolderPlus size={13} /></button>
-            <button onMouseEnter={() => setHovered('toggleAll')} onMouseLeave={() => setHovered(null)} onClick={toggleAll} title="展开/折叠" aria-label="展开/折叠" style={toolBtn('toggleAll')}><ChevronsUpDown size={13} /></button>
-            <button onMouseEnter={() => setHovered('sort')} onMouseLeave={() => setHovered(null)} title="排序/筛选" aria-label="排序/筛选" style={toolBtn('sort')}><ArrowUpDown size={13} /></button>
+            <Tooltip label={t('left.addProject')}><button onMouseEnter={() => setHovered('addProject')} onMouseLeave={() => setHovered(null)} onClick={handleAddProject} title={t('left.addProject')} aria-label={t('left.addProject')} style={toolBtn('addProject')}><FolderPlus size={13} /></button></Tooltip>
+            <Tooltip label="展开/折叠"><button onMouseEnter={() => setHovered('toggleAll')} onMouseLeave={() => setHovered(null)} onClick={toggleAll} title="展开/折叠" aria-label="展开/折叠" style={toolBtn('toggleAll')}><ChevronsUpDown size={13} /></button></Tooltip>
+            <Tooltip label="排序/筛选"><button onMouseEnter={() => setHovered('sort')} onMouseLeave={() => setHovered(null)} title="排序/筛选" aria-label="排序/筛选" style={toolBtn('sort')}><ArrowUpDown size={13} /></button></Tooltip>
           </div>
 
           {/* 项目会话树 / 文件树 */}
@@ -153,6 +154,16 @@ export function LeftPanel({ collapsed, onOpenSearch }: Props) {
               treeFilter=""
             />
           )}
+
+          {/* 底部：设置入口，顶到面板最下方 */}
+          <button
+            onMouseEnter={() => setHovered('settings')} onMouseLeave={() => setHovered(null)}
+            onClick={() => dispatch({ type: 'SET_SETTINGS_SECTION', section: 'general' })}
+            title={t('title.settings')}
+            style={{ ...topBtn('settings'), marginTop: 'auto', borderTop: '1px solid var(--border)' }}
+          >
+            <Settings size={14} /> {t('title.settings')}
+          </button>
         </div>
       </div>
 

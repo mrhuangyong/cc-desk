@@ -1,14 +1,15 @@
 import { useState } from 'react'
 import { Palette, Check } from 'lucide-react'
 import { useTheme } from '../hooks/useTheme'
+import { Tooltip } from './Tooltip'
 import type { ThemeId } from '../types'
 
 const THEMES: { id: ThemeId; label: string; swatch: string }[] = [
-  { id: 'codex-light', label: 'Codex 浅色', swatch: '#ffffff' },
-  { id: 'codex-warm', label: 'Codex 暖白', swatch: '#fdfcfa' },
-  { id: 'codex-cool', label: 'Codex 冷灰', swatch: '#fbfcfd' },
-  { id: 'codex-paper', label: 'Codex 纸感', swatch: '#f8f6f1' },
-  { id: 'codex-dark', label: 'Codex 深色', swatch: '#1a1b1e' },
+  { id: 'codex-light', label: '浅色', swatch: '#ffffff' },
+  { id: 'codex-warm', label: '暖白', swatch: '#fdfcfa' },
+  { id: 'codex-cool', label: '冷灰', swatch: '#fbfcfd' },
+  { id: 'codex-paper', label: '纸感', swatch: '#f8f6f1' },
+  { id: 'codex-dark', label: '深色', swatch: '#1a1b1e' },
 ]
 
 export function ThemeSwitcher() {
@@ -17,6 +18,7 @@ export function ThemeSwitcher() {
 
   return (
     <div style={{ position: 'relative' }}>
+      <Tooltip label="切换主题">
       <button
         onClick={() => setOpen(o => !o)}
         title="切换主题"
@@ -29,6 +31,7 @@ export function ThemeSwitcher() {
         onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; e.currentTarget.style.color = 'var(--text)' }}
         onMouseLeave={(e) => { if (!open) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)' } }}
       ><Palette size={15} /></button>
+      </Tooltip>
       {open && (
         <>
           <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 90 }} />

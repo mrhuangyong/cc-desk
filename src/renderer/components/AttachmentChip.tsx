@@ -3,6 +3,7 @@
 // 输入框内带 × 可删除；消息流内只读（onRemove 不传）。
 import { Paperclip, File as FileIcon, Image as ImageIcon } from 'lucide-react'
 import type { DraftAttachment } from '../types'
+import { Tooltip } from './Tooltip'
 
 interface Props {
   attachment: DraftAttachment
@@ -40,15 +41,17 @@ export function AttachmentChip({ attachment, onRemove }: Props) {
       <span aria-hidden style={{ display: 'inline-flex', alignItems: 'center' }}><Icon size={13} /></span>
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
       {onRemove && (
-        <button
-          onClick={onRemove}
-          aria-label="移除附件"
-          title="移除"
-          style={{
-            fontSize: 13, lineHeight: 1, padding: 0, cursor: 'pointer',
-            background: 'transparent', border: 'none', color: 'var(--text-muted)',
-          }}
-        >×</button>
+        <Tooltip label="移除">
+          <button
+            onClick={onRemove}
+            aria-label="移除附件"
+            title="移除"
+            style={{
+              fontSize: 13, lineHeight: 1, padding: 0, cursor: 'pointer',
+              background: 'transparent', border: 'none', color: 'var(--text-muted)',
+            }}
+          >×</button>
+        </Tooltip>
       )}
     </span>
   )

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import type { LucideIcon } from 'lucide-react'
 import { FileText, Globe, SquareTerminal, FileDiff, Plus, X } from 'lucide-react'
 import { useStore } from '../state/store'
+import { Tooltip } from './Tooltip'
 import { resolveTerminalCwd } from '../utils/terminal'
 import { FileTab } from './FileTab'
 import type { FileTabHandle } from './FileTab'
@@ -99,6 +100,7 @@ export function TabBar() {
             {state.dirtyTabIds[t.id] && (
               <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />
             )}
+            <Tooltip label="关闭标签">
             <button
               onClick={(e) => {
                 e.stopPropagation()
@@ -115,13 +117,16 @@ export function TabBar() {
                 color: 'var(--text-muted)', background: 'transparent', cursor: 'pointer',
                 opacity: 0.5, transition: 'opacity .12s, background .12s',
               }}
+              title="关闭标签"
               aria-label="关闭标签"
               onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'var(--bg-hover)' }}
               onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.5'; e.currentTarget.style.background = 'transparent' }}
             ><X size={12} /></button>
+            </Tooltip>
           </div>
         ))}
         {/* + 按钮：在可滚动 tab 列表内，紧跟 tabs，随 tab 一起滚动 */}
+        <Tooltip label="新增 Tab">
         <button
           ref={addBtnRef}
           onClick={() => {
@@ -132,6 +137,7 @@ export function TabBar() {
           title="新增 Tab"
           style={{ padding: '0 12px', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}
         ><Plus size={16} /></button>
+        </Tooltip>
         </div>
         {menuOpen && menuPos && createPortal(
           <>

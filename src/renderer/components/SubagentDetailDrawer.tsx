@@ -6,6 +6,7 @@ import { X, Bot, Clock, Cpu, Wrench, Terminal } from 'lucide-react'
 import type { BackendTask, ContentBlock } from '../types'
 import { renderBlocks } from './blocks/BlockRenderer'
 import { formatSessionTime } from '../utils/formatSessionTime'
+import { Tooltip } from './Tooltip'
 
 interface Props {
   task: BackendTask | null
@@ -88,13 +89,13 @@ export function SubagentDetailDrawer({ task, outputByToolUseId, onClose }: Props
                 {task.command}
               </span>
             </div>
-            <button onClick={handleClose} title="关闭" aria-label="关闭" style={{
+            <Tooltip label="关闭"><button onClick={handleClose} title="关闭" aria-label="关闭" style={{
               width: 28, height: 28, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)',
               borderRadius: 6,
             }}>
               <X size={16} />
-            </button>
+            </button></Tooltip>
           </div>
           {/* 进度元信息条 */}
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 11, color: 'var(--text-muted)' }}>
