@@ -1,0 +1,169 @@
+# 自动发版：推送到 main 时触发。
+# 流程：推断版本号(Conventional Commits) → 回写 package.json + 提交 + 打 tag →
+#       三平台并行构建(mac/win/linux) → 上传产物到 GitHub Release。
+# 触发：push 到 main 分支；提交信息含 [skip release] 时跳过。
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+# 同一分支并发推送时取消旧的，只发最新
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+# 发版需要写权限：回写版本提交、推送 tag、创建 Release
+permissions:
+  contents: write
+
+jobs:
+  # Job 1：推断版本号，回写 package.json，提交并打 tag。
+  # 失败则整体中止；其余构建 job 依赖此 job 的 tag。
+  prepare:
+    name: Prepare & Tag
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.bump.outputs.should_release }}
+      version: ${{ steps.bump.outputs.version }}
+      tag: ${{ steps.bump.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # bump 需要完整历史与 tag
+
+      - name: Skip if commit message contains [skip release]
+        id: skip
+        run: |
+          if git log -1 --pretty=format:"%B %s" | grep -qi "\[skip release\]"; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Node
+        if: steps.skip.outputs.skip != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # 推断下一版本号（基于上一 tag 与 Conventional Commits）
+      - name: Determine next version
+        if: steps.skip.outputs.skip != 'true'
+        id: bump
+        run: |
+          RESULT=$(node scripts/bump-version.mjs)
+          echo "推理结果: $RESULT"
+          TO=$(echo "$RESULT" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>process.stdout.write(JSON.parse(d).to))")
+          TAG="v${TO}"
+          echo "version=${TO}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+          # tag 已存在（已被发过版）则跳过本次发版，避免重复
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag ${TAG} 已存在，跳过发版"
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # 回写 package.json 版本号并提交回 main，提交信息带 [skip release] 防循环触发
+      - name: Commit version bump
+        if: steps.bump.outputs.should_release == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # 用 npm version 改 package.json（保留格式），但 --no-git-commit-tag 自己控制
+          npm version ${{ steps.bump.outputs.version }} --no-git-tag-version --allow-same-version
+          git add package.json
+          git commit -m "chore(release): ${{ steps.bump.outputs.tag }} [skip release]"
+          git tag ${{ steps.bump.outputs.tag }}
+          git push origin main --tags
+
+  # Job 2：三平台并行构建。依赖 prepare 成功且确实需要发版。
+  build:
+    name: Build (${{ matrix.os }})
+    needs: prepare
+    if: needs.prepare.outputs.should_release == 'true'
+    strategy:
+      fail-fast: false  # 单平台失败不取消其它平台，便于排查
+      matrix:
+        include:
+          - os: macos-latest
+            target: dmg
+            artifact: cc-desk-*.dmg
+          - os: windows-latest
+            target: nsis
+            artifact: cc-desk Setup *.exe
+          - os: ubuntu-latest
+            target: AppImage
+            artifact: cc-desk-*.AppImage
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.31.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build app (electron-vite)
+        run: pnpm build
+
+      # 注入版本号到 electron-builder（确保产物元数据带正确版本）
+      - name: Package app
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --${{ matrix.target }} -c.productVersion=${{ needs.prepare.outputs.version }}
+
+      # macOS 产物在 release/，Windows 在 release/，Linux 在 release/
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.os }}
+          path: release/${{ matrix.artifact }}
+          if-no-files-found: error
+          retention-days: 14
+
+  # Job 3：下载三平台产物，统一发布到 GitHub Release
+  release:
+    name: Publish Release
+    needs: [prepare, build]
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 下载所有平台构建产物到本地
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true  # 合并到同一目录，便于统一上传
+
+      - name: List assets
+        run: ls -laR assets
+
+      # 创建 Release 并附带全部平台产物
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: ${{ needs.prepare.outputs.tag }}
+          generate_release_notes: true  # 自动从 commits 生成更新说明
+          files: assets/**
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

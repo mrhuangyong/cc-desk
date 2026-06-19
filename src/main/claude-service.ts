@@ -9,7 +9,6 @@ import type { WebContents } from 'electron'
 import { getSettings } from './settings-store'
 import { getModelProvidersConfig, resolveActiveProviderModel, buildSdkEnv } from './cc-desk-store'
 import { getProjectsSnapshot } from './projects-store'
-import { getGeneralConfig } from './claude-config'
 import { normalizeBetaBlocks, extractToolResults, extractBackgroundTaskId, contentToText, mkNotice } from './claude-normalize'
 import { getPermissionMode } from './builtin-commands'
 
@@ -140,6 +139,40 @@ export class ClaudeService {
     this.manager.pushMessage(localSessionId, `用户回答：\n${lines.join('\n')}`)
   }
 
+  /**
+   * 处理拦截到的 ExitPlanMode tool_use（计划模式提交计划）。
+   * 走与 AskUserQuestion 相同的阻塞式 dialog 通道：
+   *   ① 发 claude:dialog-request（dialogKind='plan_proposed'），阻塞等待用户选择授权模式
+   *   ② 用户选择后：调 setPermissionMode control request 让 SDK 实时退出 plan 模式，
+   *      并把结果 pushMessage 回 SDK 让模型开始执行计划
+   *   ③ 用户取消/拒绝计划：pushMessage 告知模型保持 plan 模式修改计划
+   */
+  private async handleExitPlanMode(
+    localSessionId: string,
+    toolUse: { id: string; input: any },
+    webContents: WebContents,
+  ): Promise<void> {
+    const input = toolUse.input || {}
+    const plan = typeof input.plan === 'string' ? input.plan : ''
+    const allowedPrompts = Array.isArray(input.allowedPrompts) ? input.allowedPrompts : undefined
+    let result: any
+    try {
+      result = await this.askUserViaPanel(webContents, 'plan_proposed', { plan, allowedPrompts }, toolUse.id, undefined, localSessionId)
+    } catch {
+      result = { behavior: 'cancelled' }
+    }
+    if (!this.manager) return
+    if (result?.behavior === 'completed' && result?.result?.permissionMode) {
+      // 用户批准计划并选定授权模式：SDK 端实时切换权限（退出 plan 模式）
+      const permissionLabel = result.result.permissionMode
+      await this.setPermissionMode(localSessionId, permissionLabel)
+      this.manager.pushMessage(localSessionId, '（用户已批准计划，开始执行）')
+    } else {
+      // 用户拒绝/取消：保持 plan 模式，让模型修改计划
+      this.manager.pushMessage(localSessionId, '（用户未批准计划，请根据反馈修改计划）')
+    }
+  }
+
   async send(opts: {
     prompt: string
     sessionId?: string
@@ -168,11 +201,10 @@ export class ClaudeService {
       webContents.send('claude:error', { localSessionId: lsid, error: '请先在「设置 → 模型设置」中添加并启用供应商与模型' })
       return
     }
-    const general = await getGeneralConfig()
-
-    // 代理环境变量（来自常规设置 proxy）
-    const proxyEnv: Record<string, string> = general.proxy
-      ? { HTTP_PROXY: general.proxy, HTTPS_PROXY: general.proxy, http_proxy: general.proxy, https_proxy: general.proxy }
+    // 代理环境变量（来自 cc-desk 自有常规设置 ~/.cc-desk/settings.json）。
+    // 不再读 ~/.claude/settings.json：CLAUDE_CONFIG_DIR 已隔离到 ~/.cc-desk/claude。
+    const proxyEnv: Record<string, string> = settings.proxy
+      ? { HTTP_PROXY: settings.proxy, HTTPS_PROXY: settings.proxy, http_proxy: settings.proxy, https_proxy: settings.proxy }
       : {}
 
     // toolUseInputs 按 tool_use id 累积，跨轮持久（一轮的 tool_use 可能在下一轮的
@@ -185,6 +217,10 @@ export class ClaudeService {
 
     // ensureSession 复用已有持久 query（同 localSessionId），否则用 buildQuery 新建。
     // prompt 作为新的 user turn 通过 pushMessage 注入 controller.iterable。
+    // 记录会话是否已存在：复用时 buildQuery 不再执行，permissionMode 只在 buildQuery 里
+    // 声明，故必须在复用路径里用 setPermissionMode control request 实时切换，否则下拉框
+    // 改权限会被忽略（首个权限被首条消息锁死）。新建会话由 buildQuery 内 permissionMode 直接生效。
+    const sessionExisted = this.manager.sessions.has(lsid)
     this.manager.ensureSession({
       localSessionId: lsid,
       resumeId: sessionId,
@@ -206,6 +242,9 @@ export class ClaudeService {
           cwd: cwd || settings.cwd || process.cwd(),
           resume: sessionId,
           permissionMode: getPermissionMode(permission),   // 中文标签 → SDK permissionMode（未知回退 'default'）
+          // 允许运行时动态切到 bypassPermissions（「完全访问」/ 计划批准选完全访问时）。
+          // SDK 要求 query 创建时显式声明此项，否则 setPermissionMode('bypassPermissions') 会被拒绝。
+          allowDangerouslySkipPermissions: true,
           effort: thinking ?? 'medium',                    // SDK EffortLevel，控制思考强度
           thinking: { type: 'adaptive' },                  // 配合 effort 自适应思考
           additionalDirectories: extraDirs?.length ? extraDirs : undefined,
@@ -243,11 +282,17 @@ export class ClaudeService {
       }
     })
 
+    // 复用会话时，buildQuery 不会重跑，permissionMode 也不会更新。
+    // 用 control request 把本次权限实时推给已存在的 query，使下拉框切换即时生效。
+    if (sessionExisted && permission) {
+      await this.setPermissionMode(lsid, permission)
+    }
+
     this.manager.pushMessage(lsid, prompt)
   }
 
   // SDK message → IPC 转发。逻辑与原 claude-service 的 for-await case 一致。
-  private forwardEvent(message: any, lsid: string, webContents: WebContents): void {
+  private async forwardEvent(message: any, lsid: string, webContents: WebContents): Promise<void> {
     const mtype: string = message.type
     switch (mtype) {
       case 'system': {
@@ -283,11 +328,23 @@ export class ClaudeService {
           // AskUserQuestion 由底部面板承载（见 assistant 分支拦截），不推 tool_use_start，
           // 否则它会先入 streaming blocks 渲染成卡片（assistant_blocks 的过滤此时已太晚）。
           // ExitPlanMode 同理：由计划卡片承载（见 assistant 分支），不推普通工具卡片。
-          if (tb.name === 'AskUserQuestion' || tb.name === 'ExitPlanMode' || tb.name === 'TodoWrite') break
+          // TaskCreate/TaskUpdate 由悬浮面板 Task 卡片承载（见 handleTaskPlanTool），也不推普通卡片
+          if (tb.name === 'AskUserQuestion' || tb.name === 'ExitPlanMode' || tb.name === 'TodoWrite'
+            || tb.name === 'TaskCreate' || tb.name === 'TaskUpdate') {
+            if (tb.name === 'TaskCreate' || tb.name === 'TaskUpdate') {
+              this.handleTaskPlanTool(lsid, tb, webContents)
+            }
+            break
+          }
           webContents.send('claude:blocks', { localSessionId: lsid, op: 'tool_use_start', block: { type: 'tool_use', id: tb.id, name: tb.name, input: tb.input, status: 'running' } })
-          // 记录所有 tool_use 的 input，供 tool_result 阶段提取 auto-background 信息
-          if (tb.name === 'Bash' || tb.name === 'Task') {
+          // 记录所有 tool_use 的 input，供 tool_result 阶段提取 auto-background 信息 / TaskCreate id
+          if (tb.name === 'Bash' || tb.name === 'Task' || tb.name === 'TaskCreate') {
             this.toolUseInputs.set(tb.id, { name: tb.name, input: tb.input })
+            // Task 工具创建的同步 subagent 不发 task_started 事件，这里主动登记，
+            // 让它出现在悬浮面板（用 tool_use_id 作 task_id，幂等去重）。
+            if (tb.name === 'Task') {
+              this.registerSyncSubagent(lsid, tb, webContents)
+            }
           }
         }
         break
@@ -311,53 +368,79 @@ export class ClaudeService {
           webContents.send('claude:blocks', { localSessionId: lsid, op: 'assistant_blocks', blocks: [], uuid: message.uuid })
           break
         }
-        // 经第三方代理（如 GLM）时，SDK 未把 AskUserQuestion 注册为内置工具，
-        // 模型仍会输出该 tool_use 但不走 SDK dialog 通道（自动回填 dummy tool_result）。
-        // 这里拦截：弹出渲染端面板，用户答完后把答案作为新 user message 推回，让对话续跑。
-        if (Array.isArray(aContent)) {
-          const askBlocks = aContent.filter((ab: any) => ab?.type === 'tool_use' && ab.name === 'AskUserQuestion')
-          if (askBlocks.length > 0) {
-            for (const ab of askBlocks) {
-              // 异步发起：不阻塞 forwardEvent 的事件循环
-              void this.handleAskUserQuestion(lsid, ab, webContents)
-            }
-          }
-          // ExitPlanMode：计划模式下模型提交计划。input.plan 是 Markdown 计划文本。
-          // 推 claude:plan 由渲染端计划卡片承载（含批准/拒绝），不走普通工具卡片。
-          const planBlocks = aContent.filter((ab: any) => ab?.type === 'tool_use' && ab.name === 'ExitPlanMode')
-          for (const pb of planBlocks) {
-            const input = pb.input || {}
-            const plan = typeof input.plan === 'string' ? input.plan : ''
-            const allowedPrompts = Array.isArray(input.allowedPrompts) ? input.allowedPrompts : undefined
-            webContents.send('claude:plan', { localSessionId: lsid, op: 'plan_proposed', plan, allowedPrompts, toolUseId: pb.id })
-          }
-        }
-        // TodoWrite：提取待办列表，全量推送给悬浮任务面板。
-        // TodoWrite 的 input.todos 每次都是完整的当前任务集合（全量替换语义）。
+        // 先推送 assistant_blocks（文本/普通工具卡片）和 TodoWrite，
+        // 再处理阻塞式交互（AskUserQuestion / ExitPlanMode）。
+        // 顺序很重要：阻塞等待用户回答时，本轮的文本内容应已渲染到对话流。
         const todoBlocks = aContent.filter((ab: any) => ab?.type === 'tool_use' && ab.name === 'TodoWrite')
         for (const tb of todoBlocks) {
           const todos = Array.isArray(tb.input?.todos) ? tb.input.todos : []
           webContents.send('claude:task', { localSessionId: lsid, kind: 'todo_sync', todos })
         }
         const blocks = normalizeBetaBlocks(aContent)
-          // 过滤掉 AskUserQuestion / ExitPlanMode tool_use：它们由专属面板/卡片承载，不渲染成普通工具卡片
-          .filter((b: any) => !(b.type === 'tool_use' && (b.name === 'AskUserQuestion' || b.name === 'ExitPlanMode' || b.name === 'TodoWrite')))
+          // 过滤掉由专属面板/卡片承载的 tool_use：AskUserQuestion / ExitPlanMode / TodoWrite，
+          // 以及 TaskCreate / TaskUpdate（悬浮面板 Task 卡片承载，见 handleTaskPlanTool）
+          .filter((b: any) => !(b.type === 'tool_use' && (
+            b.name === 'AskUserQuestion' || b.name === 'ExitPlanMode' || b.name === 'TodoWrite'
+            || b.name === 'TaskCreate' || b.name === 'TaskUpdate'
+          )))
+        // assistant 阶段 input 完整：拦截 TaskUpdate 推 claude:task；TaskCreate 仅记录 input
+        // （真实 taskId 来自后续 tool_result，见 handleTaskCreateResult）。
+        if (Array.isArray(aContent)) {
+          for (const ab of aContent) {
+            if (ab?.type === 'tool_use' && ab.name === 'TaskCreate') {
+              this.toolUseInputs.set(ab.id, { name: ab.name, input: ab.input })
+            } else if (ab?.type === 'tool_use' && ab.name === 'TaskUpdate') {
+              this.handleTaskPlanTool(lsid, ab, webContents)
+            }
+          }
+        }
         // assistant 消息含完整 tool_use input（stream_event 的 content_block_start 时 input 还是空壳，
         // 这里补全，供 user 阶段提取后台命令文本）
         if (Array.isArray(aContent)) {
           for (const ab of aContent) {
             if (ab?.type === 'tool_use' && (ab.name === 'Bash' || ab.name === 'Task')) {
               this.toolUseInputs.set(ab.id, { name: ab.name, input: ab.input })
+              if (ab.name === 'Task') {
+                this.registerSyncSubagent(lsid, ab, webContents)
+              }
             }
           }
         }
         webContents.send('claude:blocks', { localSessionId: lsid, op: 'assistant_blocks', blocks, uuid: message.uuid })
+
+        // 阻塞式交互：先推完本轮内容，再等待用户决策。
+        // forwardEvent 是 async，runIterate 的 for-await 会 await 它，
+        // SDK 事件循环在此暂停，不会在用户回答前继续执行后续步骤。
+        if (Array.isArray(aContent)) {
+          const askBlocks = aContent.filter((ab: any) => ab?.type === 'tool_use' && ab.name === 'AskUserQuestion')
+          for (const ab of askBlocks) {
+            await this.handleAskUserQuestion(lsid, ab, webContents)
+          }
+          // ExitPlanMode：计划模式下模型提交计划。阻塞式——必须等用户在计划卡片上
+          // 选择授权模式后才继续，否则 SDK 自动回填 dummy tool_result 后会继续往下走（BUG）。
+          const planBlocks = aContent.filter((ab: any) => ab?.type === 'tool_use' && ab.name === 'ExitPlanMode')
+          for (const pb of planBlocks) {
+            await this.handleExitPlanMode(lsid, pb, webContents)
+          }
+        }
         break
       }
       case 'user': {
         const results = extractToolResults(message.message?.content || [])
         for (const r of results) {
           webContents.send('claude:blocks', { localSessionId: lsid, op: 'tool_result', toolUseId: r.toolUseId, result: { content: r.content, isError: r.isError } })
+          // 同步 Task subagent 收尾：tool_result 到达即表示该子代理执行结束。
+          // 按 tool_use_id 找到 registry 里登记的记录,标记 completed/failed 并推送更新。
+          if (this.registry && this.registry.isManaged(r.toolUseId)) {
+            const finalStatus = r.isError ? 'failed' : 'completed'
+            const t = this.registry.handleTaskNotification(lsid, { task_id: r.toolUseId, status: finalStatus })
+            if (t) webContents.send('claude:backend-task', { localSessionId: lsid, op: 'update', task: t })
+          }
+          // TaskCreate 的 tool_result：解析 "Task #N" 真实 id，发 started 让悬浮面板显示规划任务
+          const tcInput = this.toolUseInputs.get(r.toolUseId)
+          if (tcInput?.name === 'TaskCreate') {
+            this.handleTaskCreateResult(lsid, r.toolUseId, contentToText(r.content), webContents)
+          }
         }
         // 检测 auto-background 命令：Bash tool_result 带 backgroundTaskId → 建 backend task
         const rawContent = message.message?.content || []
@@ -424,15 +507,122 @@ export class ClaudeService {
     }
   }
 
+  /**
+   * 拦截 TaskCreate / TaskUpdate 工具调用，转发为 claude:task 事件，让悬浮面板 Task 卡片
+   * 显示 Claude 规划的任务列表。
+   *
+   * 与 Task 工具（spawn 同步 subagent，走 registerSyncSubagent/BackendTask）不同：
+   * TaskCreate/TaskUpdate 是模型规划任务的元工具，input 结构（真实 SDK 样本）：
+   *   TaskCreate: { subject, description, activeForm }
+   *   TaskUpdate: { taskId: string, status: 'in_progress'|'completed'|'failed'|... }
+   * 前端 onTask 的 kind:'started'/'updated' 已支持，这里只需映射状态字符串。
+   */
+  private handleTaskPlanTool(
+    lsid: string,
+    tb: { id: string; name?: string; input?: any },
+    webContents: WebContents,
+  ): void {
+    const input = tb.input || {}
+    if (tb.name === 'TaskCreate') {
+      // 不在此发 started：真实 taskId（TaskUpdate 引用的 id）来自 tool_result 文本
+      // "Task #N created successfully"，assistant 阶段拿不到。仅记录，tool_result 阶段见 handleTaskCreateResult。
+      return
+    } else if (tb.name === 'TaskUpdate') {
+      const rawStatus = typeof input.status === 'string' ? input.status : ''
+      const mapped = rawStatus === 'in_progress' ? 'running'
+        : rawStatus === 'completed' ? 'completed'
+        : rawStatus === 'failed' ? 'failed'
+        : rawStatus === 'pending' ? 'pending'
+        : rawStatus
+      webContents.send('claude:task', {
+        localSessionId: lsid,
+        kind: 'updated',
+        taskId: String(input.taskId ?? tb.id),
+        patch: { status: mapped },
+      })
+    }
+  }
+
+  /**
+   * 处理 TaskCreate 的 tool_result：从 "Task #N created successfully: <desc>" 解析出真实 taskId，
+   * 发 claude:task kind:started 让悬浮面板 Task 卡片显示该规划任务。
+   *
+   * TaskUpdate 的 input.taskId 引用的正是这里的 #N（数字 id），故必须用解析出的真实 id，
+   * 而非 tool_use_id，否则 TaskUpdate 的状态更新会落空（id 对不上）。
+   * 解析失败时用 tool_use_id 兜底，保证任务至少能显示。
+   */
+  private handleTaskCreateResult(
+    lsid: string,
+    toolUseId: string,
+    resultText: string,
+    webContents: WebContents,
+  ): void {
+    const toolUse = this.toolUseInputs.get(toolUseId)
+    if (!toolUse || toolUse.name !== 'TaskCreate') return
+    const input = toolUse.input || {}
+    const subject = typeof input.subject === 'string' ? input.subject : ''
+    const details = typeof input.description === 'string' ? input.description : ''
+    const activeForm = typeof input.activeForm === 'string' ? input.activeForm : ''
+    const description = subject || details || ''
+    // 解析 "Task #N created successfully"（兼容中英文 SDK 输出）
+    const m = /Task\s*#(\d+)/i.exec(resultText || '')
+    const taskId = m ? m[1] : toolUseId
+    webContents.send('claude:task', {
+      localSessionId: lsid,
+      kind: 'started',
+      taskId,
+      description,
+      taskType: 'task',
+      subject,
+      details,
+      activeForm,
+      createdAt: Date.now(),
+    })
+  }
+
+  /**
+   * 登记同步 Task 工具创建的 subagent。
+   * Claude 用 Task 工具创建的普通子代理是阻塞调用,SDK 不发 task_started 事件,
+   * 这里在主流 Task tool_use 出现时主动登记,让它出现在悬浮面板。
+   * 用 tool_use_id 作 task_id（与 task_started 的 task_id 命名空间不冲突,且幂等去重）。
+   */
+  private registerSyncSubagent(lsid: string, tb: { id: string; input?: any }, webContents: WebContents): void {
+    if (!this.registry) return
+    const input = tb.input || {}
+    const description = typeof input.description === 'string' ? input.description : ''
+    const prompt = typeof input.prompt === 'string' ? input.prompt : ''
+    const subagentType = typeof input.subagent_type === 'string' ? input.subagent_type
+      : typeof input.subagentType === 'string' ? input.subagentType : 'general-purpose'
+    const t = this.registry.handleTaskStarted(lsid, {
+      task_id: tb.id,            // 用 tool_use_id 作 task_id,幂等且与 subagent-output/tool_result 锚定一致
+      description: description || prompt || '(子代理)',
+      prompt,
+      task_type: 'subagent',
+      subagent_type: subagentType,
+      tool_use_id: tb.id,
+    })
+    if (t) {
+      webContents.send('claude:backend-task', { localSessionId: lsid, op: 'create', task: t })
+    }
+  }
+
   /** system.subtype='task_started'：委托 registry（内部 resolveKind 决定是否创建）。
    *  registry 返回 null（未知 task_type）时事件被丢弃——不回退到 claude:task，
    *  因为 task_started 只对长生命周期任务发出，无对应 kind 的属噪声。 */
   private handleTaskStartedEvent(tm: any, lsid: string, webContents: WebContents): void {
     if (!this.registry) return
+    // 创建该 subagent 的原始 prompt：优先用主流 Task tool_use 的 input.prompt
+    // (tool_use_id 锚定,最完整);task_started 事件的 prompt 兜底。
+    let resolvedPrompt = tm.prompt ?? ''
+    if (tm.tool_use_id) {
+      const tui = this.toolUseInputs.get(tm.tool_use_id)
+      const p = tui?.input?.prompt
+      if (typeof p === 'string' && p.trim()) resolvedPrompt = p
+    }
     const t = this.registry.handleTaskStarted(lsid, {
       task_id: tm.task_id,
       description: tm.description ?? '',
-      prompt: tm.prompt ?? '',
+      prompt: resolvedPrompt,
       task_type: tm.task_type,
       subagent_type: tm.subagent_type,
       tool_use_id: tm.tool_use_id,
@@ -489,6 +679,17 @@ export class ClaudeService {
     } else {
       webContents.send('claude:task', { localSessionId: lsid, ...fallbackPayload })
     }
+  }
+
+  /**
+   * 动态切换权限模式：把中文标签翻译成 SDK permissionMode，
+   * 委托 SessionQueryManager 调 query.setPermissionMode（control request，实时生效）。
+   * 用于「批准计划」后立即退出 plan 模式，让用户能编辑/新增文件。
+   */
+  async setPermissionMode(localSessionId: string, permissionLabel: string): Promise<void> {
+    if (!this.manager) return
+    const mode = getPermissionMode(permissionLabel)
+    await this.manager.setPermissionMode(localSessionId, mode)
   }
 
   /**

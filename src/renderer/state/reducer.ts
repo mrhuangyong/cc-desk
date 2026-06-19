@@ -426,6 +426,14 @@ export function reducer(state: AppState, action: Action): AppState {
       // 策略：流式期间末尾连续的 text/thinking block 视为本轮草稿，用 assistant
       // 的对应内容替换；tool_use 按 id 合并（保留已回填的 result/status）。
       const merged = [...prev.blocks]
+      // 空 blocks 守卫：当本轮 assistant 内容全是被过滤的 tool_use
+      // （AskUserQuestion/ExitPlanMode/TodoWrite/TaskCreate/TaskUpdate），
+      // 或是 subagent 消息的空占位时，主进程会发来 blocks: []。
+      // 此时不应丢弃末尾草稿块——否则主流已显示的文本会被清空，
+      // 下一轮文字重新累积导致「消失/重现」闪烁。
+      if (action.blocks.length === 0) {
+        return syncDraftMessage(state, action.sessionId)
+      }
       // 1) 丢弃末尾连续的纯文本/思考草稿块（它们将由 assistant 的 text/thinking 取代）
       while (merged.length) {
         const t = merged[merged.length - 1].type

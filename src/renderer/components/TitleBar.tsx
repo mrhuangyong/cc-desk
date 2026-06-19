@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import { Settings, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from 'lucide-react'
+import { Settings, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, ListChecks } from 'lucide-react'
 import { ThemeSwitcher } from './ThemeSwitcher'
 import { useStore } from '../state/store'
 import { useI18n } from '../i18n/useI18n'
@@ -12,9 +12,11 @@ const drag: DragStyle = { WebkitAppRegion: 'drag' }
 const noDrag: DragStyle = { WebkitAppRegion: 'no-drag' }
 
 // ghost 图标按钮：Codex 式，默认淡，hover 才浮出底色
-function GhostButton({ children, title, onClick, ariaLabel }: {
-  children: React.ReactNode; title: string; onClick: () => void; ariaLabel?: string
+// active=true：表示当前处于开启态，图标常亮提示
+function GhostButton({ children, title, onClick, ariaLabel, active }: {
+  children: React.ReactNode; title: string; onClick: () => void; ariaLabel?: string; active?: boolean
 }) {
+  const rest = active ? 'var(--text)' : 'var(--text-muted)'
   return (
     <button
       onClick={onClick}
@@ -22,11 +24,11 @@ function GhostButton({ children, title, onClick, ariaLabel }: {
       aria-label={ariaLabel ?? title}
       style={{
         width: 26, height: 26, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        borderRadius: 6, color: 'var(--text-muted)', lineHeight: 1,
+        borderRadius: 6, color: rest, lineHeight: 1,
         transition: 'background .12s, color .12s', ...noDrag,
       }}
       onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; e.currentTarget.style.color = 'var(--text)' }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)' }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = rest }}
     >
       {children}
     </button>
@@ -42,8 +44,9 @@ interface Props {
 }
 
 export function TitleBar({ projectName, leftCollapsed, rightCollapsed, onToggleLeft, onToggleRight }: Props) {
-  const { dispatch } = useStore()
+  const { state, dispatch } = useStore()
   const { t } = useI18n()
+  const taskPanelOpen = !state.panelFold.root
   return (
     <div style={{
       display: 'flex', alignItems: 'center', height: 36, padding: '0 8px',
@@ -70,6 +73,14 @@ export function TitleBar({ projectName, leftCollapsed, rightCollapsed, onToggleL
 
       {/* 右侧工具组 */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 2, ...noDrag }}>
+        {/* 悬浮任务面板：与右栏独立，激活(展开)时图标常亮 */}
+        <GhostButton
+          title={taskPanelOpen ? t('title.taskPanelHide') : t('title.taskPanelShow')}
+          ariaLabel={taskPanelOpen ? t('title.taskPanelHide') : t('title.taskPanelShow')}
+          active={taskPanelOpen}
+          onClick={() => dispatch({ type: 'SET_PANEL_FOLD', panel: 'root', folded: !state.panelFold.root })}>
+          <ListChecks size={15} />
+        </GhostButton>
         <GhostButton title={t('title.settings')} onClick={() => dispatch({ type: 'SET_SETTINGS_SECTION', section: 'general' })}>
           <Settings size={15} />
         </GhostButton>

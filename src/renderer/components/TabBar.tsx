@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import type { LucideIcon } from 'lucide-react'
 import { FileText, Globe, SquareTerminal, FileDiff, Plus, X } from 'lucide-react'
 import { useStore } from '../state/store'
+import { resolveTerminalCwd } from '../utils/terminal'
 import { FileTab } from './FileTab'
 import type { FileTabHandle } from './FileTab'
 import { BrowserTab } from './BrowserTab'
@@ -68,12 +69,6 @@ export function TabBar() {
         </div>
       )
     })
-  }
-
-  // 终端 cwd：当前激活会话所属项目的 path，无则回退 settings.cwd
-  const resolveTerminalCwd = (s: typeof state): string | undefined => {
-    const project = s.projects.find(p => p.sessions.some(sess => sess.id === s.activeSessionId))
-    return project?.path || s.settings.cwd || undefined
   }
 
   const addTab = (type: TabType) => {

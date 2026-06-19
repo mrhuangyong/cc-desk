@@ -20,7 +20,7 @@ function makeInitialState(seedProjects?: Project[]): AppState {
       apiKey: '', model: 'model-sonnet', cwd: '', providers: [], models: [], modelRoleMap: {},
       theme: 'codex-light', lang: 'zh-CN', zoom: 'normal', proxy: '', inheritTerminal: true,
       terminalFont: 'MesloLGS NF, monospace', taskNotify: true, notifySound: true, queueMode: 'queue',
-      showThinking: false, showTodo: true, showBackendTask: true, autoArchive: true, archiveDays: '7',
+      showThinking: true, showTodo: true, showBackendTask: true, autoArchive: true, archiveDays: '7',
       codePreview: { lightTheme: 'GitHub Light', darkTheme: 'GitHub Dark', showLineNumbers: true, wordWrap: false, fontSize: 12 },
       skills: [], mcpServers: [], plugins: [], commands: [], hooks: [],
     },

@@ -12,7 +12,7 @@ export interface SessionQuery {
   query: Query
   controller: PushController<SDKUserMessage>
   iterateTask: Promise<void>
-  onEvent: (msg: any) => void        // mutable, updated on each ensureSession
+  onEvent: (msg: any) => void | Promise<void>  // mutable, updated on each ensureSession. 返回 Promise 时 runIterate 会 await, 用于阻塞式交互(如 AskUserQuestion)。
   onError: (err: unknown) => void    // mutable, updated on each ensureSession
   // 是否正在迭代(一轮对话尚未结束)。for await 循环在跑时为 true。
   // 渲染端刷新后据此判断哪些 session 需要重建 streaming 状态。
@@ -23,7 +23,7 @@ export interface EnsureSessionOpts {
   localSessionId: string
   resumeId?: string
   webContents: WebContents
-  onEvent: (msg: any) => void
+  onEvent: (msg: any) => void | Promise<void>
   // iterate 抛错时回调（在 handleCrash 清理之前触发），用于通知渲染端清掉 streaming 状态。
   onError: (err: unknown) => void
   buildQuery: (controller: PushController<SDKUserMessage>) => Query
@@ -117,7 +117,7 @@ export class SessionQueryManager {
     sq.isIterating = true
     try {
       for await (const message of sq.query) {
-        sq.onEvent(message)
+        await sq.onEvent(message)
       }
     } catch (err) {
       // 用户主动 abort（interrupt 超时后强制中止）:不报错、不触发 onError,
@@ -143,6 +143,17 @@ export class SessionQueryManager {
       sq.controller.close()
       this.sessions.delete(localSessionId)
     }
+  }
+
+  /**
+   * 动态切换权限模式（streaming-input 专属）。
+   * 用于「批准计划」后立即把 plan 模式切到执行模式，无需等下一条消息。
+   * SDK 的 setPermissionMode 是 control request，会实时生效。
+   */
+  async setPermissionMode(localSessionId: string, mode: string): Promise<void> {
+    const sq = this.sessions.get(localSessionId)
+    if (!sq) return
+    try { await (sq.query as any).setPermissionMode(mode) } catch (err) { console.error('[session-query] setPermissionMode failed', err) }
   }
 
   async interrupt(localSessionId: string): Promise<void> {
@@ -172,7 +183,7 @@ export class SessionQueryManager {
 
   /** 更新指定 session 的 onEvent/onError 回调（刷新后 webContents 变了，
    *  需把活跃 session 的事件转发指向新 webContents）。 */
-  updateCallbacks(localSessionId: string, onEvent: (msg: any) => void, onError: (err: unknown) => void): void {
+  updateCallbacks(localSessionId: string, onEvent: (msg: any) => void | Promise<void>, onError: (err: unknown) => void): void {
     const sq = this.sessions.get(localSessionId)
     if (!sq) return
     sq.onEvent = onEvent

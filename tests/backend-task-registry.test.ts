@@ -446,3 +446,77 @@ describe('BackendTaskRegistry 清理（防内存泄漏）', () => {
     })
     expect(task!.toolUseId).toBeUndefined()
   })
+
+// ---- prompt 字段存储(创建 subagent 的原始 prompt) ----
+describe('prompt 字段存储', () => {
+  it('handleTaskStarted 把 prompt 存进 task.prompt', () => {
+    const reg = new BackendTaskRegistry()
+    const task = reg.handleTaskStarted('s1', {
+      task_id: 'tid_p1',
+      description: '审查登录流程',
+      prompt: '请审查 src/auth 目录下的登录实现',
+      task_type: 'subagent',
+      subagent_type: 'general-purpose',
+      tool_use_id: 'toolu_1',
+    })
+    expect(task).not.toBeNull()
+    expect(task!.prompt).toBe('请审查 src/auth 目录下的登录实现')
+  })
+
+  it('无 prompt 时 task.prompt 为 undefined', () => {
+    const reg = new BackendTaskRegistry()
+    const task = reg.handleTaskStarted('s1', {
+      task_id: 'tid_p2',
+      description: '跑 lint',
+      task_type: 'local_workflow',
+    })
+    expect(task).not.toBeNull()
+    expect(task!.prompt).toBeUndefined()
+  })
+})
+
+// ---- remove / removeMany: 删除记录(配合渲染端「移除」「清除已结束」) ----
+describe('remove / removeMany', () => {
+  it('remove 删除单条记录', () => {
+    const reg = new BackendTaskRegistry()
+    reg.handleTaskStarted('s1', { task_id: 'r1', task_type: 'subagent', subagent_type: 'general-purpose', description: 't1' })
+    reg.handleTaskStarted('s1', { task_id: 'r2', task_type: 'local_workflow', description: 't2' })
+
+    expect(reg.remove('r1')).toBe(true)
+    expect(reg.isManaged('r1')).toBe(false)
+    expect(reg.isManaged('r2')).toBe(true)
+  })
+
+  it('remove 不存在的 task_id 返回 false', () => {
+    const reg = new BackendTaskRegistry()
+    expect(reg.remove('nope')).toBe(false)
+  })
+
+  it('removeMany 批量删除', () => {
+    const reg = new BackendTaskRegistry()
+    reg.handleTaskStarted('s1', { task_id: 'm1', task_type: 'subagent', description: 'a' })
+    reg.handleTaskStarted('s1', { task_id: 'm2', task_type: 'subagent', description: 'b' })
+    reg.handleTaskStarted('s1', { task_id: 'm3', task_type: 'subagent', description: 'c' })
+
+    const removed = reg.removeMany(['m1', 'm2', 'nope'])
+    expect(removed).toBe(2)
+    expect(reg.isManaged('m1')).toBe(false)
+    expect(reg.isManaged('m2')).toBe(false)
+    expect(reg.isManaged('m3')).toBe(true)
+  })
+
+  it('removeMany 空数组返回 0', () => {
+    const reg = new BackendTaskRegistry()
+    expect(reg.removeMany([])).toBe(0)
+  })
+
+  it('删除后 listBySession 不再包含(刷新后不复活)', () => {
+    const reg = new BackendTaskRegistry()
+    reg.handleTaskStarted('s1', { task_id: 'k1', task_type: 'subagent', description: 'x' })
+    reg.handleTaskStarted('s1', { task_id: 'k2', task_type: 'subagent', description: 'y' })
+    reg.remove('k1')
+
+    const list = reg.listBySession('s1')
+    expect(list.map(t => t.id)).toEqual(['k2'])
+  })
+})
