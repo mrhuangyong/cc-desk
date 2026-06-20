@@ -112,6 +112,7 @@ interface ClaudeConfigAPI {
     get(): Promise<ClaudeSkill[]>
     getFile(id: string): Promise<string>
     saveFile(id: string, content: string): Promise<void>
+    setEnabled(name: string, enabled: boolean): Promise<void>
   }
   commands: { get(): Promise<ClaudeCommand[]> }
   hooks: {
