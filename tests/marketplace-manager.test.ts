@@ -110,3 +110,63 @@ describe('addMarketplace + getMarketplaces', () => {
     expect(list).toEqual([])
   })
 })
+
+describe('removeMarketplace', () => {
+  it('删除条目 + 清理缓存 + 级联移除 enabledPlugins', async () => {
+    const { addMarketplace, removeMarketplace, getMarketplaces } = await import('../src/main/marketplace-manager')
+    const { writeInstalledPlugins } = await import('../src/main/claude-config')
+
+    const mpPath = await makeTmpMarketplace()
+    await addMarketplace(mpPath)
+
+    // 模拟已安装的插件：写 installed_plugins.json + settings.json
+    await writeInstalledPlugins({
+      plugins: {
+        'plugin-a@test-market': [{ scope: 'user', installPath: join(TMP_DIR, 'fake-cache'), version: '1.0.0' }],
+      },
+    })
+    await writeFile(join(TMP_DIR, 'settings.json'), JSON.stringify({
+      enabledPlugins: { 'plugin-a@test-market': true, 'other@other-market': true },
+    }))
+
+    const result = await removeMarketplace('test-market')
+    expect(result.cascadedPlugins).toContain('plugin-a')
+
+    // known_marketplaces.json 已移除
+    const list = await getMarketplaces()
+    expect(list.find(m => m.name === 'test-market')).toBeUndefined()
+
+    // settings.json 的 enabledPlugins 里 @test-market 后缀的已移除，保留 other
+    const settings = JSON.parse(await readFile(join(TMP_DIR, 'settings.json'), 'utf-8'))
+    expect(settings.enabledPlugins['plugin-a@test-market']).toBeUndefined()
+    expect(settings.enabledPlugins['other@other-market']).toBe(true)
+  })
+  it('删除不存在的仓库报错', async () => {
+    const { removeMarketplace } = await import('../src/main/marketplace-manager')
+    await expect(removeMarketplace('nonexistent')).rejects.toThrow()
+  })
+})
+
+describe('refreshMarketplace', () => {
+  it('file 类型刷新成功并更新 lastUpdated', async () => {
+    const { addMarketplace, refreshMarketplace, getMarketplaces } = await import('../src/main/marketplace-manager')
+    const mpPath = await makeTmpMarketplace()
+    await addMarketplace(mpPath)
+    const before = (await getMarketplaces())[0]
+    await new Promise(r => setTimeout(r, 50))
+    await refreshMarketplace('test-market')
+    const after = (await getMarketplaces())[0]
+    expect(new Date(after.lastUpdated).getTime()).toBeGreaterThan(new Date(before.lastUpdated).getTime())
+  })
+})
+
+describe('setAutoUpdate', () => {
+  it('切换 autoUpdate 标记', async () => {
+    const { addMarketplace, setMarketplaceAutoUpdate, getMarketplaces } = await import('../src/main/marketplace-manager')
+    const mpPath = await makeTmpMarketplace()
+    await addMarketplace(mpPath, { autoUpdate: true })
+    await setMarketplaceAutoUpdate('test-market', false)
+    const m = (await getMarketplaces())[0]
+    expect(m.autoUpdate).toBe(false)
+  })
+})

@@ -273,3 +273,107 @@ async function gitClone(url: string, dest: string, ref?: string): Promise<void> 
     : ['clone', '--depth', '1', url, dest]
   await execFileAsync('git', args, { timeout: GIT_TIMEOUT_MS, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } })
 }
+
+// settings.json 路径（级联清理 enabledPlugins 用）
+const SETTINGS_PATH = join(CLAUDE_DIR, 'settings.json')
+
+export async function removeMarketplace(name: string): Promise<{ cascadedPlugins: string[] }> {
+  const config = await readKnownConfig()
+  if (!config[name]) throw new Error(`仓库「${name}」不存在`)
+
+  delete config[name]
+  await saveKnownConfig(config)
+
+  // 清理 marketplaces 缓存（目录和 .json 文件都删）
+  await rm(join(MARKETPLACES_DIR, name), { recursive: true, force: true }).catch(() => {})
+  await rm(join(MARKETPLACES_DIR, `${name}.json`), { force: true }).catch(() => {})
+
+  // 级联：移除 settings.json enabledPlugins 里 @name 后缀的条目
+  const cascadedPlugins: string[] = []
+  const settings = await readJson<Record<string, any>>(SETTINGS_PATH, {})
+  if (settings.enabledPlugins && typeof settings.enabledPlugins === 'object') {
+    const ep = { ...settings.enabledPlugins }
+    const suffix = `@${name}`
+    for (const key of Object.keys(ep)) {
+      if (key.endsWith(suffix)) {
+        cascadedPlugins.push(key.split('@')[0])
+        delete ep[key]
+      }
+    }
+    settings.enabledPlugins = ep
+    await writeJson(SETTINGS_PATH, settings)
+  }
+
+  // 级联：移除 installed_plugins.json 里 @name 后缀的条目
+  const { readInstalledPlugins, writeInstalledPlugins } = await import('./claude-config')
+  const installed = await readInstalledPlugins()
+  const suffix = `@${name}`
+  let installedChanged = false
+  for (const key of Object.keys(installed.plugins)) {
+    if (key.endsWith(suffix)) {
+      delete installed.plugins[key]
+      installedChanged = true
+    }
+  }
+  if (installedChanged) await writeInstalledPlugins(installed)
+
+  return { cascadedPlugins }
+}
+
+export async function refreshMarketplace(name: string): Promise<void> {
+  const config = await readKnownConfig()
+  const entry = config[name]
+  if (!entry) throw new Error(`仓库「${name}」不存在`)
+
+  const source = entry.source
+
+  if (source.source === 'url') {
+    const response = await fetch(source.url, { headers: source.headers })
+    if (!response.ok) throw new Error(`下载失败: ${response.status}`)
+    const data = JSON.parse(await response.text())
+    await writeJson(entry.installLocation, data)
+  } else if (source.source === 'github' || source.source === 'git') {
+    await gitPull(entry.installLocation, source.ref)
+  } else if (source.source === 'file') {
+    const data = JSON.parse(await readFile(source.path, 'utf-8'))
+    await writeJson(entry.installLocation, data)
+  } else if (source.source === 'directory') {
+    await readMarketplaceFromDir(source.path)
+  }
+
+  config[name].lastUpdated = new Date().toISOString()
+  await saveKnownConfig(config)
+}
+
+async function gitPull(cwd: string, ref?: string): Promise<void> {
+  const args = ref ? ['fetch', 'origin', ref] : ['pull', '--ff-only']
+  await execFileAsync('git', args, { cwd, timeout: GIT_TIMEOUT_MS, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } })
+  if (ref) {
+    await execFileAsync('git', ['checkout', ref], { cwd, timeout: GIT_TIMEOUT_MS })
+  }
+}
+
+export async function refreshAllMarketplaces(): Promise<void> {
+  const config = await readKnownConfig()
+  for (const name of Object.keys(config)) {
+    try { await refreshMarketplace(name) }
+    catch (e) { console.error(`刷新仓库 ${name} 失败:`, e) }
+  }
+}
+
+export async function setMarketplaceAutoUpdate(name: string, enabled: boolean): Promise<void> {
+  const config = await readKnownConfig()
+  if (!config[name]) throw new Error(`仓库「${name}」不存在`)
+  config[name].autoUpdate = enabled
+  await saveKnownConfig(config)
+}
+
+// 启动时自动刷新标记了 autoUpdate 的仓库（异步，不阻塞应用启动）
+export async function refreshAutoUpdateMarketplaces(): Promise<void> {
+  const config = await readKnownConfig()
+  for (const name of Object.keys(config)) {
+    if (config[name].autoUpdate) {
+      refreshMarketplace(name).catch(e => console.error(`自动刷新 ${name} 失败:`, e))
+    }
+  }
+}
