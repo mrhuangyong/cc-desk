@@ -75,6 +75,7 @@ export interface ClaudeSkill {
   enabled: boolean          // 跟随所属插件的启用状态
   scope: '个人' | '工作区'  // 个人=用户级（~/.claude/skills），工作区=插件提供
   source: string            // 来源插件名
+  path: string              // SKILL.md 绝对路径（详情弹窗读写用）
 }
 
 export interface ClaudeCommand {
@@ -294,6 +295,7 @@ async function scanSkillsInDir(dir: string, source: string, scope: '个人' | '�
         enabled,
         scope,
         source,
+        path: skillMd,
       })
     } catch { /* skip */ }
   }
@@ -312,6 +314,20 @@ export async function getSkills(): Promise<ClaudeSkill[]> {
   const userSkills = await scanSkillsInDir(join(CLAUDE_DIR, 'skills'), 'user', '个人', true)
   out.push(...userSkills)
   return out
+}
+
+// 按技能 id 读取 SKILL.md 全文。找不到时返回空串（详情弹窗容错）。
+export async function getSkillFile(id: string): Promise<string> {
+  const skill = (await getSkills()).find(s => s.id === id)
+  if (!skill || !skill.path || !existsSync(skill.path)) return ''
+  try { return await readFile(skill.path, 'utf-8') } catch { return '' }
+}
+
+// 按技能 id 写回 SKILL.md（详情弹窗编辑后落盘）。
+export async function saveSkillFile(id: string, content: string): Promise<void> {
+  const skill = (await getSkills()).find(s => s.id === id)
+  if (!skill || !skill.path) return
+  await writeFile(skill.path, content, 'utf-8')
 }
 
 // ---- 命令（扫描已启用插件的 commands/*.md + 用户级）----
