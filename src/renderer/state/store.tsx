@@ -35,6 +35,7 @@ function makeInitialState(seedProjects?: Project[]): AppState {
     subagentOutputBySession: {},
     planBySession: {},
     abortedBySession: {},
+    updateStatus: { state: 'idle' },
   }
   if (!seedProjects || seedProjects.length === 0) return base
   const sessions = seedProjects.flatMap(p => p.sessions)

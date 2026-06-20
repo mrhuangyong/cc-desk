@@ -27,10 +27,17 @@ function initialState(): AppState {
     claudeSessionMap: {},
     pendingDialog: null,
     dirtyTabIds: {}, lastFileOpenedSeq: 0, queueBySession: {}, tasksBySession: {}, backendTasksBySession: {}, panelFold: { root: false, taskCard: false, subagentCard: false, backendTaskCard: false }, subagentOutputBySession: {}, planBySession: {}, abortedBySession: {},
+    updateStatus: { state: 'idle' },
   }
 }
 
 describe('reducer', () => {
+  it('UPDATE_STATUS 更新全局更新状态', () => {
+    const state = initialState()
+    const next = reducer(state, { type: 'UPDATE_STATUS', status: { state: 'ready', version: '1.2.0' } })
+    expect(next.updateStatus).toEqual({ state: 'ready', version: '1.2.0' })
+  })
+
   it('DELETE_SESSION 删除指定会话', () => {
     const state = initialState()
     const next = reducer(state, { type: 'DELETE_SESSION', projectId: 'p1', sessionId: 's2' })

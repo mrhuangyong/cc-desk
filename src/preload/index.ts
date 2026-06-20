@@ -22,7 +22,7 @@ contextBridge.exposeInMainWorld('api', {
     dialogResponse: (payload: { reqId: string; result: any }) => ipcRenderer.invoke('claude:dialog-response', payload),
     setPermissionMode: (opts: { localSessionId: string; permission: string }) => ipcRenderer.invoke('claude:set-permission-mode', opts),
     removeAllListeners: () => {
-      ['claude:system', 'claude:delta', 'claude:blocks', 'claude:notice', 'claude:task', 'claude:result', 'claude:error', 'claude:aborted', 'claude:dialog-request', 'claude:backend-task', 'claude:builtin-result', 'claude:plan', 'claude:subagent-output']
+      ['claude:system', 'claude:delta', 'claude:blocks', 'claude:notice', 'claude:task', 'claude:result', 'claude:error', 'claude:aborted', 'claude:dialog-request', 'claude:backend-task', 'claude:builtin-result', 'claude:plan', 'claude:subagent-output', 'update:state']
         .forEach(ch => ipcRenderer.removeAllListeners(ch))
     },
   },
@@ -49,11 +49,19 @@ contextBridge.exposeInMainWorld('api', {
       get: () => ipcRenderer.invoke('cc:plugins:get'),
       setEnabled: (id: string, enabled: boolean) => ipcRenderer.invoke('cc:plugin:set-enabled', id, enabled),
     },
-    skills: { get: () => ipcRenderer.invoke('cc:skills:get') },
+    skills: {
+      get: () => ipcRenderer.invoke('cc:skills:get'),
+      getFile: (id: string) => ipcRenderer.invoke('cc:skill:get', id),
+      saveFile: (id: string, content: string) => ipcRenderer.invoke('cc:skill:save', id, content),
+    },
     commands: { get: () => ipcRenderer.invoke('cc:commands:get') },
     hooks: {
       get: () => ipcRenderer.invoke('cc:hooks:get'),
       setEnabled: (name: string, enabled: boolean) => ipcRenderer.invoke('cc:hook:set-enabled', name, enabled),
+    },
+    memory: {
+      get: () => ipcRenderer.invoke('cc:memory:get'),
+      save: (content: string) => ipcRenderer.invoke('cc:memory:save', content),
     },
     model: {
       get: () => ipcRenderer.invoke('cc:model:get'),
@@ -113,5 +121,20 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.on(channel, handler)
       return () => ipcRenderer.removeListener(channel, handler)
     },
+  },
+  update: {
+    // 主→渲染：状态机变更。返回 unsubscribe，防监听器累加（沿用 onArchiveTick 模式）
+    onState: (cb: (s: any) => void) => {
+      const channel = 'update:state'
+      const handler = (_: unknown, s: any) => cb(s)
+      ipcRenderer.on(channel, handler)
+      return () => ipcRenderer.removeListener(channel, handler)
+    },
+    check: () => ipcRenderer.invoke('update:check'),
+    install: () => ipcRenderer.invoke('update:install'),
+    downloadAndOpen: () => ipcRenderer.invoke('update:download-and-open'),
+  },
+  appVersion: {
+    get: () => ipcRenderer.invoke('app:version'),
   },
 })

@@ -57,7 +57,7 @@ describe('BackendTaskPanel', () => {
       backendTasks={[{ id: 'b1', localSessionId: 's1', command: 'pnpm dev', kind: 'workflow', status: 'running', startedAt: 0, lastKnownAt: 0 }]}
       showTodo showBackendTask folded={{ root: false, taskCard: false, subagentCard: false, backendTaskCard: false }}
       activeSessionId="s1" dispatch={dispatch} />)
-    expect(screen.getByTitle('终止')).toBeTruthy()
+    expect(screen.getByLabelText('终止')).toBeTruthy()
   })
 
   it('completed 任务显示移除按钮（×）', () => {
@@ -65,8 +65,8 @@ describe('BackendTaskPanel', () => {
       backendTasks={[{ id: 'b2', localSessionId: 's1', command: 'done', kind: 'workflow', status: 'completed', startedAt: 0, lastKnownAt: 0 }]}
       showTodo showBackendTask folded={{ root: false, taskCard: false, subagentCard: false, backendTaskCard: false }}
       activeSessionId="s1" dispatch={dispatch} />)
-    expect(screen.queryByTitle('终止')).toBeNull()
-    expect(screen.getByTitle('移除')).toBeTruthy()
+    expect(screen.queryByLabelText('终止')).toBeNull()
+    expect(screen.getByLabelText('移除')).toBeTruthy()
   })
 
   it('点击移除按钮 dispatch REMOVE_BACKEND_TASK', () => {
@@ -74,7 +74,7 @@ describe('BackendTaskPanel', () => {
       backendTasks={[{ id: 'b2', localSessionId: 's1', command: 'done', kind: 'workflow', status: 'completed', startedAt: 0, lastKnownAt: 0 }]}
       showTodo showBackendTask folded={{ root: false, taskCard: false, subagentCard: false, backendTaskCard: false }}
       activeSessionId="s1" dispatch={dispatch} />)
-    fireEvent.click(screen.getByTitle('移除'))
+    fireEvent.click(screen.getByLabelText('移除'))
     expect(dispatch).toHaveBeenCalledWith({ type: 'REMOVE_BACKEND_TASK', sessionId: 's1', taskId: 'b2' })
   })
 

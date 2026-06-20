@@ -24,7 +24,6 @@ export function DeleteConfirmIcon({ onConfirm, variant = 'archive' }: Props) {
           onMouseLeave={() => setConfirming(false)}
           aria-label={`确认${actionLabel}`}
           onClick={(e) => { e.stopPropagation(); onConfirm(); setConfirming(false) }}
-          title={`再次点击确认${actionLabel}`}
           style={confirmBtnStyle(isDelete)}
         >
           <Check size={14} />
@@ -38,7 +37,6 @@ export function DeleteConfirmIcon({ onConfirm, variant = 'archive' }: Props) {
       <button
         aria-label={actionLabel}
         onClick={(e) => { e.stopPropagation(); setConfirming(true) }}
-        title={actionLabel}
         style={idleBtnStyle}
       >
         <Icon size={14} />

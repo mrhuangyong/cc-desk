@@ -9,12 +9,14 @@ const ITEMS: MenuItem[] = [
   { id: 'general', labelKey: 'settings.general' },
   { id: 'code-preview', labelKey: 'settings.codePreview' },
   { id: 'model', labelKey: 'settings.model' },
+  { id: 'memory', labelKey: 'settings.memory' },
   { id: 'skills', labelKey: 'settings.skills' },
   { id: 'mcp', labelKey: 'settings.mcp' },
   { id: 'plugins', labelKey: 'settings.plugins' },
   { id: 'commands', labelKey: 'settings.commands' },
   { id: 'hooks', labelKey: 'settings.hooks' },
-  { id: 'archived', labelKey: 'settings.archived' }
+  { id: 'archived', labelKey: 'settings.archived' },
+  { id: 'about', labelKey: 'settings.about' },
 ]
 
 export function SettingsMenu() {

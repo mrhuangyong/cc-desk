@@ -106,8 +106,8 @@ describe('ModelSettings 多供应商配置', () => {
     modelGet.mockResolvedValue(baseCfg())
     render(<ModelSettings />)
     await loaded()
-    // provider 的删除按钮（title=删除）在 model 删除按钮之前
-    fireEvent.click(screen.getAllByTitle('删除')[0])      // 进入确认
+    // provider 的删除按钮在 model 删除按钮之前
+    fireEvent.click(screen.getAllByLabelText('删除')[0])      // 进入确认
     fireEvent.click(screen.getByText('model.confirmDelete')) // 确认
     const last = lastSave()
     expect(last.providers.find((p: any) => p.id === 'p1')).toBeUndefined()

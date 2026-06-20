@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain, dialog } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, dialog, Menu } from 'electron'
 import { join } from 'path'
 import { ClaudeService } from './claude-service'
 import { SessionQueryManager } from './session-query-manager'
@@ -8,9 +8,11 @@ import { getSettings, saveSettings } from './settings-store'
 import { getModelProvidersConfig, saveModelProvidersConfig } from './cc-desk-store'
 import { getProjectsSnapshot, saveProjectsSnapshot } from './projects-store'
 import * as cc from './claude-config'
+import { getMemoryFile, saveMemoryFile } from './memory-file'
 import { BackendTaskRegistry } from './backend-task-registry'
 import { ensureClaudeConfigDir } from './paths'
 import { migrateFromClaude } from './migrate-from-claude'
+import { UpdateManager } from './update-manager'
 
 // 启动第一件事：把 Claude Agent SDK / CLI 的配置目录隔离到 ~/.cc-desk/claude，
 // 使运行时不再读取 ~/.claude/settings.json（其 env 块会覆盖 cc-desk 注入的角色模型映射，
@@ -31,6 +33,7 @@ claude.setRegistry(backendTaskRegistry)
 const sessionQueryManager = new SessionQueryManager()
 claude.setManager(sessionQueryManager)
 const ptyManager = new PtyManager()
+const updateManager = new UpdateManager({ repo: 'mrhuangyong/cc-desk' })
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -55,6 +58,9 @@ function createWindow() {
 
   // 终端输出通过 webContents 推送到渲染进程
   ptyManager.setWebContents(win.webContents)
+
+  // 更新状态转发到当前窗口（窗口重建时在 did-finish-load 重绑）
+  updateManager.setEmit((s) => win.webContents.send('update:state', s))
 
   // ---- IPC 通道注册 ----
 
@@ -98,6 +104,8 @@ function createWindow() {
   ipcMain.handle('cc:plugins:get', () => cc.getPlugins())
   ipcMain.handle('cc:plugin:set-enabled', (_e, id, enabled) => cc.setPluginEnabled(id, enabled))
   ipcMain.handle('cc:skills:get', () => cc.getSkills())
+  ipcMain.handle('cc:skill:get', (_e, id: string) => cc.getSkillFile(id))
+  ipcMain.handle('cc:skill:save', (_e, id: string, content: string) => cc.saveSkillFile(id, content))
   ipcMain.handle('cc:commands:get', () => cc.getCommands())
   ipcMain.handle('cc:hooks:get', () => cc.getHooks())
   ipcMain.handle('cc:hook:set-enabled', (_e, name, enabled) => cc.setHookEnabled(name, enabled))
@@ -105,6 +113,10 @@ function createWindow() {
   ipcMain.handle('cc:model:save', (_e, cfg) => cc.saveModelConfig(cfg))
   ipcMain.handle('cc:general:get', () => cc.getGeneralConfig())
   ipcMain.handle('cc:general:save', (_e, cfg) => cc.saveGeneralConfig(cfg))
+
+  // 全局记忆文件 CLAUDE.md（读写 ~/.cc-desk/claude/CLAUDE.md）
+  ipcMain.handle('cc:memory:get', () => getMemoryFile())
+  ipcMain.handle('cc:memory:save', (_e, content: string) => saveMemoryFile(content))
 
   // File System
   ipcMain.handle('fs:read-tree', async (_e, dirPath: string) => readDirTree(dirPath))
@@ -166,6 +178,19 @@ function createWindow() {
     backendTaskRegistry.clearBySession(localSessionId)
   })
 
+  // 应用更新
+  ipcMain.handle('update:check', () => updateManager.checkNow())
+  ipcMain.handle('update:install', () => updateManager.install())
+  ipcMain.handle('update:download-and-open', () => updateManager.downloadDmgAndOpen())
+
+  // 关于页版本信息
+  ipcMain.handle('app:version', () => ({
+    version: app.getVersion(),
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+    node: process.versions.node,
+  }))
+
   // 开发态加载 dev server，生产态加载打包文件
   if (isDev && process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(process.env['ELECTRON_RENDERER_URL'])
@@ -184,6 +209,9 @@ function createWindow() {
   // 但统一在 did-finish-load 后 reattach 可保证回调指向最新的 webContents(保险 + 一致性)。
   win.webContents.on('did-finish-load', () => {
     claude.reattachRunningSessions(win.webContents)
+    // 窗口刷新后重绑 update emit 并重发当前态，让按钮立即恢复
+    updateManager.setEmit((s) => win.webContents.send('update:state', s))
+    updateManager.sendCurrentState()
   })
 }
 
@@ -197,6 +225,9 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
   startArchiveTimer()
+  updateManager.startAutoCheck()
+  // 注册原生应用菜单（mac 补 Edit 菜单避免 Cmd+C 失效；各平台加「检查更新」）
+  Menu.setApplicationMenu(buildAppMenu(updateManager))
 })
 
 // 自动归档定时器：autoArchive 开启时，每 30 分钟向渲染端发一次归档信号，
@@ -223,6 +254,7 @@ app.on('before-quit', async () => {
   // 这里统一清理 PTY 子进程 + SDK 持久 query + 后台任务记录，避免孤儿进程与泄漏。
   ptyManager.killAll()
   backendTaskRegistry.clearAll()
+  updateManager.dispose()
   await sessionQueryManager.closeAll()
 })
 
@@ -230,3 +262,23 @@ app.on('window-all-closed', () => {
   ptyManager.killAll()
   if (process.platform !== 'darwin') app.quit()
 })
+
+// 原生应用菜单：mac 应用菜单 / 其他平台帮助菜单各加「检查更新」。
+// mac 必须有 Edit 菜单，否则 Cmd+C/Cmd+V 失效（Electron 已知行为）。
+function buildAppMenu(updateMgr: UpdateManager): Menu {
+  const isMac = process.platform === 'darwin'
+  const checkUpdate: Electron.MenuItemConstructorOptions = {
+    label: '检查更新',
+    click: () => updateMgr.checkNow(),
+  }
+  const template: Electron.MenuItemConstructorOptions[] = isMac
+    ? [
+        { role: 'appMenu', submenu: [checkUpdate, { type: 'separator' }, { role: 'quit' }] },
+        { role: 'editMenu' },
+      ]
+    : [
+        { label: '文件', submenu: [{ role: 'quit' }] },
+        { label: '帮助', submenu: [checkUpdate, { role: 'about' }] },
+      ]
+  return Menu.buildFromTemplate(template)
+}

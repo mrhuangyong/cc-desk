@@ -99,7 +99,7 @@ export function AnswerPanel() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{step + 1} / {total}</span>
         <Tooltip label="取消">
-          <button onClick={cancel} title="取消" style={{ padding: 4, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}>
+          <button onClick={cancel} aria-label="取消" style={{ padding: 4, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}>
             <X size={14} />
           </button>
         </Tooltip>

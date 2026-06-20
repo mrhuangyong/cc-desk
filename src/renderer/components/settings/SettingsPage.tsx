@@ -4,12 +4,14 @@ import { SettingsMenu } from './SettingsMenu'
 import { GeneralSettings } from './GeneralSettings'
 import { CodePreviewSettings } from './CodePreviewSettings'
 import { ModelSettings } from './ModelSettings'
+import { MemorySettings } from './MemorySettings'
 import { SkillsSettings } from './SkillsSettings'
 import { McpSettings } from './McpSettings'
 import { PluginSettings } from './PluginSettings'
 import { CommandSettings } from './CommandSettings'
 import { HooksSettings } from './HooksSettings'
 import { ArchivedSessionsSettings } from './ArchivedSessionsSettings'
+import { AboutSettings } from './AboutSettings'
 
 // WebkitAppRegion 是 Electron/WebKit CSS 属性，React CSSProperties 未收录，定义局部超集
 type DragStyle = CSSProperties & { WebkitAppRegion?: 'drag' | 'no-drag' }
@@ -27,12 +29,14 @@ export function SettingsPage() {
       case 'general': return <GeneralSettings />
       case 'code-preview': return <CodePreviewSettings />
       case 'model': return <ModelSettings />
+      case 'memory': return <MemorySettings />
       case 'skills': return <SkillsSettings />
       case 'mcp': return <McpSettings />
       case 'plugins': return <PluginSettings />
       case 'commands': return <CommandSettings />
       case 'hooks': return <HooksSettings />
       case 'archived': return <ArchivedSessionsSettings projects={state.projects} dispatch={dispatch as any} />
+      case 'about': return <AboutSettings />
     }
   }
 
