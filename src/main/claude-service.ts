@@ -401,11 +401,16 @@ export class ClaudeService {
           const todos = Array.isArray(tb.input?.todos) ? tb.input.todos : []
           webContents.send('claude:task', { localSessionId: lsid, kind: 'todo_sync', todos })
         }
+        // TaskList 也归类为 claude:task：清除操作（{} 即清空任务列表）
+        const taskListBlocks = aContent.filter((ab: any) => ab?.type === 'tool_use' && ab.name === 'TaskList')
+        for (const tlb of taskListBlocks) {
+          webContents.send('claude:task', { localSessionId: lsid, kind: 'todo_sync', todos: [] })
+        }
         const blocks = normalizeBetaBlocks(aContent)
-          // 过滤掉由专属面板/卡片承载的 tool_use：AskUserQuestion / ExitPlanMode / TodoWrite，
+          // 过滤掉由专属面板/卡片承载的 tool_use：AskUserQuestion / ExitPlanMode / TodoWrite / TaskList，
           // 以及 TaskCreate / TaskUpdate（悬浮面板 Task 卡片承载，见 handleTaskPlanTool）
           .filter((b: any) => !(b.type === 'tool_use' && (
-            b.name === 'AskUserQuestion' || b.name === 'ExitPlanMode' || b.name === 'TodoWrite'
+            b.name === 'AskUserQuestion' || b.name === 'ExitPlanMode' || b.name === 'TodoWrite' || b.name === 'TaskList'
             || b.name === 'TaskCreate' || b.name === 'TaskUpdate'
           )))
         // assistant 阶段 input 完整：拦截 TaskUpdate 推 claude:task；TaskCreate 仅记录 input
