@@ -4,6 +4,7 @@ import { SettingsLayout } from './SettingsLayout'
 import { SettingsCard } from './SettingsCard'
 import { SettingsRow } from './SettingsRow'
 import { Toggle } from './Toggle'
+import { useI18n } from '../../i18n/useI18n'
 
 // 分段按钮（缩放：缩小/正常/偏大）
 function Segmented({ value, options, onChange }: { value: string; options: { id: string; label: string }[]; onChange: (v: string) => void }) {
@@ -29,6 +30,7 @@ const inputStyle: React.CSSProperties = { padding: '6px 10px', background: 'var(
 
 export function GeneralSettings() {
   const { state, dispatch } = useStore()
+  const { t } = useI18n()
   const s = state.settings
 
   // Claude 配置（proxy，来自 ~/.cc-desk/claude/settings.json）
@@ -119,12 +121,28 @@ export function GeneralSettings() {
 
       {/* 通知 */}
       <SettingsCard>
-        <SettingsRow title="任务通知" desc="任务完成、失败或需要确认时发送桌面通知。">
+        <SettingsRow title={t('settings.notifyMaster')} desc={t('settings.notifyMasterDesc')}>
           <Toggle on={s.taskNotify} onChange={v => persist({ taskNotify: v })} />
         </SettingsRow>
-        <SettingsRow title="通知声音" desc="通知开启后，可单独关闭任务通知提示音。" noBorder>
-          <Toggle on={s.notifySound} onChange={v => persist({ notifySound: v })} />
-        </SettingsRow>
+        {s.taskNotify && (
+          <div style={{ paddingLeft: 16 }}>
+            <SettingsRow title={t('settings.notifyOnComplete')} desc={t('settings.notifyOnCompleteDesc')}>
+              <Toggle on={s.notifyOnComplete} onChange={v => persist({ notifyOnComplete: v })} />
+            </SettingsRow>
+            <SettingsRow title={t('settings.notifyOnError')} desc={t('settings.notifyOnErrorDesc')}>
+              <Toggle on={s.notifyOnError} onChange={v => persist({ notifyOnError: v })} />
+            </SettingsRow>
+            <SettingsRow title={t('settings.notifyOnConfirm')} desc={t('settings.notifyOnConfirmDesc')}>
+              <Toggle on={s.notifyOnConfirm} onChange={v => persist({ notifyOnConfirm: v })} />
+            </SettingsRow>
+            <SettingsRow title={t('settings.notifyOnPermission')} desc={t('settings.notifyOnPermissionDesc')}>
+              <Toggle on={s.notifyOnPermission} onChange={v => persist({ notifyOnPermission: v })} />
+            </SettingsRow>
+            <SettingsRow title={t('settings.notifySound')} desc={t('settings.notifySoundDesc')} noBorder>
+              <Toggle on={s.notifySound} onChange={v => persist({ notifySound: v })} />
+            </SettingsRow>
+          </div>
+        )}
       </SettingsCard>
 
       {/* 交互行为 */}
