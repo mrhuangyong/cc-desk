@@ -55,9 +55,10 @@ function registerIpcHandlers(): void {
     return claude.send({ ...opts, webContents: getActiveWin()!.webContents })
   })
   ipcMain.handle('claude:stop', async (_e, localSessionId: string) => {
-    await claude.interrupt(localSessionId)
+    const wc = getActiveWin()?.webContents
+    await claude.interrupt(localSessionId, wc)
     // 兜底：interrupt 不保证 SDK 一定再吐 result，主动发 aborted 让渲染端清 streaming 状态。
-    getActiveWin()!.webContents.send('claude:aborted', { localSessionId })
+    wc?.send('claude:aborted', { localSessionId })
   })
   ipcMain.handle('claude:running-sessions', () => claude.runningSessionIds())
   ipcMain.handle('claude:dialog-response', (_e, { reqId, result }) => {
