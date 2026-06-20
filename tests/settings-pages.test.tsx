@@ -226,7 +226,7 @@ describe('McpSettings', () => {
 
   const servers = [
     { id: 'playwright', name: 'playwright', transport: 'stdio', command: 'npx', args: '-y @playwright/mcp', env: 'TOKEN=1', enabled: true, scope: '用户' },
-    { id: 'reader', name: 'reader', transport: 'http', command: 'https://example.com/mcp', args: '', env: '', enabled: true, scope: '用户' },
+    { id: 'reader', name: 'reader', transport: 'http', command: 'https://example.com/mcp', args: '', env: '', headers: '', enabled: true, scope: '用户' },
   ]
 
   beforeEach(() => {
@@ -322,16 +322,18 @@ describe('McpSettings', () => {
 
     fireEvent.change(screen.getByDisplayValue('playwright'), { target: { value: 'local-playwright' } })
     fireEvent.change(screen.getByDisplayValue('用户'), { target: { value: '工作区' } })
-    fireEvent.change(screen.getByDisplayValue('stdio（本地命令）'), { target: { value: 'http' } })
-    fireEvent.change(screen.getByPlaceholderText('https://...'), { target: { value: 'https://mcp.example.com' } })
+    // 保持 stdio，测命令/参数/环境变量（http headers 另行覆盖）
+    fireEvent.change(screen.getByPlaceholderText('npx'), { target: { value: 'node' } })
+    fireEvent.change(screen.getByPlaceholderText(/-y @playwright/), { target: { value: 'server.js' } })
     fireEvent.click(screen.getByText(/环境变量/))
     fireEvent.change(screen.getByPlaceholderText(/KEY=VALUE/), { target: { value: 'A=B' } })
     fireEvent.click(screen.getByText('保存'))
 
     expect(lastSave()[0]).toMatchObject({
       name: 'local-playwright',
-      transport: 'http',
-      command: 'https://mcp.example.com',
+      transport: 'stdio',
+      command: 'node',
+      args: 'server.js',
       env: 'A=B',
       scope: '工作区',
     })
@@ -347,11 +349,11 @@ describe('McpSettings', () => {
     const textarea = screen.getByDisplayValue(new RegExp('https://example\\.com/mcp'))
     fireEvent.change(textarea, {
       target: {
-        value: JSON.stringify({ name: 'json-reader', transport: 'http', command: 'https://new.example/mcp', args: '', env: '', scope: '用户' }),
+        value: JSON.stringify({ mcpServers: { 'json-reader': { type: 'http', url: 'https://new.example/mcp' } } }),
       },
     })
     fireEvent.click(screen.getByText('保存'))
-    expect(lastSave()[1]).toMatchObject({ name: 'json-reader', command: 'https://new.example/mcp' })
+    expect(lastSave()[1]).toMatchObject({ name: 'json-reader', transport: 'http', command: 'https://new.example/mcp' })
 
     mcpSave.mockClear()
     const row2 = screen.getByText('json-reader').closest('div')!.parentElement!
