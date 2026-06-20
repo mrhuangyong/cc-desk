@@ -43,7 +43,7 @@ export class UpdateManager {
     this.repo = opts.repo
     if (SUPPORTS_AUTO) {
       autoUpdater.autoDownload = true
-      autoUpdater.autoInstallOnQuit = false
+      autoUpdater.autoInstallOnAppQuit = false
       this.bindAutoUpdaterEvents()
     }
   }
@@ -136,11 +136,12 @@ export class UpdateManager {
 
   private async downloadFile(url: string, dest: string): Promise<string> {
     const { createWriteStream } = await import('fs')
+    const { Readable } = await import('stream')
     const res = await fetch(url)
     if (!res.ok || !res.body) throw new Error(`下载失败 HTTP ${res.status}`)
     await new Promise<void>((resolve, reject) => {
       const ws = createWriteStream(dest)
-      res.body!.pipe(ws as any)
+      Readable.fromWeb(res.body as any).pipe(ws)
       ws.on('finish', () => resolve())
       ws.on('error', reject)
     })
