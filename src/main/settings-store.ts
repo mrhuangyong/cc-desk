@@ -91,6 +91,10 @@ export interface AppSettings {
   terminalFont: string
   taskNotify: boolean
   notifySound: boolean
+  notifyOnComplete: boolean
+  notifyOnError: boolean
+  notifyOnConfirm: boolean
+  notifyOnPermission: boolean
   queueMode: string         // queue | interrupt
   showThinking: boolean
   showTodo: boolean
@@ -184,6 +188,10 @@ const defaults: AppSettings = {
   terminalFont: 'MesloLGS NF, monospace',
   taskNotify: true,
   notifySound: true,
+  notifyOnComplete: true,
+  notifyOnError: true,
+  notifyOnConfirm: true,
+  notifyOnPermission: true,
   queueMode: 'queue',
   showThinking: true,
   showTodo: true,
@@ -235,7 +243,7 @@ function withDefaults(raw: Partial<AppSettings>): AppSettings {
   ;(['theme', 'lang', 'zoom', 'proxy', 'terminalFont', 'queueMode', 'archiveDays'] as const).forEach(k => {
     ;(merged as any)[k] = (raw as any)[k] ?? (defaults as any)[k]
   })
-  ;(['inheritTerminal', 'taskNotify', 'notifySound', 'showThinking', 'showTodo', 'showBackendTask', 'autoArchive'] as const).forEach(k => {
+  ;(['inheritTerminal', 'taskNotify', 'notifySound', 'notifyOnComplete', 'notifyOnError', 'notifyOnConfirm', 'notifyOnPermission', 'showThinking', 'showTodo', 'showBackendTask', 'autoArchive'] as const).forEach(k => {
     ;(merged as any)[k] = (raw as any)[k] ?? (defaults as any)[k]
   })
   return merged
