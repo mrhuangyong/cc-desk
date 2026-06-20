@@ -17,7 +17,7 @@ function baseSettings(overrides: Record<string, any> = {}) {
   return {
     apiKey: '', model: 'model-sonnet', cwd: '/home/user', providers: [], models: [], modelRoleMap: {},
     theme: 'codex-light', lang: 'zh-CN', zoom: 'normal', proxy: '', inheritTerminal: true,
-    terminalFont: 'mono', taskNotify: true, notifySound: true, queueMode: 'queue',
+    terminalFont: 'mono', taskNotify: true, notifySound: true, notifyOnComplete: true, notifyOnError: true, notifyOnConfirm: true, notifyOnPermission: true, queueMode: 'queue',
     showThinking: false, showTodo: false, showBackendTask: true, autoArchive: true, archiveDays: '7',
     codePreview: { lightTheme: '', darkTheme: '', showLineNumbers: true, wordWrap: false, fontSize: 12 },
     skills: [], mcpServers: [], plugins: [], commands: [], hooks: [],
@@ -79,8 +79,8 @@ describe('GeneralSettings', () => {
 
   it('Toggle：任务通知 → persist({taskNotify:false})', () => {
     render(<GeneralSettings />)
-    // SettingsRow 根 = title 元素的 parentElement.parentElement（跳过 title 内层 div）
-    const notifyTitle = screen.getByText('任务通知')
+    // 主开关标题改为 t('settings.notifyMaster')='桌面通知'
+    const notifyTitle = screen.getByText('桌面通知')
     const rowRoot = notifyTitle.parentElement!.parentElement!
     const sw = rowRoot.querySelector('button[role="switch"]')!
     fireEvent.click(sw)
