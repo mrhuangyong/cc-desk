@@ -5,6 +5,8 @@ import type MonacoNS from 'monaco-editor'
 import { useStore } from '../../state/store'
 import { useI18n } from '../../i18n/useI18n'
 import { monacoThemeFor } from '../../editor/monacoEnv'
+import { SettingsLayout } from './SettingsLayout'
+import { SettingsCard } from './SettingsCard'
 
 type SaveStatus = 'saved' | 'saving' | 'unsaved'
 
@@ -86,41 +88,55 @@ export function MemorySettings() {
   }
 
   if (loading) {
-    return <div style={{ padding: 12, color: 'var(--text-muted)' }}>加载中…</div>
+    return (
+      <SettingsLayout title={t('settings.memory')}>
+        <div style={{ padding: 12, color: 'var(--text-muted)' }}>加载中…</div>
+      </SettingsLayout>
+    )
   }
   if (error && !content && contentRef.current === '') {
-    return <div style={{ padding: 12, color: 'var(--text-muted)' }}>{error}</div>
+    return (
+      <SettingsLayout title={t('settings.memory')}>
+        <div style={{ padding: 12, color: 'var(--text-muted)' }}>{error}</div>
+      </SettingsLayout>
+    )
   }
 
   const statusText = status === 'saved' ? '已保存' : status === 'saving' ? '保存中…' : '未保存'
   const statusColor = status === 'saved' ? 'var(--text-muted)' : status === 'saving' ? 'var(--text-muted)' : 'var(--accent, #2563eb)'
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, height: '100%' }}>
+    <SettingsLayout title={t('settings.memory')}>
+      {/* 保存状态 + 说明 */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>{t('settings.memory')}</h2>
-        <span style={{ fontSize: 12, color: statusColor }}>{statusText}</span>
+        <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+          编辑全局记忆（~/.cc-desk/claude/CLAUDE.md），所有会话都会自动加载。
+        </span>
+        <span style={{ fontSize: 12, color: statusColor, flexShrink: 0 }}>{statusText}</span>
       </div>
       {error && (
         <div style={{ padding: '6px 10px', background: 'rgba(220,38,38,.12)', color: 'var(--danger, #dc2626)', fontSize: 12 }}>{error}</div>
       )}
-      <div style={{ flex: 1, minHeight: 0, border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
-        <Editor
-          language="markdown"
-          theme={monacoThemeFor(state.theme)}
-          value={content}
-          onChange={handleChange}
-          onMount={handleMount}
-          options={{
-            fontSize: 13,
-            wordWrap: 'on',
-            lineNumbers: 'on',
-            minimap: { enabled: false },
-            automaticLayout: true,
-            scrollBeyondLastLine: false,
-          }}
-        />
-      </div>
-    </div>
+      {/* 编辑器：SettingsCard 包裹，撑满可用高度 */}
+      <SettingsCard>
+        <div style={{ height: 'calc(100vh - 260px)', minHeight: 240 }}>
+          <Editor
+            language="markdown"
+            theme={monacoThemeFor(state.theme)}
+            value={content}
+            onChange={handleChange}
+            onMount={handleMount}
+            options={{
+              fontSize: 13,
+              wordWrap: 'on',
+              lineNumbers: 'on',
+              minimap: { enabled: false },
+              automaticLayout: true,
+              scrollBeyondLastLine: false,
+            }}
+          />
+        </div>
+      </SettingsCard>
+    </SettingsLayout>
   )
 }

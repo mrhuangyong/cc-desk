@@ -61,6 +61,22 @@ describe('MemorySettings', () => {
     await waitFor(() => expect((ta as HTMLTextAreaElement).value).toBe('# 全局记忆\n\n这是指令'))
   })
 
+  it('布局居中：最外层容器 maxWidth 760 + 编辑器在卡片内', async () => {
+    const memoryGet = vi.fn().mockResolvedValue('')
+    const memorySave = vi.fn().mockResolvedValue(undefined)
+    setApi({ cc: { memory: { get: memoryGet, save: memorySave } } })
+
+    const { container } = render(<MemorySettings />)
+    await screen.findByTestId('monaco-mock')
+
+    // SettingsLayout 最外层：maxWidth 760、margin 0 auto（居中）
+    const outer = container.firstElementChild as HTMLElement
+    expect(outer.style.maxWidth).toBe('760px')
+    expect(outer.style.margin).toBe('0px auto')
+    // 标题文案存在
+    expect(screen.getByRole('heading', { name: '记忆' })).toBeTruthy()
+  })
+
   it('内容变更后防抖触发保存', async () => {
     const memoryGet = vi.fn().mockResolvedValue('')
     const memorySave = vi.fn().mockResolvedValue(undefined)
