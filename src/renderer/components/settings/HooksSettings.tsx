@@ -28,6 +28,15 @@ const GROUP_LABELS: Record<string, string> = {
 }
 const GROUP_ORDER = ['tool', 'session', 'task', 'permission', 'system']
 
+// 27 个 hook 事件名 + 分组映射（与后端 claude-config.ts 同步，避免在 renderer 引入 Node path 模块）
+const HOOK_EVENTS_WITH_GROUP: { name: string; group: string }[] = [
+  { name: 'PreToolUse', group: 'tool' }, { name: 'PostToolUse', group: 'tool' }, { name: 'PostToolUseFailure', group: 'tool' },
+  { name: 'UserPromptSubmit', group: 'session' }, { name: 'SessionStart', group: 'session' }, { name: 'SessionEnd', group: 'session' }, { name: 'PreCompact', group: 'session' }, { name: 'PostCompact', group: 'session' },
+  { name: 'Stop', group: 'task' }, { name: 'StopFailure', group: 'task' }, { name: 'SubagentStart', group: 'task' }, { name: 'SubagentStop', group: 'task' }, { name: 'TaskCreated', group: 'task' }, { name: 'TaskCompleted', group: 'task' },
+  { name: 'PermissionRequest', group: 'permission' }, { name: 'PermissionDenied', group: 'permission' }, { name: 'Elicitation', group: 'permission' }, { name: 'ElicitationResult', group: 'permission' },
+  { name: 'Notification', group: 'system' }, { name: 'Setup', group: 'system' }, { name: 'TeammateIdle', group: 'system' }, { name: 'ConfigChange', group: 'system' }, { name: 'WorktreeCreate', group: 'system' }, { name: 'WorktreeRemove', group: 'system' }, { name: 'InstructionsLoaded', group: 'system' }, { name: 'CwdChanged', group: 'system' }, { name: 'FileChanged', group: 'system' },
+]
+
 export function HooksSettings() {
   const [data, setData] = useState<HooksFull>({ custom: [], plugins: [] })
   const [loading, setLoading] = useState(true)
@@ -48,16 +57,35 @@ export function HooksSettings() {
   }
   useEffect(() => { reload() }, [])
 
-  // 合并自定义 + 插件事件（同名事件合并 matchers）
+  // 合并自定义 + 插件事件 + 全部 27 个事件名（空配置也显示，让用户可选中创建）
   const allEvents = useMemo(() => {
     const map = new Map<string, HookEventView>()
-    for (const ev of data.custom) {
-      map.set(ev.eventName, { ...ev })
+    // 先填入全部 27 个事件（group 从 GROUP_ORDER/GROUP_LABELS 映射），空 matchers
+    const EVENT_GROUP: Record<string, string> = {}
+    for (const g of GROUP_ORDER) EVENT_GROUP[g] = g
+    // 直接用 data 里已有的 group 信息，或者按命名推断
+    const knownGroups: Record<string, string> = {}
+    for (const ev of [...data.custom, ...data.plugins]) knownGroups[ev.eventName] = ev.group
+    // 为全部 27 事件建立占位（空 matchers），让用户可以选中任意事件创建 hook
+    for (const { name, group } of HOOK_EVENTS_WITH_GROUP) {
+      map.set(name, { eventName: name, group: group as any, matchers: [], source: 'custom', isReadonly: false })
     }
+    // 合并自定义数据
+    for (const ev of data.custom) {
+      const existing = map.get(ev.eventName)
+      if (existing) {
+        existing.matchers = ev.matchers
+        existing.source = 'custom'
+      } else {
+        map.set(ev.eventName, { ...ev })
+      }
+    }
+    // 合并插件数据
     for (const ev of data.plugins) {
       const existing = map.get(ev.eventName)
       if (existing) {
         existing.matchers = [...existing.matchers, ...ev.matchers]
+        existing.isReadonly = existing.isReadonly || false  // 插件 hook 展示但自定义部分仍可编辑
       } else {
         map.set(ev.eventName, { ...ev, matchers: [...ev.matchers] })
       }

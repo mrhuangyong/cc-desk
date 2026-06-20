@@ -50,43 +50,55 @@ export function HookMatcherList({ eventName, matchers, isReadonly, source, onCha
   const saveHook = (entry: HookEntry) => {
     if (!editing) return
     const { mi, hi } = editing
-    const next = matchers.map((m, i) => {
-      if (i !== mi) return m
-      const hooks = m.hooks.map((h, j) => j === hi ? entry : h)
-      return { ...m, hooks }
-    })
+    let next: HookMatcher[]
+    if (mi === -1) {
+      // 新建 matcher
+      next = [...matchers, { matcher: '', hooks: [entry] }]
+    } else if (hi === -1) {
+      // 在已有 matcher 中新建 hook
+      next = matchers.map((m, i) => {
+        if (i !== mi) return m
+        return { ...m, hooks: [...m.hooks, entry] }
+      })
+    } else {
+      // 编辑已有 hook
+      next = matchers.map((m, i) => {
+        if (i !== mi) return m
+        const hooks = m.hooks.map((h, j) => j === hi ? entry : h)
+        return { ...m, hooks }
+      })
+    }
     onChange(next)
     setEditing(null)
   }
 
   const addHook = (mi: number) => {
-    const newEntry: HookEntry = { type: 'command', command: '' }
-    const next = matchers.map((m, i) => {
-      if (i !== mi) return m
-      return { ...m, hooks: [...m.hooks, newEntry] }
-    })
-    onChange(next)
-    setEditing({ mi, hi: next[mi].hooks.length - 1 })
+    // 不立即 onChange，用 -1 的 hi 标记新建 hook
+    setEditing({ mi, hi: -1 })
   }
 
   const addMatcher = () => {
-    const newMatcher: HookMatcher = { matcher: '', hooks: [{ type: 'command', command: '' }] }
-    onChange([...matchers, newMatcher])
-    setEditing({ mi: matchers.length, hi: 0 })
+    // 不立即 onChange（会触发 reload 丢失弹窗状态），用 -1 标记新建
+    setEditing({ mi: -1, hi: 0 })
   }
 
-  const editingEntry = editing ? matchers[editing.mi]?.hooks[editing.hi] ?? null : null
+  const editingEntry = editing && editing.mi >= 0 && editing.hi >= 0 ? matchers[editing.mi]?.hooks[editing.hi] ?? null : null
 
   if (matchers.length === 0) {
     return (
-      <div style={{ padding: 20, color: 'var(--text-muted)', fontSize: 13, textAlign: 'center' }}>
-        {isReadonly ? '该事件无插件 hook' : '该事件尚未配置 hook'}
-        {!isReadonly && (
-          <div style={{ marginTop: 8 }}>
-            <button onClick={addMatcher} style={{ padding: '6px 14px', fontSize: 12, cursor: 'pointer', border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--accent)', color: 'var(--accent-text)' }}>
-              + 新建 Hook
-            </button>
-          </div>
+      <div>
+        <div style={{ padding: 20, color: 'var(--text-muted)', fontSize: 13, textAlign: 'center' }}>
+          {isReadonly ? '该事件无插件 hook' : '该事件尚未配置 hook'}
+          {!isReadonly && (
+            <div style={{ marginTop: 8 }}>
+              <button onClick={addMatcher} style={{ padding: '6px 14px', fontSize: 12, cursor: 'pointer', border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--accent)', color: 'var(--accent-text)' }}>
+                + 新建 Hook
+              </button>
+            </div>
+          )}
+        </div>
+        {editing && (
+          <HookEditDialog entry={editingEntry} onSave={saveHook} onCancel={() => setEditing(null)} />
         )}
       </div>
     )
