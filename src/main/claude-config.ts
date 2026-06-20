@@ -90,11 +90,67 @@ export interface ClaudeCommand {
   builtinAction?: import('../renderer/editor/types').BuiltinAction
 }
 
-export interface ClaudeHook {
-  id: string
-  name: string              // 事件名（PreToolUse / PostToolUse / 等）
-  desc: string
-  enabled: boolean
+// ---- hooks 类型（完整还原 Claude 原生结构）----
+
+export interface CommandHook {
+  type: 'command'
+  command: string
+  if?: string
+  shell?: 'bash' | 'powershell'
+  timeout?: number
+  statusMessage?: string
+  once?: boolean
+  async?: boolean
+  asyncRewake?: boolean
+}
+export interface PromptHook {
+  type: 'prompt'
+  prompt: string
+  if?: string
+  timeout?: number
+  model?: string
+  statusMessage?: string
+  once?: boolean
+}
+export interface AgentHook {
+  type: 'agent'
+  prompt: string
+  if?: string
+  timeout?: number
+  model?: string
+  statusMessage?: string
+  once?: boolean
+}
+export interface HttpHook {
+  type: 'http'
+  url: string
+  if?: string
+  timeout?: number
+  headers?: Record<string, string>
+  allowedEnvVars?: string[]
+  statusMessage?: string
+  once?: boolean
+}
+export type HookEntry = CommandHook | PromptHook | AgentHook | HttpHook
+
+export interface HookMatcher {
+  matcher: string
+  hooks: HookEntry[]
+}
+
+export type HookGroup = 'tool' | 'session' | 'task' | 'permission' | 'system'
+
+export interface HookEventView {
+  eventName: string
+  group: HookGroup
+  matchers: HookMatcher[]
+  source: 'custom' | string   // 'custom' 或 'plugin:插件名'
+  isReadonly: boolean
+}
+
+export interface HooksFull {
+  custom: HookEventView[]
+  plugins: HookEventView[]
 }
 
 // ---- settings.json 读写（受管字段）----
@@ -429,36 +485,121 @@ export async function getCommands(): Promise<ClaudeCommand[]> {
   return out
 }
 
-// ---- hooks（settings.json 的 hooks 字段）----
+// ---- hooks（settings.json 的 hooks 字段，完整还原 Claude 原生结构）----
 
-// Claude Code 的 hooks 结构：{ PreToolUse: [{ matcher, hooks: [...] }], ... }
-// 这里以「事件类型是否存在配置」作为是否「启用」的展示依据（简化）。
-const HOOK_EVENTS = ['PreToolUse', 'PostToolUse', 'Notification', 'UserPromptSubmit', 'Stop', 'SubagentStop', 'PreCompact']
+export const HOOK_EVENTS = [
+  'PreToolUse', 'PostToolUse', 'PostToolUseFailure',
+  'UserPromptSubmit', 'SessionStart', 'SessionEnd', 'PreCompact', 'PostCompact',
+  'Stop', 'StopFailure', 'SubagentStart', 'SubagentStop', 'TaskCreated', 'TaskCompleted',
+  'PermissionRequest', 'PermissionDenied', 'Elicitation', 'ElicitationResult',
+  'Notification', 'Setup', 'TeammateIdle', 'ConfigChange', 'WorktreeCreate', 'WorktreeRemove', 'InstructionsLoaded', 'CwdChanged', 'FileChanged',
+] as const
+export type HookEventName = typeof HOOK_EVENTS[number]
 
-export async function getHooks(): Promise<ClaudeHook[]> {
-  const settings = await getSettingsJson()
-  const hooks = settings.hooks ?? {}
-  return HOOK_EVENTS.map(name => ({
-    id: name,
-    name,
-    desc: `${name} 钩子`,
-    enabled: Array.isArray(hooks[name]) && hooks[name].length > 0,
-  }))
+const HOOK_GROUP_MAP: Record<string, HookGroup> = {
+  PreToolUse: 'tool', PostToolUse: 'tool', PostToolUseFailure: 'tool',
+  UserPromptSubmit: 'session', SessionStart: 'session', SessionEnd: 'session', PreCompact: 'session', PostCompact: 'session',
+  Stop: 'task', StopFailure: 'task', SubagentStart: 'task', SubagentStop: 'task', TaskCreated: 'task', TaskCompleted: 'task',
+  PermissionRequest: 'permission', PermissionDenied: 'permission', Elicitation: 'permission', ElicitationResult: 'permission',
+  Notification: 'system', Setup: 'system', TeammateIdle: 'system', ConfigChange: 'system', WorktreeCreate: 'system', WorktreeRemove: 'system', InstructionsLoaded: 'system', CwdChanged: 'system', FileChanged: 'system',
 }
 
-// 切换 hook 启用：简化为「有配置=启用，无=禁用」。当前仅展示状态，写入需具体配置，
-// 故 toggle 在「禁用」时清空该事件数组，「启用」时若为空补一个空配置占位。
-export async function setHookEnabled(name: string, enabled: boolean): Promise<void> {
-  const settings = await getSettingsJson()
-  const hooks: Record<string, any> = { ...(settings.hooks ?? {}) }
-  if (enabled) {
-    if (!Array.isArray(hooks[name]) || hooks[name].length === 0) {
-      hooks[name] = [{ matcher: '', hooks: [{ type: 'command', command: '' }] }]
+const VALID_HOOK_TYPES = ['command', 'prompt', 'agent', 'http']
+
+// 校验 hooks 对象结构，返回错误消息数组（空=合法）
+export function validateHooks(hooks: Record<string, any>): string[] {
+  const errors: string[] = []
+  for (const [eventName, matchers] of Object.entries(hooks)) {
+    if (!HOOK_EVENTS.includes(eventName as HookEventName)) {
+      errors.push(`未知事件名: ${eventName}`)
+      continue
     }
-  } else {
-    hooks[name] = []
+    if (!Array.isArray(matchers)) {
+      errors.push(`${eventName}: 值应为数组`)
+      continue
+    }
+    matchers.forEach((m: any, mi: number) => {
+      if (!m || typeof m !== 'object') { errors.push(`${eventName}[${mi}]: 应为对象`); return }
+      if (!Array.isArray(m.hooks)) { errors.push(`${eventName}[${mi}]: hooks 应为数组`); return }
+      m.hooks.forEach((h: any, hi: number) => {
+        if (!h || !VALID_HOOK_TYPES.includes(h.type)) {
+          errors.push(`${eventName}[${mi}].hooks[${hi}]: 未知 type "${h?.type}"`)
+          return
+        }
+        if (h.type === 'command' && !h.command) errors.push(`${eventName}[${mi}].hooks[${hi}]: command 不能为空`)
+        if (h.type === 'prompt' && !h.prompt) errors.push(`${eventName}[${mi}].hooks[${hi}]: prompt 不能为空`)
+        if (h.type === 'agent' && !h.prompt) errors.push(`${eventName}[${mi}].hooks[${hi}]: prompt 不能为空`)
+        if (h.type === 'http' && !h.url) errors.push(`${eventName}[${mi}].hooks[${hi}]: url 不能为空`)
+      })
+    })
   }
+  return errors
+}
+
+// 自定义 hooks：读 settings.json → 按 HOOK_EVENTS 生成完整事件视图
+export async function getHooksFull(): Promise<HooksFull> {
+  const settings = await getSettingsJson()
+  const rawHooks: Record<string, any> = settings.hooks ?? {}
+
+  const custom: HookEventView[] = []
+  for (const eventName of HOOK_EVENTS) {
+    const matchers = Array.isArray(rawHooks[eventName]) ? rawHooks[eventName] as HookMatcher[] : []
+    if (matchers.length > 0) {
+      custom.push({ eventName, group: HOOK_GROUP_MAP[eventName], matchers, source: 'custom', isReadonly: false })
+    }
+  }
+
+  const plugins = await getPluginHooks()
+  return { custom, plugins }
+}
+
+// 插件 hooks：遍历已启用插件的 manifest hooks 字段
+async function getPluginHooks(): Promise<HookEventView[]> {
+  const installed = await readJson<{ plugins?: Record<string, InstalledPlugin[]> }>(INSTALLED_PLUGINS_PATH, { plugins: {} })
+  const settings = await getSettingsJson()
+  const enabledPlugins: Record<string, boolean> = settings.enabledPlugins ?? {}
+  const out: HookEventView[] = []
+  for (const [id, installs] of Object.entries(installed.plugins ?? {})) {
+    if (!enabledPlugins[id]) continue
+    const inst = installs?.[0]
+    if (!inst) continue
+    const manifest = await readPluginManifest(inst.installPath)
+    const pluginHooks = manifest?.hooks
+    if (!pluginHooks || typeof pluginHooks !== 'object') continue
+    const pluginName = manifest?.name ?? id.split('@')[0]
+    for (const eventName of HOOK_EVENTS) {
+      const matchers = Array.isArray(pluginHooks[eventName]) ? pluginHooks[eventName] as HookMatcher[] : []
+      if (matchers.length > 0) {
+        out.push({ eventName, group: HOOK_GROUP_MAP[eventName], matchers, source: `plugin:${pluginName}`, isReadonly: true })
+      }
+    }
+  }
+  return out
+}
+
+// 整体保存 hooks（结构校验后写回 settings.json）
+export async function saveHooks(hooks: Record<string, any>): Promise<{ success: boolean; errors: string[] }> {
+  const errs = validateHooks(hooks)
+  if (errs.length > 0) return { success: false, errors: errs }
   await saveSettingsJson({ hooks })
+  return { success: true, errors: [] }
+}
+
+// 获取 hooks 原始 JSON 文本
+export async function getHooksJson(): Promise<string> {
+  const settings = await getSettingsJson()
+  return JSON.stringify(settings.hooks ?? {}, null, 2)
+}
+
+// 从 JSON 文本保存（解析 + 校验 + 写回）
+export async function saveHooksJson(jsonText: string): Promise<{ success: boolean; errors: string[] }> {
+  let parsed: Record<string, any>
+  try {
+    parsed = JSON.parse(jsonText)
+  } catch (e) {
+    return { success: false, errors: ['JSON 解析失败: ' + (e instanceof Error ? e.message : String(e))] }
+  }
+  return saveHooks(parsed)
 }
 
 // ---- 模型 / 常规（env + model + theme + language）----
