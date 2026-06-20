@@ -225,7 +225,7 @@ describe('McpSettings', () => {
   const mcpSave = vi.fn()
 
   const servers = [
-    { id: 'playwright', name: 'playwright', transport: 'stdio', command: 'npx', args: '-y @playwright/mcp', env: 'TOKEN=1', enabled: true, scope: '用户' },
+    { id: 'playwright', name: 'playwright', transport: 'stdio', command: 'npx', args: '-y @playwright/mcp', env: 'TOKEN=1', headers: '', enabled: true, scope: '用户' },
     { id: 'reader', name: 'reader', transport: 'http', command: 'https://example.com/mcp', args: '', env: '', headers: '', enabled: true, scope: '用户' },
   ]
 
@@ -344,7 +344,8 @@ describe('McpSettings', () => {
     await loaded()
     const row = screen.getByText('reader').closest('div')!.parentElement!
     fireEvent.click(within(row).getByLabelText('编辑'))
-    fireEvent.click(screen.getByText('JSON'))
+    // 弹窗 JSON tab（与列表页视图按钮同名，取弹窗内最后一个）
+    fireEvent.click(screen.getAllByText('JSON').pop()!)
 
     const textarea = screen.getByDisplayValue(new RegExp('https://example\\.com/mcp'))
     fireEvent.change(textarea, {
@@ -358,10 +359,49 @@ describe('McpSettings', () => {
     mcpSave.mockClear()
     const row2 = screen.getByText('json-reader').closest('div')!.parentElement!
     fireEvent.click(within(row2).getByLabelText('编辑'))
-    fireEvent.click(screen.getByText('JSON'))
+    fireEvent.click(screen.getAllByText('JSON').pop()!)
     fireEvent.change(screen.getByDisplayValue(new RegExp('https://new\\.example/mcp')), { target: { value: '{bad json' } })
     fireEvent.click(screen.getByText('保存'))
     expect(mcpSave).not.toHaveBeenCalled()
+  })
+
+  it('JSON 视图展示标准格式并可整段保存', async () => {
+    render(<McpSettings />)
+    await loaded()
+    // 切到 JSON 视图
+    fireEvent.click(screen.getByText('JSON'))
+    const ta = screen.getByRole('textbox')
+    // 标准格式含 mcpServers 外层 + args 数组 + env 对象
+    const text = (ta as HTMLTextAreaElement).value
+    expect(text).toContain('mcpServers')
+    expect(text).toContain('"args"')
+    expect(text).toContain('"env"')
+
+    // 整段替换为标准配置并保存
+    fireEvent.change(ta, {
+      target: {
+        value: JSON.stringify({
+          mcpServers: {
+            'new-srv': { command: 'node', args: ['app.js'], env: { K: 'V' } },
+          },
+        }),
+      },
+    })
+    fireEvent.click(screen.getByText('保存'))
+    expect(mcpSave).toHaveBeenCalled()
+    const saved = mcpSave.mock.calls[mcpSave.mock.calls.length - 1][0]
+    expect(saved[0]).toMatchObject({ name: 'new-srv', transport: 'stdio', command: 'node', args: 'app.js', env: 'K=V' })
+  })
+
+  it('JSON 视图非法 JSON 不保存并提示', async () => {
+    render(<McpSettings />)
+    await loaded()
+    fireEvent.click(screen.getByText('JSON'))
+    const ta = screen.getByRole('textbox')
+    fireEvent.change(ta, { target: { value: '{bad json' } })
+    fireEvent.click(screen.getByText('保存'))
+    expect(mcpSave).not.toHaveBeenCalled()
+    expect(screen.getByText(/JSON 格式错误/)).toBeTruthy()
   })
 })
 
