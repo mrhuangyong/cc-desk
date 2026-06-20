@@ -152,7 +152,7 @@ describe('ClaudeService.forwardEvent → TaskCreate/TaskUpdate 拦截', () => {
     }
   })
 
-  it('TaskCreate / TaskUpdate 不应被渲染为普通 tool_use 卡片（不推 tool_use_start）', async () => {
+  it('TaskCreate 推 tool_use_start 进对话流（用 MetaToolCard 渲染），仍触发 handleTaskPlanTool', async () => {
     const { ClaudeService } = await import('../src/main/claude-service')
     const svc = new ClaudeService()
     const { wc, sent } = mkWc()
@@ -166,8 +166,141 @@ describe('ClaudeService.forwardEvent → TaskCreate/TaskUpdate 拦截', () => {
       },
     }, 's1', wc)
 
+    // TaskCreate 现在保留进对话流（tool_use_start），让 MetaToolCard 渲染
     const toolStarts = sent.filter(s => s.channel === 'claude:blocks' && s.data?.op === 'tool_use_start')
     const tcToolStart = toolStarts.find(s => s.data?.block?.name === 'TaskCreate')
-    expect(tcToolStart).toBeUndefined()
+    expect(tcToolStart).toBeDefined()
+    expect(tcToolStart?.data?.block?.input?.subject).toBe('X')
+  })
+})
+
+describe('ClaudeService.forwardEvent → ExitPlanMode filePath 提取', () => {
+  beforeEach(() => { vi.resetModules() })
+  afterEach(() => { vi.restoreAllMocks() })
+
+  function mkWc() {
+    const sent: { channel: string; data: any }[] = []
+    const wc: any = { send: (channel: string, data: any) => { sent.push({ channel, data }) } }
+    return { wc, sent }
+  }
+
+  it('ExitPlanMode 的 tool_result 提取 filePath，附带在 claude:blocks op=tool_result 推送里', async () => {
+    const { ClaudeService } = await import('../src/main/claude-service')
+    const svc = new ClaudeService()
+    const { wc, sent } = mkWc()
+    const planPath = '/Users/x/.claude/plans/test-plan.md'
+
+    // 1) content_block_start 阶段记录 ExitPlanMode 的 tool_use_id
+    await (svc as any).forwardEvent({
+      type: 'stream_event',
+      event: { type: 'content_block_start', content_block: { type: 'tool_use', id: 'plan-u1', name: 'ExitPlanMode', input: { plan: 'p' } } },
+    }, 's1', wc)
+
+    // 2) user 阶段：tool_result 带 structuredContent.filePath
+    await (svc as any).forwardEvent({
+      type: 'user',
+      message: { role: 'user', content: [
+        { type: 'tool_result', tool_use_id: 'plan-u1', is_error: false,
+          content: 'plan saved',
+          structuredContent: { plan: 'p', filePath: planPath, isAgent: false } },
+      ] },
+    }, 's1', wc)
+
+    // tool_result 推送应携带 planFilePath
+    const tr = sent.find(s => s.channel === 'claude:blocks' && s.data?.op === 'tool_result' && s.data?.toolUseId === 'plan-u1')
+    expect(tr).toBeDefined()
+    expect(tr!.data.planFilePath).toBe(planPath)
+  })
+
+  it('非 ExitPlanMode 工具的 tool_result 不携带 planFilePath', async () => {
+    const { ClaudeService } = await import('../src/main/claude-service')
+    const svc = new ClaudeService()
+    const { wc, sent } = mkWc()
+
+    await (svc as any).forwardEvent({
+      type: 'user',
+      message: { role: 'user', content: [
+        { type: 'tool_result', tool_use_id: 'bash-1', is_error: false, content: 'done' },
+      ] },
+    }, 's1', wc)
+
+    const tr = sent.find(s => s.channel === 'claude:blocks' && s.data?.op === 'tool_result' && s.data?.toolUseId === 'bash-1')
+    expect(tr).toBeDefined()
+    expect(tr!.data.planFilePath).toBeUndefined()
+  })
+})
+
+describe('ClaudeService.forwardEvent → TaskList 查询同步（非清空）', () => {
+  beforeEach(() => { vi.resetModules() })
+  afterEach(() => { vi.restoreAllMocks() })
+
+  function mkWc() {
+    const sent: { channel: string; data: any }[] = []
+    const wc: any = { send: (channel: string, data: any) => { sent.push({ channel, data }) } }
+    return { wc, sent }
+  }
+
+  it('TaskList 的 tool_result 解析 tasks 列表，发 todo_sync 同步给悬浮面板', async () => {
+    const { ClaudeService } = await import('../src/main/claude-service')
+    const svc = new ClaudeService()
+    const { wc, sent } = mkWc()
+
+    // assistant 阶段：TaskList tool_use
+    await (svc as any).forwardEvent({
+      type: 'assistant', uuid: 'ul1',
+      message: { role: 'assistant', content: [
+        { type: 'tool_use', id: 'call_tl1', name: 'TaskList', input: {} },
+      ] },
+    }, 's1', wc)
+
+    // assistant 阶段不应发 todo_sync（旧 bug 会错误清空）
+    expect(sent.filter(s => s.channel === 'claude:task' && s.data?.kind === 'todo_sync')).toHaveLength(0)
+
+    // user 阶段：tool_result 返回 tasks 列表（structuredContent 形式）
+    await (svc as any).forwardEvent({
+      type: 'user',
+      message: { role: 'user', content: [
+        { type: 'tool_result', tool_use_id: 'call_tl1', is_error: false,
+          content: '查询到 2 个任务',
+          structuredContent: { tasks: [
+            { id: '1', subject: '任务A', status: 'completed' },
+            { id: '2', subject: '任务B', status: 'in_progress' },
+          ] } },
+      ] },
+    }, 's1', wc)
+
+    const sync = sent.find(s => s.channel === 'claude:task' && s.data?.kind === 'todo_sync')
+    expect(sync).toBeTruthy()
+    expect(sync!.data.todos).toHaveLength(2)
+    expect(sync!.data.todos[0]).toMatchObject({ content: '任务A', status: 'completed' })
+    expect(sync!.data.todos[1]).toMatchObject({ content: '任务B', status: 'in_progress' })
+  })
+
+  it('TaskList tool_result 从 toolUseResult.tasks 提取（真实 SDK 主路径）', async () => {
+    const { ClaudeService } = await import('../src/main/claude-service')
+    const svc = new ClaudeService()
+    const { wc, sent } = mkWc()
+
+    await (svc as any).forwardEvent({
+      type: 'assistant', uuid: 'ul2',
+      message: { role: 'assistant', content: [
+        { type: 'tool_use', id: 'call_tl2', name: 'TaskList', input: {} },
+      ] },
+    }, 's1', wc)
+
+    await (svc as any).forwardEvent({
+      type: 'user',
+      message: { role: 'user', content: [
+        { type: 'tool_result', tool_use_id: 'call_tl2', is_error: false,
+          content: 'ok',
+          toolUseResult: { tasks: [
+            { id: '5', subject: '真实任务', status: 'pending' },
+          ] } },
+      ] },
+    }, 's1', wc)
+
+    const sync = sent.find(s => s.channel === 'claude:task' && s.data?.kind === 'todo_sync')
+    expect(sync).toBeTruthy()
+    expect(sync!.data.todos[0]).toMatchObject({ content: '真实任务', status: 'pending' })
   })
 })

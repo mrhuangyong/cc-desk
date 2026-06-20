@@ -189,3 +189,38 @@ describe('STREAM_ASSISTANT_BLOCKS 空内容回归', () => {
     expect((texts[0] as any).text).toBe('我来帮你处理')
   })
 })
+
+describe('ExitPlanMode 计划文档在授权后保留', () => {
+  beforeEach(() => setIdCounter(100))
+
+  // 真实场景：ExitPlanMode 的 tool_use 在 stream 阶段 input 为空壳，
+  // assistant_blocks 阶段补全完整 input（含 plan + planFilePath）。
+  // 用户授权后 SDK 回填的 tool_result 是 is_error 的占位（"Exit plan mode?"），
+  // 不含 filePath。验证：input.plan / input.planFilePath 不被 error result 丢失。
+  it('assistant_blocks 补全 input 后，error tool_result 不丢失 input.plan', () => {
+    let s = initialState()
+    s = reducer(s, { type: 'STREAM_START', sessionId: 's1' })
+    // 1) stream 阶段：tool_use_start 时 input 为空壳
+    s = reducer(s, {
+      type: 'STREAM_TOOL_USE_START', sessionId: 's1',
+      block: { type: 'tool_use', id: 'plan1', name: 'ExitPlanMode', input: {}, status: 'running' },
+    })
+    // 2) assistant_blocks：补全完整 input（含 plan 文本和 planFilePath）
+    s = reducer(s, {
+      type: 'STREAM_ASSISTANT_BLOCKS', sessionId: 's1', uuid: 'u1',
+      blocks: [
+        { type: 'tool_use', id: 'plan1', name: 'ExitPlanMode', input: { plan: '# 计划内容', planFilePath: '/path/to/plan.md' }, status: 'running' },
+      ],
+    })
+    // 3) 用户授权后，SDK 回填 is_error 占位 tool_result（无 planFilePath）
+    s = reducer(s, {
+      type: 'STREAM_TOOL_RESULT', sessionId: 's1', toolUseId: 'plan1',
+      result: { content: 'Exit plan mode?', isError: true },
+    })
+    const block = s.streamingBySession['s1'].blocks[0] as any
+    expect(block.input.plan).toBe('# 计划内容')
+    expect(block.input.planFilePath).toBe('/path/to/plan.md')
+    // ExitPlanMode 的 is_error 占位 result 不应标记 error——那是 SDK 退出 plan 模式的正常机制
+    expect(block.status).toBe('completed')
+  })
+})

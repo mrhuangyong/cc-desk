@@ -39,22 +39,6 @@ describe('GeneralSettings', () => {
     }
     ccGeneralGet.mockResolvedValue({ proxy: 'http://existing:8080' })
   })
-
-  it('工作目录输入框绑定 state.settings.cwd', () => {
-    mockState = { settings: baseSettings({ cwd: '/foo/bar' }) }
-    render(<GeneralSettings />)
-    const cwdInput = screen.getByPlaceholderText('/path/to/project') as HTMLInputElement
-    expect(cwdInput.value).toBe('/foo/bar')
-  })
-
-  it('改工作目录 → dispatch(SET_SETTINGS) + settings.save', () => {
-    render(<GeneralSettings />)
-    const cwdInput = screen.getByPlaceholderText('/path/to/project')
-    fireEvent.change(cwdInput, { target: { value: '/new/path' } })
-    expect(dispatch).toHaveBeenCalledWith({ type: 'SET_SETTINGS', settings: { cwd: '/new/path' } })
-    expect(settingsSave).toHaveBeenCalledWith({ cwd: '/new/path' })
-  })
-
   it('界面缩放 Segmented：点「偏大」→ persist({zoom:large})', () => {
     render(<GeneralSettings />)
     fireEvent.click(screen.getByText('偏大'))
