@@ -31,7 +31,7 @@ export function GeneralSettings() {
   const { state, dispatch } = useStore()
   const s = state.settings
 
-  // Claude 配置（proxy，来自 ~/.claude/settings.json）
+  // Claude 配置（proxy，来自 ~/.cc-desk/claude/settings.json）
   const [ccProxy, setCcProxy] = useState('')
 
   useEffect(() => {
@@ -44,7 +44,7 @@ export function GeneralSettings() {
     window.api?.settings.save(patch)
   }
 
-  // Claude 配置持久化（~/.claude/settings.json）
+  // Claude 配置持久化（~/.cc-desk/claude/settings.json）
   const saveCc = (patch: { proxy?: string }) => {
     window.api?.cc?.general.save(patch)
     if (patch.proxy !== undefined) setCcProxy(patch.proxy)
@@ -110,7 +110,7 @@ export function GeneralSettings() {
         </SettingsRow>
       </SettingsCard>
 
-      {/* HTTP 代理（读写 ~/.claude/settings.json 的 env.HTTPS_PROXY/HTTP_PROXY） */}
+      {/* HTTP 代理（读写 ~/.cc-desk/claude/settings.json 的 env.HTTPS_PROXY/HTTP_PROXY） */}
       <SettingsCard>
         <SettingsRow title="HTTP 代理" desc="模型、MCP 与命令工具的出口流量将经此代理（env.HTTPS_PROXY）。" noBorder>
           <input value={ccProxy} onChange={e => saveCc({ proxy: e.target.value })} placeholder="http://127.0.0.1:7890" style={inputStyle} />

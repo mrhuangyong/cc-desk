@@ -98,7 +98,7 @@ interface MiscAPI {
   onArchiveTick(cb: (data: { beforeTs: number }) => void): () => void
 }
 
-// Claude 真实配置（读写 ~/.claude/）
+// Claude 配置（读写隔离目录 ~/.cc-desk/claude/）
 interface ClaudeConfigAPI {
   mcp: {
     get(): Promise<ClaudeMcpServer[]>

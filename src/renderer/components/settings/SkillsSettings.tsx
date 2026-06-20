@@ -10,7 +10,7 @@ export function SkillsSettings() {
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<ClaudeSkill | null>(null)
 
-  // 技能来自已启用插件 + 用户级 ~/.claude/skills/，只读展示
+  // 技能来自已启用插件 + 用户级 ~/.cc-desk/claude/skills/，只读展示
   const reload = () => {
     setLoading(true)
     window.api?.cc?.skills.get().then(list => { setSkills(list); setLoading(false) })
@@ -34,7 +34,7 @@ export function SkillsSettings() {
         <h2 style={{ color: 'var(--text)', fontSize: 18, margin: 0 }}>技能</h2>
       </div>
       <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 14 }}>
-        来自已启用插件的 skills/ 目录 + 用户级 ~/.claude/skills/。启用/停用请在「插件」页切换对应插件。
+        来自已启用插件的 skills/ 目录 + 用户级 ~/.cc-desk/claude/skills/。启用/停用请在「插件」页切换对应插件。
       </div>
 
       {/* 搜索框 */}

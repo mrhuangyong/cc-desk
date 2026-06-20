@@ -40,7 +40,7 @@ export function PluginSettings() {
         <Tooltip label="刷新"><button title="刷新" onClick={reload} style={topIconBtn}><RefreshCw size={14} /></button></Tooltip>
       </div>
       <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 14 }}>
-        来自 ~/.claude/plugins/installed_plugins.json + 各插件 manifest，启用状态读写 settings.json 的 enabledPlugins。
+        来自 ~/.cc-desk/claude/plugins/installed_plugins.json + 各插件 manifest，启用状态读写 settings.json 的 enabledPlugins。
       </div>
 
       {/* 搜索框 */}
