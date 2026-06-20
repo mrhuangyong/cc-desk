@@ -72,6 +72,8 @@ export type Action =
   | { type: 'UPSERT_TASK'; sessionId: string; task: import('../types').TaskItem }
   | { type: 'SET_TASKS'; sessionId: string; tasks: import('../types').TaskItem[] }
   | { type: 'CLEAR_TASKS'; sessionId: string }
+  // 用户主动停止时，把该会话所有未结束（pending/running）的 TaskItem 置为 killed，让其停转
+  | { type: 'KILL_RUNNING_TASKS'; sessionId: string }
   // 后台任务（悬浮面板）
   | { type: 'UPSERT_BACKEND_TASK'; sessionId: string; task: import('../types').BackendTask }
   | { type: 'CLEAR_BACKEND_TASKS'; sessionId: string }

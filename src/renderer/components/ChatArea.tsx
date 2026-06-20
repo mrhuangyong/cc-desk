@@ -13,7 +13,21 @@ import { renderBlocks } from './blocks/BlockRenderer'
 import { Notices } from './Notices'
 import { Tooltip } from './Tooltip'
 
-import type { ContentBlock } from '../types'
+import type { ContentBlock, TaskStatus } from '../types'
+
+// SDK 的 TaskUpdate patch.status（原始字符串）→ 渲染端 TaskStatus 映射。
+// TaskCreate 建任务时落 pending；SDK 用 in_progress 表示开始执行，映射成 running。
+function mapTaskStatus(s?: string): TaskStatus {
+  switch (s) {
+    case 'in_progress': return 'running'
+    case 'pending': return 'pending'
+    case 'completed': return 'completed'
+    case 'failed': return 'failed'
+    case 'killed': return 'killed'
+    case 'paused': return 'paused'
+    default: return 'running'   // 未知按运行中处理（与旧行为一致，兜底）
+  }
+}
 
 // 从消息 content blocks 提取可复制的纯文本（text + thinking + 工具摘要）
 export function extractText(blocks: ContentBlock[]): string {
@@ -204,16 +218,20 @@ export function ChatArea() {
         }))
         dispatch({ type: 'SET_TASKS', sessionId: sid, tasks })
       } else if (data.kind === 'started') {
+        // TaskCreate 工具返回「Task #N created」即建任务：此刻任务刚登记、尚未真正执行，
+        // 落 pending（待处理）；后续 SDK TaskUpdate{status:'in_progress'} 经 updated 分支转 running。
         dispatch({ type: 'UPSERT_TASK', sessionId: sid, task: {
-          id: data.taskId, description: data.description ?? '', taskType: data.taskType ?? '', status: 'running',
+          id: data.taskId, description: data.description ?? '', taskType: data.taskType ?? '', status: 'pending',
           subject: data.subject, details: data.details, activeForm: data.activeForm, createdAt: data.createdAt,
         } })
       } else if (data.kind === 'updated') {
-        // 合并 patch：需读当前 task 再更新状态字段
+        // 合并 patch：需读当前 task 再更新状态字段；status 经 mapTaskStatus 归一化
         const list = tasksRef.current[sid] ?? []
         const existing = list.find(t => t.id === data.taskId)
         if (existing) {
-          dispatch({ type: 'UPSERT_TASK', sessionId: sid, task: { ...existing, ...data.patch } })
+          const patch = { ...data.patch }
+          if (typeof patch.status === 'string') patch.status = mapTaskStatus(patch.status)
+          dispatch({ type: 'UPSERT_TASK', sessionId: sid, task: { ...existing, ...patch } })
         }
       }
     })
@@ -270,6 +288,10 @@ export function ChatArea() {
       const sid = data?.localSessionId
       if (!sid) return
       dispatch({ type: 'STREAM_ABORTED', sessionId: sid })
+      // 用户主动停止：把该会话所有未结束的 TaskCreate 任务（pending/running）置为 killed。
+      // 主进程 interrupt() 只终止 registry 里的 subagent/shell 等后台任务（走 claude:backend-task），
+      // 不持有 tasksBySession，无法终止 TaskItem——这里在渲染端补齐，让任务行立即停转。
+      dispatch({ type: 'KILL_RUNNING_TASKS', sessionId: sid })
     })
     // AskUserQuestion 等用户对话请求
     api.onDialogRequest((data) => {

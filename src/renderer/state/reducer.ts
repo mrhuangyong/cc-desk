@@ -691,6 +691,13 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'CLEAR_TASKS': {
       return { ...state, tasksBySession: { ...state.tasksBySession, [action.sessionId]: [] } }
     }
+    case 'KILL_RUNNING_TASKS': {
+      // 停止 claude 时：把该会话所有未结束（pending/running）的 TaskItem 置为 killed。
+      // 主进程 interrupt() 不持有 tasksBySession，故由渲染端在 onAborted 时补齐。
+      const list = state.tasksBySession[action.sessionId] ?? []
+      return { ...state, tasksBySession: { ...state.tasksBySession, [action.sessionId]:
+        list.map(t => (t.status === 'running' || t.status === 'pending') ? { ...t, status: 'killed' } : t) } }
+    }
     case 'UPSERT_BACKEND_TASK': {
       return upsertBySession(state, 'backendTasksBySession', action.sessionId, action.task)
     }
