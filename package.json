@@ -64,6 +64,7 @@
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
+    "shell-env": "^4.0.3",
     "shiki": "^4.2.0"
   },
   "devDependencies": {
