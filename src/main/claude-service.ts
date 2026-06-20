@@ -11,6 +11,7 @@ import { getModelProvidersConfig, resolveActiveProviderModel, buildSdkEnv } from
 import { getProjectsSnapshot } from './projects-store'
 import { normalizeBetaBlocks, extractToolResults, extractBackgroundTaskId, contentToText, mkNotice } from './claude-normalize'
 import { getPermissionMode } from './builtin-commands'
+import { getSkills } from './claude-config'
 
 /**
  * ClaudeService：渲染端 ↔ SessionQueryManager 的桥。
@@ -207,6 +208,10 @@ export class ClaudeService {
       ? { HTTP_PROXY: settings.proxy, HTTPS_PROXY: settings.proxy, http_proxy: settings.proxy, https_proxy: settings.proxy }
       : {}
 
+    // 启用的技能名（白名单）：从 ~/.cc-desk/claude 的 skills 扫描结果减去黑名单。
+    // 传给 SDK query 的 skills option，使禁用的技能真实不加载。
+    const enabledSkillNames = (await getSkills()).filter(s => s.enabled).map(s => s.name)
+
     // toolUseInputs 按 tool_use id 累积，跨轮持久（一轮的 tool_use 可能在下一轮的
     // tool_result 阶段才被读取）。id 全局唯一，故不在此清空；每个 entry 体量很小，
     // 长会话下增长有限，已知可接受。每次 send 复用 manager 的持久 query，故不清。
@@ -248,6 +253,8 @@ export class ClaudeService {
           effort: thinking ?? 'medium',                    // SDK EffortLevel，控制思考强度
           thinking: { type: 'adaptive' },                  // 配合 effort 自适应思考
           additionalDirectories: extraDirs?.length ? extraDirs : undefined,
+          // 技能白名单：仅加载用户启用的技能（禁用的技能从模型列表隐藏）。
+          skills: enabledSkillNames.length ? enabledSkillNames : 'all',
           // 模型输出语言跟随界面国际化设置。
           // 用 preset:'claude_code' 保留 SDK 完整默认系统提示，append 追加语言约束——
           // 对任意模型（含经第三方代理的 GLM）都生效，比 settings.language 可靠
