@@ -5,6 +5,7 @@ import { SessionQueryManager } from './session-query-manager'
 import { PtyManager } from './pty-manager'
 import { readDirTree, readFileContent, searchFiles, writeFileContent, pathExists } from './file-service'
 import { getSettings, saveSettings } from './settings-store'
+import { menuT } from './menu-i18n'
 import { getModelProvidersConfig, saveModelProvidersConfig } from './cc-desk-store'
 import { getProjectsSnapshot, saveProjectsSnapshot } from './projects-store'
 import * as cc from './claude-config'
@@ -73,7 +74,14 @@ function registerIpcHandlers(): void {
 
   // Settings
   ipcMain.handle('settings:get', () => getSettings())
-  ipcMain.handle('settings:save', (_e, partial) => saveSettings(partial))
+  ipcMain.handle('settings:save', (_e, partial) => {
+    const prevLang = getSettings().lang
+    saveSettings(partial)
+    // 语言变更时重建菜单，让自定义 label 跟随切换
+    if (partial.lang && partial.lang !== prevLang) {
+      Menu.setApplicationMenu(buildAppMenu(updateManager))
+    }
+  })
 
   // cc-desk 自有配置（模型供应商，存 ~/.cc-desk/config.json）
   ipcMain.handle('cc-desk:model:get', () => getModelProvidersConfig())
@@ -323,19 +331,21 @@ app.on('window-all-closed', () => {
 // mac 必须有 Edit 菜单，否则 Cmd+C/Cmd+V 失效（Electron 已知行为）。
 function buildAppMenu(updateMgr: UpdateManager): Menu {
   const isMac = process.platform === 'darwin'
+  const lang = getSettings().lang
+  const t = (key: string) => menuT(lang, key)
   const checkUpdate: Electron.MenuItemConstructorOptions = {
-    label: '检查更新',
+    label: t('menu.checkUpdate'),
     click: () => updateMgr.checkNow(),
   }
   // 刷新页面（Cmd/Ctrl+Shift+R）
   const reloadPage: Electron.MenuItemConstructorOptions = {
-    label: '刷新页面',
+    label: t('menu.reload'),
     accelerator: 'CmdOrCtrl+Shift+R',
     click: () => { getActiveWin()?.webContents.reload() },
   }
   // 开发者工具（Cmd/Ctrl+Option/Alt+I）— 仅当设置开启时可见可用
   const toggleDevTools: Electron.MenuItemConstructorOptions = {
-    label: '开发者工具',
+    label: t('menu.devTools'),
     accelerator: isMac ? 'Cmd+Alt+I' : 'Ctrl+Shift+I',
     visible: getSettings().devTools,
     click: () => {
@@ -350,18 +360,18 @@ function buildAppMenu(updateMgr: UpdateManager): Menu {
         { role: 'appMenu', submenu: [checkUpdate, { type: 'separator' }, { role: 'quit' }] },
         { role: 'editMenu' },
         {
-          label: '视图',
+          label: t('menu.view'),
           submenu: [reloadPage, { type: 'separator' }, toggleDevTools],
         },
         { role: 'windowMenu', submenu: [{ role: 'close' }, { role: 'minimize' }] },
       ]
     : [
-        { label: '文件', submenu: [{ role: 'quit' }] },
+        { label: t('menu.file'), submenu: [{ role: 'quit' }] },
         {
-          label: '视图',
+          label: t('menu.view'),
           submenu: [reloadPage, { type: 'separator' }, toggleDevTools],
         },
-        { label: '帮助', submenu: [checkUpdate, { role: 'about' }] },
+        { label: t('menu.help'), submenu: [checkUpdate, { role: 'about' }] },
       ]
   return Menu.buildFromTemplate(template)
 }
