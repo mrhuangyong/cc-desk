@@ -81,9 +81,18 @@ export class SessionQueryManager {
   ensureSession(opts: EnsureSessionOpts): SessionQuery {
     const existing = this.sessions.get(opts.localSessionId)
     if (existing) {
+      // controller 被 close（如 AbortError 后的清理），旧 session 已不可用，删除重建
+      if (existing.controller.isClosed()) {
+        this.sessions.delete(opts.localSessionId)
+        return this.ensureSession(opts)
+      }
       // 复用：更新回调到最新（支持窗口重载后新 webContents）
       existing.onEvent = opts.onEvent
       existing.onError = opts.onError
+      // 旧循环已结束（正常完成或 crash 清理后），重新启动 runIterate 以消费 queue 中的消息
+      if (!existing.isIterating) {
+        existing.iterateTask = this.runIterate(opts.localSessionId, existing)
+      }
       return existing
     }
     const controller = new PushController<SDKUserMessage>()
