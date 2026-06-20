@@ -85,7 +85,7 @@ describe('claude-config 数据源隔离到 CLAUDE_CONFIG_DIR', () => {
   it('hooks 读写落在隔离目录', async () => {
     const mod = await import('../src/main/claude-config')
     const { settingsPath } = expectedPaths()
-    await mod.setHookEnabled('PreToolUse', true)
+    await mod.saveHooks({ PreToolUse: [{ matcher: '', hooks: [{ type: 'command', command: 'echo test' }] }] })
     const raw = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
     expect(Array.isArray(raw.hooks.PreToolUse)).toBe(true)
   })
