@@ -141,6 +141,9 @@ export function InputBar() {
     if (!qm) return
     window.api?.claude?.stop(state.activeSessionId)
     dispatch({ type: 'DEQUEUE_MESSAGE', sessionId: state.activeSessionId, queueId })
+    // 清理前一次任务规划的任务列表和计划状态，让 Claude 从干净上下文开始处理新消息
+    dispatch({ type: 'CLEAR_TASKS', sessionId: state.activeSessionId })
+    dispatch({ type: 'DISMISS_PLAN', sessionId: state.activeSessionId })
     setTimeout(() => {
       const claudeSessionId = state.claudeSessionMap?.[state.activeSessionId]
       const cwd = project?.path || state.settings?.cwd || undefined
