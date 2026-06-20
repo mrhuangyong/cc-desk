@@ -26,6 +26,7 @@ function initialState(): AppState {
     subagentOutputBySession: {},
     planBySession: {},
     abortedBySession: {},
+    editingMessageId: null, editingQueueId: null,
     updateStatus: { state: 'idle' },
   }
 }

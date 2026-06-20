@@ -61,6 +61,13 @@ export type Action =
   | { type: 'ENQUEUE_MESSAGE'; sessionId: string; prompt: string; attachments: import('../types').DraftAttachment[] }
   | { type: 'DEQUEUE_MESSAGE'; sessionId: string; queueId: string }
   | { type: 'CLEAR_QUEUE'; sessionId: string }
+  // 编辑重发：截断指定消息及其之后的所有消息，并用新文本替换该用户消息
+  | { type: 'EDIT_RESEND'; sessionId: string; messageId: string; newPrompt: string }
+  // 就地编辑态控制
+  | { type: 'SET_EDITING_MESSAGE'; messageId: string | null }
+  // 队列消息编辑态控制 + 更新排队消息文本
+  | { type: 'SET_EDITING_QUEUE'; queueId: string | null }
+  | { type: 'UPDATE_QUEUED_MESSAGE'; sessionId: string; queueId: string; prompt: string }
   // Claude task 状态（悬浮面板）
   | { type: 'UPSERT_TASK'; sessionId: string; task: import('../types').TaskItem }
   | { type: 'SET_TASKS'; sessionId: string; tasks: import('../types').TaskItem[] }

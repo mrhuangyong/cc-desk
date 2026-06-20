@@ -27,6 +27,7 @@ function initialState(): AppState {
     claudeSessionMap: {},
     pendingDialog: null,
     dirtyTabIds: {}, lastFileOpenedSeq: 0, queueBySession: {}, tasksBySession: {}, backendTasksBySession: {}, panelFold: { root: false, taskCard: false, subagentCard: false, backendTaskCard: false }, subagentOutputBySession: {}, planBySession: {}, abortedBySession: {},
+    editingMessageId: null, editingQueueId: null,
     updateStatus: { state: 'idle' },
   }
 }
@@ -639,5 +640,36 @@ describe('reducer ARCHIVE_STALE 自动归档', () => {
     expect(ids).toContain('old-msg')
     expect(ids).toContain('new-empty')
     expect(ids).not.toContain('old-empty')
+  })
+
+  it('EDIT_RESEND 截断指定消息及后续消息并替换文本', () => {
+    const state = initialState()
+    // s1 的 messages 从 fixtures 来，取第一条用户消息 id
+    const firstMsg = state.projects[0].sessions[0].messages[0]
+    const before = state.projects[0].sessions[0].messages.length
+    const next = reducer(state, {
+      type: 'EDIT_RESEND',
+      sessionId: 's1',
+      messageId: firstMsg.id,
+      newPrompt: '编辑后的文本',
+    })
+    const msgs = next.projects[0].sessions[0].messages
+    expect(msgs.length).toBeLessThanOrEqual(before)
+    expect(msgs[msgs.length - 1].content[0]).toMatchObject({ type: 'text', text: '编辑后的文本' })
+    expect(next.editingMessageId).toBeNull()
+  })
+
+  it('UPDATE_QUEUED_MESSAGE 更新排队消息文本', () => {
+    const state = initialState()
+    const enq = reducer(state, { type: 'ENQUEUE_MESSAGE', sessionId: 's1', prompt: '原始', attachments: [] })
+    const qid = enq.queueBySession['s1'][0].id
+    const next = reducer(enq, { type: 'UPDATE_QUEUED_MESSAGE', sessionId: 's1', queueId: qid, prompt: '修改后' })
+    expect(next.queueBySession['s1'][0].prompt).toBe('修改后')
+  })
+
+  it('SET_EDITING_MESSAGE 设置编辑态', () => {
+    const state = initialState()
+    const next = reducer(state, { type: 'SET_EDITING_MESSAGE', messageId: 'm1' })
+    expect(next.editingMessageId).toBe('m1')
   })
 })
