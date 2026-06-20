@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import type { ClaudeSkill } from '../../../main/claude-config'
 import { Toggle } from './Toggle'
+import { SkillModal } from './SkillModal'
 import { Hexagon } from 'lucide-react'
 
 export function SkillsSettings() {
   const [skills, setSkills] = useState<ClaudeSkill[]>([])
   const [q, setQ] = useState('')
   const [loading, setLoading] = useState(true)
+  const [selected, setSelected] = useState<ClaudeSkill | null>(null)
 
   // 技能来自已启用插件 + 用户级 ~/.claude/skills/，只读展示
   const reload = () => {
@@ -52,9 +54,10 @@ export function SkillsSettings() {
           <div style={{ padding: 20, color: 'var(--text-muted)', textAlign: 'center', fontSize: 13 }}>无匹配技能</div>
         )}
         {filtered.map((s, i) => (
-          <div key={s.id} style={{
+          <div key={s.id} onClick={() => setSelected(s)} style={{
             display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
-            borderBottom: i < filtered.length - 1 ? '1px solid var(--border)' : 'none'
+            borderBottom: i < filtered.length - 1 ? '1px solid var(--border)' : 'none',
+            cursor: 'pointer'
           }}>
             <span style={{ color: 'var(--accent)', fontSize: 16, flexShrink: 0, display: 'inline-flex' }}><Hexagon size={16} /></span>
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -74,10 +77,13 @@ export function SkillsSettings() {
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
               }}>{s.desc}</div>
             </div>
-            <Toggle on={s.enabled} onChange={reload} aria-label={`${s.name} 状态`} />
+            <span onClick={e => e.stopPropagation()}>
+              <Toggle on={s.enabled} onChange={reload} aria-label={`${s.name} 状态`} />
+            </span>
           </div>
         ))}
       </div>
+      {selected && <SkillModal skill={selected} onClose={() => setSelected(null)} />}
     </div>
   )
 }
