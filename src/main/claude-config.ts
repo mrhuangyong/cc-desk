@@ -245,11 +245,21 @@ export async function saveMcpServers(servers: ClaudeMcpServer[]): Promise<void> 
 
 // ---- 插件 ----
 
-interface InstalledPlugin { scope: string; installPath: string; version: string }
+export interface InstalledPlugin { scope: string; installPath: string; version: string }
 
 async function readPluginManifest(installPath: string): Promise<any | null> {
   const manifestPath = join(installPath, '.claude-plugin', 'plugin.json')
   return readJson<any>(manifestPath, null)
+}
+
+// 读取 installed_plugins.json 原始结构（供 marketplace-manager 级联清理用）
+export async function readInstalledPlugins(): Promise<{ version?: number; plugins: Record<string, InstalledPlugin[]> }> {
+  return readJson<{ version?: number; plugins: Record<string, InstalledPlugin[]> }>(INSTALLED_PLUGINS_PATH, { plugins: {} })
+}
+
+// 写回 installed_plugins.json
+export async function writeInstalledPlugins(data: { version?: number; plugins: Record<string, InstalledPlugin[]> }): Promise<void> {
+  await writeJson(INSTALLED_PLUGINS_PATH, data)
 }
 
 async function countDir(path: string): Promise<number> {
