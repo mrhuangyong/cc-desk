@@ -85,6 +85,22 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [state, dispatch])
 
+  // 应用级快捷键：Cmd+N（macOS）/ Ctrl+N 新建会话。
+  // projectId 取当前激活会话所属项目，无激活则回退第一个项目。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return
+      if (e.key.toLowerCase() !== 'n') return
+      const active = state.projects.find(p => p.sessions.some(s => s.id === state.activeSessionId))
+      const pid = (active ?? state.projects[0])?.id
+      if (!pid) return
+      e.preventDefault()
+      dispatch({ type: 'ADD_SESSION', projectId: pid })
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [state.projects, state.activeSessionId, dispatch])
+
   // 设置页（currentView === 'settings'）下不渲染搜索弹窗，避免无承载视图
   useEffect(() => {
     if (state.currentView === 'settings') setSearchOpen(false)
