@@ -53,6 +53,7 @@ contextBridge.exposeInMainWorld('api', {
       get: () => ipcRenderer.invoke('cc:skills:get'),
       getFile: (id: string) => ipcRenderer.invoke('cc:skill:get', id),
       saveFile: (id: string, content: string) => ipcRenderer.invoke('cc:skill:save', id, content),
+      setEnabled: (name: string, enabled: boolean) => ipcRenderer.invoke('cc:skill:set-enabled', name, enabled),
     },
     commands: { get: () => ipcRenderer.invoke('cc:commands:get') },
     hooks: {
