@@ -45,13 +45,13 @@ describe('SkillsSettings 行点击打开弹窗', () => {
 
   it('点击技能行打开详情弹窗', async () => {
     const skill = mkSkill()
-    setApi({ cc: { skills: { get: vi.fn().mockResolvedValue([skill]), getFile: vi.fn().mockResolvedValue(''), saveFile: vi.fn() } } })
+    setApi({ cc: { skills: { get: vi.fn().mockResolvedValue([skill]), getFile: vi.fn().mockResolvedValue(''), saveFile: vi.fn(), setEnabled: vi.fn().mockResolvedValue(undefined) } } })
 
     render(<SkillsSettings />)
     await waitFor(() => expect(screen.getByText('editor')).toBeTruthy())
 
     // 初始无弹窗
-    expect(screen.queryByRole('switch', { name: 'editor 状态' })).toBeTruthy()
+    expect(screen.queryByRole('switch', { name: '禁用 editor' })).toBeTruthy()
     // 点击技能行（name 文本所在元素）
     fireEvent.click(screen.getByText('editor'))
 
@@ -61,15 +61,33 @@ describe('SkillsSettings 行点击打开弹窗', () => {
 
   it('点击 Toggle 不打开弹窗（stopPropagation）', async () => {
     const skill = mkSkill()
-    setApi({ cc: { skills: { get: vi.fn().mockResolvedValue([skill]), getFile: vi.fn().mockResolvedValue(''), saveFile: vi.fn() } } })
+    setApi({ cc: { skills: { get: vi.fn().mockResolvedValue([skill]), getFile: vi.fn().mockResolvedValue(''), saveFile: vi.fn(), setEnabled: vi.fn().mockResolvedValue(undefined) } } })
 
     render(<SkillsSettings />)
     await waitFor(() => expect(screen.getByText('editor')).toBeTruthy())
 
-    const toggle = screen.getByRole('switch', { name: 'editor 状态' })
+    const toggle = screen.getByRole('switch', { name: '禁用 editor' })
     fireEvent.click(toggle)
     // 不应出现路径（弹窗未开）
     expect(screen.queryByText('/tmp/skills/editor/SKILL.md')).toBeNull()
+  })
+
+  it('点击 Toggle 调 setSkillEnabled 后重新加载', async () => {
+    const skill = mkSkill({ enabled: true })
+    const setEnabled = vi.fn().mockResolvedValue(undefined)
+    let callCount = 0
+    const get = vi.fn().mockImplementation(async () => {
+      callCount++
+      return [{ ...skill, enabled: callCount === 1 }]
+    })
+    setApi({ cc: { skills: { get, getFile: vi.fn().mockResolvedValue(''), saveFile: vi.fn(), setEnabled } } })
+
+    render(<SkillsSettings />)
+    await waitFor(() => expect(screen.getByText('editor')).toBeTruthy())
+
+    const toggle = screen.getByRole('switch', { name: '禁用 editor' })
+    fireEvent.click(toggle)
+    await waitFor(() => expect(setEnabled).toHaveBeenCalledWith('editor', false))
   })
 })
 

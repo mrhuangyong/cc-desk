@@ -8,6 +8,7 @@ import { getSettings, saveSettings } from './settings-store'
 import { getModelProvidersConfig, saveModelProvidersConfig } from './cc-desk-store'
 import { getProjectsSnapshot, saveProjectsSnapshot } from './projects-store'
 import * as cc from './claude-config'
+import * as mkt from './marketplace-manager'
 import { getMemoryFile, saveMemoryFile } from './memory-file'
 import { BackendTaskRegistry } from './backend-task-registry'
 import { ensureClaudeConfigDir } from './paths'
@@ -21,6 +22,8 @@ ensureClaudeConfigDir()
 // 首次启动时把 ~/.claude 的插件/技能/设置一次性迁移到隔离目录（幂等，已迁移则跳过）。
 // 让设置页与 SDK 运行时在隔离目录也能看到原有插件，cc-desk 完全自洽不再依赖 ~/.claude。
 void migrateFromClaude()
+// 应用启动后异步刷新标记了 autoUpdate 的插件仓库（不阻塞窗口加载，失败静默跳过）。
+mkt.refreshAutoUpdateMarketplaces().catch(() => {})
 
 const isDev = !app.isPackaged
 
@@ -103,10 +106,25 @@ function createWindow() {
   ipcMain.handle('cc:mcp:save', (_e, servers) => cc.saveMcpServers(servers))
   ipcMain.handle('cc:plugins:get', () => cc.getPlugins())
   ipcMain.handle('cc:plugin:set-enabled', (_e, id, enabled) => cc.setPluginEnabled(id, enabled))
+  ipcMain.handle('cc:marketplace:get', () => mkt.getMarketplaces())
+  ipcMain.handle('cc:marketplace:get-plugins', (_e, name: string) => mkt.getMarketplacePlugins(name))
+  ipcMain.handle('cc:marketplace:search', (_e, query: string) => mkt.searchMarketplacePlugins(query))
+  ipcMain.handle('cc:marketplace:add', (_e, source: string, options?: any) => mkt.addMarketplace(source, options))
+  ipcMain.handle('cc:marketplace:remove', (_e, name: string) => mkt.removeMarketplace(name))
+  ipcMain.handle('cc:marketplace:refresh', (_e, name: string) => mkt.refreshMarketplace(name))
+  ipcMain.handle('cc:marketplace:refresh-all', () => mkt.refreshAllMarketplaces())
+  ipcMain.handle('cc:marketplace:set-auto-update', (_e, name: string, enabled: boolean) => mkt.setMarketplaceAutoUpdate(name, enabled))
+  ipcMain.handle('cc:plugin:install', (_e, pluginId: string) => cc.installPlugin(pluginId))
+  ipcMain.handle('cc:plugin:uninstall', (_e, pluginId: string) => cc.uninstallPlugin(pluginId))
   ipcMain.handle('cc:skills:get', () => cc.getSkills())
   ipcMain.handle('cc:skill:get', (_e, id: string) => cc.getSkillFile(id))
   ipcMain.handle('cc:skill:save', (_e, id: string, content: string) => cc.saveSkillFile(id, content))
+  ipcMain.handle('cc:skill:set-enabled', (_e, name: string, enabled: boolean) => cc.setSkillEnabled(name, enabled))
   ipcMain.handle('cc:commands:get', () => cc.getCommands())
+  ipcMain.handle('cc:command:create', (_e, name: string, desc: string) => cc.createCommand(name, desc))
+  ipcMain.handle('cc:command:get-file', (_e, source: string, name: string) => cc.getCommandFile(source, name))
+  ipcMain.handle('cc:command:save', (_e, name: string, content: string) => cc.saveCommandFile(name, content))
+  ipcMain.handle('cc:command:delete', (_e, name: string) => cc.deleteCommand(name))
   ipcMain.handle('cc:hooks:get', () => cc.getHooks())
   ipcMain.handle('cc:hook:set-enabled', (_e, name, enabled) => cc.setHookEnabled(name, enabled))
   ipcMain.handle('cc:model:get', () => cc.getModelConfig())

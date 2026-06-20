@@ -35,8 +35,8 @@ describe('claude-config 写操作真实落盘', () => {
   it('saveMcpServers：写 .claude.json 的 mcpServers，http 与 stdio 两种形态', async () => {
     const { mod, fakeDir } = await withFakeConfigDir()
     await mod.saveMcpServers([
-      { id: 'stdio1', name: 'stdio1', transport: 'stdio', command: 'node', args: 'a.js b', env: 'K=V', enabled: true, scope: '用户' },
-      { id: 'http1', name: 'http1', transport: 'http', command: 'https://x.io', args: '', env: '', enabled: true, scope: '用户' },
+      { id: 'stdio1', name: 'stdio1', transport: 'stdio', command: 'node', args: 'a.js b', env: 'K=V', headers: '', enabled: true, scope: '用户' },
+      { id: 'http1', name: 'http1', transport: 'http', command: 'https://x.io', args: '', env: '', headers: '', enabled: true, scope: '用户' },
     ])
     const data = await readJsonFile(join(fakeDir, '.claude.json'))
     expect(data.mcpServers.stdio1.command).toBe('node')
@@ -84,7 +84,7 @@ describe('claude-config 写操作真实落盘', () => {
     const { mod, fakeDir } = await withFakeConfigDir()
     await writeFile(join(fakeDir, '.claude.json'), JSON.stringify({ otherGlobals: { x: 1 }, numInline: 5 }))
     await mod.saveMcpServers([
-      { id: 'm', name: 'm', transport: 'stdio', command: 'c', args: '', env: '', enabled: true, scope: '用户' },
+      { id: 'm', name: 'm', transport: 'stdio', command: 'c', args: '', env: '', headers: '', enabled: true, scope: '用户' },
     ])
     const data = await readJsonFile(join(fakeDir, '.claude.json'))
     expect(data.otherGlobals).toEqual({ x: 1 })
@@ -95,8 +95,8 @@ describe('claude-config 写操作真实落盘', () => {
   it('saveMcpServers：禁用 MCP 时从 mcpServers 移除并可读回为 disabled', async () => {
     const { mod, fakeDir } = await withFakeConfigDir()
     await mod.saveMcpServers([
-      { id: 'enabled-one', name: 'enabled-one', transport: 'stdio', command: 'node', args: 'ok.js', env: '', enabled: true, scope: '用户' },
-      { id: 'disabled-one', name: 'disabled-one', transport: 'stdio', command: 'node', args: 'off.js', env: 'K=V', enabled: false, scope: '用户' },
+      { id: 'enabled-one', name: 'enabled-one', transport: 'stdio', command: 'node', args: 'ok.js', env: '', headers: '', enabled: true, scope: '用户' },
+      { id: 'disabled-one', name: 'disabled-one', transport: 'stdio', command: 'node', args: 'off.js', env: 'K=V', headers: '', enabled: false, scope: '用户' },
     ])
 
     const global = await readJsonFile(join(fakeDir, '.claude.json'))
@@ -125,7 +125,7 @@ describe('claude-config 写操作真实落盘', () => {
     }))
 
     await mod.saveMcpServers([
-      { id: 'stashed', name: 'stashed', transport: 'stdio', command: 'node', args: 'stashed.js', env: '', enabled: true, scope: '用户' },
+      { id: 'stashed', name: 'stashed', transport: 'stdio', command: 'node', args: 'stashed.js', env: '', headers: '', enabled: true, scope: '用户' },
     ])
 
     const global = await readJsonFile(join(fakeDir, '.claude.json'))

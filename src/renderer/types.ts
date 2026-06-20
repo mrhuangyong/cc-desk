@@ -261,6 +261,7 @@ export interface McpServer {
   command: string               // stdio: 命令本体(如 npx)；http: 完整 URL
   args: string                  // stdio: 参数(空格分隔, 如 -y @playwright/mcp@latest)；http: 空
   env: string                   // 环境变量(KEY=VALUE 每行一个)，可选
+  headers: string               // http 类型: Headers(KEY: VALUE 每行一个)，可选
   enabled: boolean
   scope: '用户' | '工作区'       // 来源层级
 }

@@ -29,31 +29,99 @@ const ghostBtn: React.CSSProperties = {
   border: 'none', background: 'transparent', color: 'var(--text-muted)'
 }
 
+// ---- 字段 ↔ 标准落盘格式转换（与后端 buildMcpEntry/parseMcpEntry 同构）----
+
+// env 字符串 KEY=VALUE 行 → 对象
+function parseEnvLines(env: string): Record<string, string> {
+  const obj: Record<string, string> = {}
+  ;(env || '').split('\n').forEach(line => {
+    const i = line.indexOf('=')
+    if (i > 0) obj[line.slice(0, i).trim()] = line.slice(i + 1)
+  })
+  return obj
+}
+// headers 字符串 KEY: VALUE 行 → 对象
+function parseHeaderLines(headers: string): Record<string, string> {
+  const obj: Record<string, string> = {}
+  ;(headers || '').split('\n').forEach(line => {
+    const i = line.indexOf(':')
+    if (i > 0) obj[line.slice(0, i).trim()] = line.slice(i + 1).trim()
+  })
+  return obj
+}
+// 渲染端字段 → 标准落盘格式单条 server 对象
+function serverToStdJSON(s: McpServer): Record<string, any> {
+  if (s.transport === 'http') {
+    const obj: any = { type: 'http', url: s.command }
+    const headers = parseHeaderLines(s.headers)
+    if (Object.keys(headers).length) obj.headers = headers
+    return obj
+  }
+  const obj: any = { command: s.command }
+  const args = s.args.trim() ? s.args.trim().split(/\s+/) : []
+  if (args.length) obj.args = args
+  const env = parseEnvLines(s.env)
+  if (Object.keys(env).length) obj.env = env
+  return obj
+}
+// 标准格式单条 server 对象 → 渲染端字段
+function stdJSONToServer(name: string, raw: any): Partial<McpServer> {
+  const isHttp = raw.type === 'http' || (!!raw.url && !raw.command)
+  if (isHttp) {
+    return {
+      name, transport: 'http', command: raw.url || '',
+      args: '', env: '',
+      headers: raw.headers && typeof raw.headers === 'object'
+        ? Object.entries(raw.headers).map(([k, v]) => `${k}: ${v}`).join('\n') : '',
+    }
+  }
+  return {
+    name, transport: 'stdio', command: raw.command || '',
+    args: Array.isArray(raw.args) ? raw.args.join(' ') : '',
+    env: raw.env && typeof raw.env === 'object'
+      ? Object.entries(raw.env).map(([k, v]) => `${k}=${v}`).join('\n') : '',
+    headers: '',
+  }
+}
+
 export function McpEditDialog({ server, onSave, onCancel }: Props) {
   const [tab, setTab] = useState<'form' | 'json'>('form')
-  const [draft, setDraft] = useState<McpServer>({ ...server })
+  const [draft, setDraft] = useState<McpServer>({ ...server, headers: server.headers ?? '' })
   const [showEnv, setShowEnv] = useState(false)
-  const [jsonText, setJsonText] = useState(() => JSON.stringify({
-    name: server.name, transport: server.transport,
-    command: server.command, args: server.args, env: server.env, scope: server.scope
-  }, null, 2))
+  const [jsonError, setJsonError] = useState<string | null>(null)
+
+  // 标准 JSON：完整 mcpServers 外层 + 单条 server。进入 JSON tab 时用当前 draft 生成。
+  const buildStdJsonText = (s: McpServer) =>
+    JSON.stringify({ mcpServers: { [s.name]: serverToStdJSON(s) } }, null, 2)
+  const [jsonText, setJsonText] = useState(() => buildStdJsonText({ ...server, headers: server.headers ?? '' }))
 
   const patch = (p: Partial<McpServer>) => setDraft(prev => ({ ...prev, ...p }))
 
+  // 切到 JSON tab 时用最新 draft 重新生成标准格式
+  const onTabChange = (t: 'form' | 'json') => {
+    setTab(t)
+    if (t === 'json') { setJsonText(buildStdJsonText(draft)); setJsonError(null) }
+  }
+
   const save = () => {
     if (tab === 'json') {
-      // 从 JSON 解析回字段
+      // 从标准 JSON 解析出 mcpServers[name] 单条，转成渲染端字段
       try {
-        const obj = JSON.parse(jsonText)
-        onSave(obj)
-      } catch {
-        // 解析失败：忽略保存（原型简化，可加提示）
+        const parsed = JSON.parse(jsonText)
+        const mcpServers = parsed.mcpServers || parsed
+        const entries = Object.entries(mcpServers)
+        if (entries.length === 0) { setJsonError('JSON 中无 mcpServers 条目'); return }
+        const [name, raw] = entries[0] as [string, any]
+        onSave(stdJSONToServer(name, raw))
+      } catch (e) {
+        setJsonError('JSON 格式错误：' + (e instanceof Error ? e.message : String(e)))
+        return
       }
       return
     }
     onSave({
       name: draft.name, transport: draft.transport, command: draft.command,
-      args: draft.args, env: draft.env, scope: draft.scope
+      args: draft.args, env: draft.env, headers: draft.headers, scope: draft.scope
     })
   }
 
@@ -77,8 +145,8 @@ export function McpEditDialog({ server, onSave, onCancel }: Props) {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 8px', borderBottom: '1px solid var(--border)' }}>
           <span style={{ padding: '10px 8px', color: 'var(--text)', fontSize: 14 }}>编辑 MCP 服务器</span>
           <div style={{ display: 'flex' }}>
-            <button style={tabStyle(tab === 'form')} onClick={() => setTab('form')}>表单</button>
-            <button style={tabStyle(tab === 'json')} onClick={() => setTab('json')}>JSON</button>
+            <button style={tabStyle(tab === 'form')} onClick={() => onTabChange('form')}>表单</button>
+            <button style={tabStyle(tab === 'json')} onClick={() => onTabChange('json')}>JSON</button>
           </div>
         </div>
 
@@ -117,38 +185,48 @@ export function McpEditDialog({ server, onSave, onCancel }: Props) {
                   <input value={draft.command} onChange={e => patch({ command: e.target.value })} placeholder="npx" style={inputStyle} />
                   <div style={fieldLabel}>参数（空格分隔）</div>
                   <input value={draft.args} onChange={e => patch({ args: e.target.value })} placeholder="-y @playwright/mcp@latest" style={inputStyle} />
+
+                  {/* 环境变量（可折叠） */}
+                  <div style={{ marginTop: 14 }}>
+                    <button
+                      onClick={() => setShowEnv(s => !s)}
+                      style={{ cursor: 'pointer', background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: 12 }}
+                    >{showEnv ? <ChevronDown size={12} /> : <ChevronRight size={12} />} 环境变量（可选）</button>
+                    {showEnv && (
+                      <textarea
+                        value={draft.env}
+                        onChange={e => patch({ env: e.target.value })}
+                        placeholder={'KEY=VALUE\n每行一个'}
+                        style={{ ...inputStyle, minHeight: 60, resize: 'vertical', marginTop: 6, fontFamily: 'var(--font-mono)' }}
+                      />
+                    )}
+                  </div>
                 </>
               ) : (
                 <>
                   <div style={fieldLabel}>URL</div>
                   <input value={draft.command} onChange={e => patch({ command: e.target.value })} placeholder="https://..." style={inputStyle} />
+                  <div style={fieldLabel}>Headers（KEY: VALUE 每行一个，可选）</div>
+                  <textarea
+                    value={draft.headers}
+                    onChange={e => patch({ headers: e.target.value })}
+                    placeholder={'Authorization: Bearer xxx\nContent-Type: application/json'}
+                    style={{ ...inputStyle, minHeight: 60, resize: 'vertical', fontFamily: 'var(--font-mono)' }}
+                  />
                 </>
               )}
-
-              {/* 环境变量（可折叠） */}
-              <div style={{ marginTop: 14 }}>
-                <button
-                  onClick={() => setShowEnv(s => !s)}
-                  style={{ cursor: 'pointer', background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: 12 }}
-                >{showEnv ? <ChevronDown size={12} /> : <ChevronRight size={12} />} 环境变量（可选）</button>
-                {showEnv && (
-                  <textarea
-                    value={draft.env}
-                    onChange={e => patch({ env: e.target.value })}
-                    placeholder={'KEY=VALUE\n每行一个'}
-                    style={{ ...inputStyle, minHeight: 60, resize: 'vertical', marginTop: 6, fontFamily: 'var(--font-mono)' }}
-                  />
-                )}
-              </div>
             </>
           ) : (
             <>
-              <div style={fieldLabel}>配置 JSON</div>
+              <div style={fieldLabel}>配置 JSON（标准格式，含 mcpServers 外层）</div>
               <textarea
                 value={jsonText}
-                onChange={e => setJsonText(e.target.value)}
+                onChange={e => { setJsonText(e.target.value); setJsonError(null) }}
                 style={{ ...inputStyle, minHeight: 280, resize: 'vertical', fontFamily: 'var(--font-mono)' }}
               />
+              {jsonError && (
+                <div style={{ marginTop: 6, color: 'var(--danger, #dc2626)', fontSize: 12 }}>{jsonError}</div>
+              )}
             </>
           )}
         </div>

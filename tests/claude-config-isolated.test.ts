@@ -57,7 +57,7 @@ describe('claude-config 数据源隔离到 CLAUDE_CONFIG_DIR', () => {
     const mod = await import('../src/main/claude-config')
     const { globalPath } = expectedPaths()
     await mod.saveMcpServers([
-      { id: 'm1', name: 'm1', transport: 'stdio', command: 'node', args: 'a.js', env: '', enabled: true, scope: '用户' },
+      { id: 'm1', name: 'm1', transport: 'stdio', command: 'node', args: 'a.js', env: '', headers: '', enabled: true, scope: '用户' },
     ])
     expect(fs.existsSync(globalPath)).toBe(true)
     const raw = JSON.parse(fs.readFileSync(globalPath, 'utf-8'))
