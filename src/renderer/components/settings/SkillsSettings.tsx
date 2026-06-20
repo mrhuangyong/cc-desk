@@ -78,7 +78,10 @@ export function SkillsSettings() {
               }}>{s.desc}</div>
             </div>
             <span onClick={e => e.stopPropagation()}>
-              <Toggle on={s.enabled} onChange={reload} aria-label={`${s.name} 状态`} />
+              <Toggle on={s.enabled} onChange={async (v) => {
+                await window.api?.cc.skills.setEnabled(s.name, v)
+                reload()
+              }} aria-label={`${s.enabled ? '禁用' : '启用'} ${s.name}`} />
             </span>
           </div>
         ))}
