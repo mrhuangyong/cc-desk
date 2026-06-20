@@ -134,11 +134,23 @@ describe('SkillsSettings', () => {
 describe('PluginSettings', () => {
   const pluginsGet = vi.fn()
   const setEnabled = vi.fn()
+  const installFn = vi.fn()
+  const uninstallFn = vi.fn()
+  const mktGet = vi.fn()
+  const mktGetPlugins = vi.fn()
+  const mktSearch = vi.fn()
+  const mktAdd = vi.fn()
+  const mktRemove = vi.fn()
+  const mktRefresh = vi.fn()
+  const mktRefreshAll = vi.fn()
+  const mktSetAutoUpdate = vi.fn()
 
   beforeEach(() => {
     pluginsGet.mockClear()
     setEnabled.mockClear()
-    setApi({ cc: { plugins: { get: pluginsGet, setEnabled } } })
+    mktGet.mockResolvedValue([])
+    mktSearch.mockResolvedValue([])
+    setApi({ cc: { plugins: { get: pluginsGet, setEnabled, install: installFn, uninstall: uninstallFn }, marketplaces: { get: mktGet, getPlugins: mktGetPlugins, search: mktSearch, add: mktAdd, remove: mktRemove, refresh: mktRefresh, refreshAll: mktRefreshAll, setAutoUpdate: mktSetAutoUpdate } } })
   })
 
   it('插件搜索过滤并显示统计', async () => {
@@ -151,7 +163,7 @@ describe('PluginSettings', () => {
     expect(await screen.findByText('superpowers')).toBeTruthy()
     expect(screen.getByText('2 技能 · 3 命令 · 1 MCP')).toBeTruthy()
 
-    fireEvent.change(screen.getByPlaceholderText('搜索插件...'), { target: { value: 'docx' } })
+    fireEvent.change(screen.getByPlaceholderText('搜索已安装插件...'), { target: { value: 'docx' } })
     expect(screen.queryByText('superpowers')).toBeNull()
     expect(screen.getByText('documents')).toBeTruthy()
   })
