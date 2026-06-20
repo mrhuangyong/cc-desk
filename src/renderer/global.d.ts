@@ -1,7 +1,7 @@
 // window.api 类型声明 —— 由 preload 的 contextBridge 暴露。
 // 渲染进程通过 window.api.claude / .settings / .fs / .pty 调用主进程。
 
-import type { AppSettings } from './types'
+import type { AppSettings, UpdateStatus } from './types'
 import type { Project, Tab, ModelProvider, ModelItem } from './types'
 import type {
   ClaudeMcpServer, ClaudePlugin, ClaudeSkill, ClaudeCommand, ClaudeHook,
@@ -153,6 +153,15 @@ declare global {
       dialog: DialogAPI
       cc: ClaudeConfigAPI
       onArchiveTick: MiscAPI['onArchiveTick']
+      update: {
+        onState: (cb: (s: UpdateStatus) => void) => () => void
+        check: () => Promise<void>
+        install: () => Promise<void>
+        downloadAndOpen: () => Promise<void>
+      }
+      appVersion: {
+        get: () => Promise<{ version: string; electron: string; chrome: string; node: string }>
+      }
     }
   }
 }
