@@ -18,6 +18,9 @@ export type ContentBlock =
       input: any
       status: 'running' | 'completed' | 'error'
       result?: ToolResult
+      // ExitPlanMode 专属：plan 文档的磁盘路径（来自 tool_result 的 ExitPlanModeOutput.filePath）。
+      // 渲染端据此提供「查看计划」抽屉入口，读取真实文件渲染。
+      planFilePath?: string
     }
   | { type: 'tool_result'; toolUseId: string; content: string; isError: boolean }
   | { type: 'image'; source: string }

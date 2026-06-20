@@ -15,8 +15,15 @@ import { BackendTaskRegistry } from './backend-task-registry'
 import { ensureClaudeConfigDir } from './paths'
 import { migrateFromClaude } from './migrate-from-claude'
 import { UpdateManager } from './update-manager'
+import { fixEnvSync } from './fix-env'
 
-// 启动第一件事：把 Claude Agent SDK / CLI 的配置目录隔离到 ~/.cc-desk/claude，
+// 启动第一件事：修正 PATH/env。打包成 .app 后 GUI 不执行用户 shell 启动脚本，
+// process.env.PATH 只有 /usr/bin:/bin:...，SDK 子进程（继承 process.env）会找不到
+// node/npm/pnpm（它们来自 nvm/homebrew/pnpm，由 shell 启动脚本注入）。
+// 跑 login shell 取回完整用户环境合并进 process.env，必须早于任何 query()。
+fixEnvSync()
+
+// 紧接着：把 Claude Agent SDK / CLI 的配置目录隔离到 ~/.cc-desk/claude，
 // 使运行时不再读取 ~/.claude/settings.json（其 env 块会覆盖 cc-desk 注入的角色模型映射，
 // 导致 haiku 等后台子任务被 ~/.claude 的模型配置劫持）。必须在任何 query() 之前完成。
 ensureClaudeConfigDir()
