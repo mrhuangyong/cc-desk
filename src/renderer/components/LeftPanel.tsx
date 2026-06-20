@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useRef } from 'react'
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import type { CSSProperties } from 'react'
 import { Plus, Search, Zap, ChevronsUpDown, ArrowUpDown, FolderPlus, Settings } from 'lucide-react'
 import { ProjectTree } from './ProjectTree'
@@ -22,6 +22,21 @@ export function LeftPanel({ collapsed, onOpenSearch }: Props) {
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(
     () => new Set(state.projects.map(p => p.id))
   )
+  // 记录用户已明确折叠过的项目 id，区分「从没见过的新项目」与「被主动折叠的旧项目」
+  const [collapsedByUser, setCollapsedByUser] = useState<Set<string>>(() => new Set())
+
+  // 项目数据异步 HYDRATE 进来后，把新到达的项目默认展开；
+  // collapsedByUser 里的项目保持折叠，不被反复 HYDRATE 覆盖。
+  useEffect(() => {
+    setExpandedProjects(prev => {
+      const known = new Set(prev)
+      let changed = false
+      for (const p of state.projects) {
+        if (!known.has(p.id) && !collapsedByUser.has(p.id)) { known.add(p.id); changed = true }
+      }
+      return changed ? known : prev
+    })
+  }, [state.projects, collapsedByUser])
 
   const { width, dragging, onMouseDown, registerApply } = useResizableWidth({
     initial: 240,
@@ -46,15 +61,29 @@ export function LeftPanel({ collapsed, onOpenSearch }: Props) {
   const toggleExpand = (pid: string) => {
     setExpandedProjects(prev => {
       const next = new Set(prev)
-      if (next.has(pid)) next.delete(pid)
+      const collapsing = next.has(pid)
+      if (collapsing) next.delete(pid)
       else next.add(pid)
+      // 同步记录用户折叠意图，避免后续 HYDRATE 把它重新展开
+      setCollapsedByUser(prevCol => {
+        const nextCol = new Set(prevCol)
+        if (collapsing) nextCol.add(pid)
+        else nextCol.delete(pid)
+        return nextCol
+      })
       return next
     })
   }
 
   const toggleAll = () => {
     const allExpanded = state.projects.every(p => expandedProjects.has(p.id))
-    setExpandedProjects(allExpanded ? new Set() : new Set(state.projects.map(p => p.id)))
+    if (allExpanded) {
+      setExpandedProjects(new Set())
+      setCollapsedByUser(new Set(state.projects.map(p => p.id)))
+    } else {
+      setExpandedProjects(new Set(state.projects.map(p => p.id)))
+      setCollapsedByUser(new Set())
+    }
   }
 
   const handleNewSession = () => {

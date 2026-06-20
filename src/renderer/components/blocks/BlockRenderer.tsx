@@ -5,6 +5,12 @@ import { ThinkingBlock } from './ThinkingBlock'
 import { ToolUseCard } from './ToolUseCard'
 import { ToolGroup } from './ToolGroup'
 import { ImageBlock } from './ImageBlock'
+import { MetaToolCard } from './MetaToolCard'
+
+// 元工具（任务/计划管理类）：用语义化卡片渲染，而非普通 ToolUseCard。
+// TaskCreate/TaskUpdate/TaskList 让对话流完整记录模型的任务规划；
+// ExitPlanMode 提供「查看计划」入口（plan 抽屉），解决 plan 批准后入口丢失。
+const META_TOOL_NAMES = new Set(['TaskCreate', 'TaskUpdate', 'TaskList', 'ExitPlanMode'])
 
 export function BlockRenderer({ block, subagentOutputByToolUseId, hiddenToolUseIds }: { block: ContentBlock; subagentOutputByToolUseId?: Record<string, ContentBlock[]>; hiddenToolUseIds?: Set<string> }) {
   const { state } = useStore()
@@ -15,6 +21,7 @@ export function BlockRenderer({ block, subagentOutputByToolUseId, hiddenToolUseI
     case 'tool_use':
       // subagent 入口的 Task 卡片不在主流显示(重心移至悬浮面板)
       if (hiddenToolUseIds?.has(block.id)) return null
+      if (META_TOOL_NAMES.has(block.name)) return <MetaToolCard block={block} />
       return <ToolUseCard block={block} />
     case 'tool_result': return null
     case 'image': return <ImageBlock source={block.source} />
@@ -47,8 +54,15 @@ export function renderBlocks(blocks: ContentBlock[], compact?: boolean, subagent
       if (visibleGroup.length >= 2) {
         out.push(<ToolGroup key={`g${key++}`} tools={visibleGroup} />)
       } else if (visibleGroup.length === 1) {
-        if (!hiddenToolUseIds?.has(visibleGroup[0].id)) {
-          out.push(<ToolUseCard key={`t${key++}`} block={visibleGroup[0]} />)
+        const single = visibleGroup[0]
+        if (!hiddenToolUseIds?.has(single.id)) {
+          // 元工具用 MetaToolCard（语义化卡片，提供计划抽屉入口）；
+          // 普通工具仍用 ToolUseCard，避免引入 useStore 依赖影响无 Provider 的渲染场景。
+          if (META_TOOL_NAMES.has(single.name)) {
+            out.push(<MetaToolCard key={`m${key++}`} block={single} />)
+          } else {
+            out.push(<ToolUseCard key={`t${key++}`} block={single} />)
+          }
         }
       }
       i = j

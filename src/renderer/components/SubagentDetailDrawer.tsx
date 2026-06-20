@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import { X, Bot, Clock, Cpu, Wrench, Terminal } from 'lucide-react'
 import type { BackendTask, ContentBlock } from '../types'
 import { renderBlocks } from './blocks/BlockRenderer'
+import { MarkdownRenderer } from './markdown/MarkdownRenderer'
 import { formatSessionTime } from '../utils/formatSessionTime'
 import { Tooltip } from './Tooltip'
 
@@ -114,7 +115,8 @@ export function SubagentDetailDrawer({ task, outputByToolUseId, onClose }: Props
           )}
         </div>
 
-        {/* 创建该 subagent 的原始 prompt(主流 Task tool_use input.prompt) */}
+        {/* 创建该 subagent 的原始 prompt(主流 Task tool_use input.prompt)。
+            用 Markdown 渲染：prompt 常含列表/代码块/标题，纯 pre 无法体现结构。 */}
         {task.prompt && (
           <div style={{
             padding: '12px 20px', borderBottom: '1px solid var(--border)',
@@ -128,12 +130,12 @@ export function SubagentDetailDrawer({ task, outputByToolUseId, onClose }: Props
               <Terminal size={11} />
               <span>创建指令</span>
             </div>
-            <pre style={{
-              margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-              fontFamily: 'var(--font-mono, ui-monospace, monospace)',
-              fontSize: 12.5, lineHeight: 1.6, color: 'var(--text)',
-              maxHeight: 240, overflowY: 'auto',
-            }}>{task.prompt}</pre>
+            <div style={{
+              maxHeight: 320, overflowY: 'auto',
+              fontSize: 13, lineHeight: 1.6, color: 'var(--text)',
+            }}>
+              <MarkdownRenderer text={task.prompt} />
+            </div>
           </div>
         )}
         {/* 对话输出区:可滚动 */}

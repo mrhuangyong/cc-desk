@@ -59,19 +59,6 @@ export function GeneralSettings() {
 
   return (
     <SettingsLayout title="常规">
-      {/* 工作目录 */}
-      <SettingsCard>
-        <SettingsRow title="工作目录" desc="新会话默认的工作目录路径。" noBorder>
-          <input
-            type="text"
-            value={s.cwd}
-            onChange={e => persist({ cwd: e.target.value })}
-            placeholder="/path/to/project"
-            style={{ ...inputStyle, minWidth: 320 }}
-          />
-        </SettingsRow>
-      </SettingsCard>
-
       {/* 外观（桌面应用主题，localStorage 持久化） */}
       <SettingsCard>
         <SettingsRow title="界面主题" desc="切换桌面应用界面使用的主题外观。">

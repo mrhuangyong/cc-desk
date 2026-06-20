@@ -87,3 +87,33 @@ export function extractBackgroundTaskId(toolResultBlock: any): string | undefine
   if (m2) return m2[1]
   return undefined
 }
+
+// 从 ExitPlanMode 的 tool_result block 提取 plan 文档的磁盘路径。
+// 真实 SDK 样本（~/.cc-desk/claude/projects/*.jsonl）的 tool_result 结构：
+//   {
+//     content: "File created successfully at: /Users/x/.cc-desk/claude/plans/foo.md ...",
+//     toolUseResult: { type: "create", filePath: "/Users/x/.cc-desk/claude/plans/foo.md", ... }
+//   }
+// 故按优先级兜底：toolUseResult.filePath（主）→ structuredContent.filePath
+// → content 对象.filePath → content 文本里的 JSON / "File ... at: <path>"。
+export function extractPlanFilePath(toolResultBlock: any): string | undefined {
+  if (!toolResultBlock) return undefined
+  // 1) toolUseResult.filePath（真实 SDK 主路径）
+  const tur = toolResultBlock.toolUseResult
+  if (tur && typeof tur === 'object' && typeof tur.filePath === 'string' && tur.filePath) return tur.filePath
+  // 2) structuredContent.filePath
+  const sc = toolResultBlock.structuredContent
+  if (sc && typeof sc === 'object' && typeof sc.filePath === 'string' && sc.filePath) return sc.filePath
+  // 3) content 是对象时
+  const c = toolResultBlock.content
+  if (c && typeof c === 'object' && !Array.isArray(c) && typeof c.filePath === 'string' && c.filePath) return c.filePath
+  // 4) content 文本里提取
+  const text = (typeof c === 'string' || Array.isArray(c)) ? contentToText(c) : ''
+  // 4a) 结构化 JSON 兜底
+  const m1 = text.match(/"filePath"\s*:\s*"([^"]+)"/)
+  if (m1) return m1[1]
+  // 4b) 人类可读文本："File created/updated successfully at: <path>"
+  const m2 = text.match(/File\s+(?:created|updated)\s+successfully\s+at:\s*(\/\S+\.md)/i)
+  if (m2) return m2[1]
+  return undefined
+}

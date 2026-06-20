@@ -9,7 +9,7 @@ import type { WebContents } from 'electron'
 import { getSettings } from './settings-store'
 import { getModelProvidersConfig, resolveActiveProviderModel, buildSdkEnv } from './cc-desk-store'
 import { getProjectsSnapshot } from './projects-store'
-import { normalizeBetaBlocks, extractToolResults, extractBackgroundTaskId, contentToText, mkNotice } from './claude-normalize'
+import { normalizeBetaBlocks, extractToolResults, extractBackgroundTaskId, extractPlanFilePath, contentToText, mkNotice } from './claude-normalize'
 import { getPermissionMode } from './builtin-commands'
 import { getSkills } from './claude-config'
 import { resolveClaudeCodeExecutable } from './claude-sdk-executable'
@@ -25,6 +25,10 @@ export class ClaudeService {
   private registry: BackendTaskRegistry | null = null
   // 记录 Bash/Task 工具的 tool_use block，供 tool_result 阶段提取 auto-background 命令
   private toolUseInputs = new Map<string, { name: string; input: any }>()
+  // subagent 内部 tool_use_id → 触发它的 Task tool_use_id（parent）。
+  // subagent 的 tool_use 在 claude:subagent-output 发出（不进主流），但其 tool_result 在
+  // user 消息里（无 subagent_type）。靠此映射把工具结果回填进 subagent 抽屉（问题3）。
+  private subagentToolUseParent = new Map<string, string>()
   // Pending onUserDialog resolvers keyed by reqId。渲染端经 claude:dialog-response 回答。
   private dialogResolvers = new Map<string, (r: any) => void>()
   // 每个 session 的 AbortController:创建 query 时传入,interrupt 不生效时 abort() 兜底强制中止。
@@ -350,20 +354,20 @@ export class ClaudeService {
           else if (evt.delta?.type === 'thinking_delta') webContents.send('claude:delta', { localSessionId: lsid, kind: 'thinking', delta: evt.delta.thinking })
         } else if (evt?.type === 'content_block_start' && evt.content_block?.type === 'tool_use') {
           const tb = evt.content_block
-          // AskUserQuestion 由底部面板承载（见 assistant 分支拦截），不推 tool_use_start，
-          // 否则它会先入 streaming blocks 渲染成卡片（assistant_blocks 的过滤此时已太晚）。
-          // ExitPlanMode 同理：由计划卡片承载（见 assistant 分支），不推普通工具卡片。
-          // TaskCreate/TaskUpdate 由悬浮面板 Task 卡片承载（见 handleTaskPlanTool），也不推普通卡片
-          if (tb.name === 'AskUserQuestion' || tb.name === 'ExitPlanMode' || tb.name === 'TodoWrite'
-            || tb.name === 'TaskCreate' || tb.name === 'TaskUpdate') {
-            if (tb.name === 'TaskCreate' || tb.name === 'TaskUpdate') {
-              this.handleTaskPlanTool(lsid, tb, webContents)
-            }
+          // AskUserQuestion / TodoWrite 由专属面板承载，不推主流 tool_use_start（否则会先入
+          // streaming blocks 渲染成卡片，assistant_blocks 的过滤此时已太晚）。
+          // TaskCreate/TaskUpdate/TaskList/ExitPlanMode 现改为既做特殊处理（发 claude:task /
+          // handleExitPlanMode，驱动悬浮面板与计划阻塞），又推进主流 tool_use_start，
+          // 让对话流用 MetaToolCard 卡片完整记录这些规划类操作。
+          if (tb.name === 'AskUserQuestion' || tb.name === 'TodoWrite') {
             break
           }
+          if (tb.name === 'TaskCreate' || tb.name === 'TaskUpdate') {
+            this.handleTaskPlanTool(lsid, tb, webContents)
+          }
           webContents.send('claude:blocks', { localSessionId: lsid, op: 'tool_use_start', block: { type: 'tool_use', id: tb.id, name: tb.name, input: tb.input, status: 'running' } })
-          // 记录所有 tool_use 的 input，供 tool_result 阶段提取 auto-background 信息 / TaskCreate id
-          if (tb.name === 'Bash' || tb.name === 'Task' || tb.name === 'TaskCreate') {
+          // 记录所有 tool_use 的 input，供 tool_result 阶段提取 auto-background 信息 / TaskCreate id / ExitPlanMode filePath
+          if (tb.name === 'Bash' || tb.name === 'Task' || tb.name === 'TaskCreate' || tb.name === 'ExitPlanMode' || tb.name === 'TaskList') {
             this.toolUseInputs.set(tb.id, { name: tb.name, input: tb.input })
             // Task 工具创建的同步 subagent 不发 task_started 事件，这里主动登记，
             // 让它出现在悬浮面板（用 tool_use_id 作 task_id，幂等去重）。
@@ -381,12 +385,19 @@ export class ClaudeService {
         if (message.subagent_type) {
           const parentToolUseId = message.parent_tool_use_id
           if (parentToolUseId) {
+            const nblocks = normalizeBetaBlocks(aContent)
+            // 记录本轮 subagent 的 tool_use id → parent，供后续 user 阶段 tool_result 回填。
+            for (const nb of nblocks) {
+              if (nb.type === 'tool_use' && typeof nb.id === 'string') {
+                this.subagentToolUseParent.set(nb.id, parentToolUseId)
+              }
+            }
             webContents.send('claude:subagent-output', {
               localSessionId: lsid,
               toolUseId: parentToolUseId,
               subagentType: message.subagent_type,
               taskDescription: message.task_description,
-              block: normalizeBetaBlocks(aContent),
+              block: nblocks,
             })
           }
           // subagent 消息不进主流 assistant_blocks（避免对话流重复/混乱），空 blocks 占位
@@ -401,18 +412,12 @@ export class ClaudeService {
           const todos = Array.isArray(tb.input?.todos) ? tb.input.todos : []
           webContents.send('claude:task', { localSessionId: lsid, kind: 'todo_sync', todos })
         }
-        // TaskList 也归类为 claude:task：清除操作（{} 即清空任务列表）
-        const taskListBlocks = aContent.filter((ab: any) => ab?.type === 'tool_use' && ab.name === 'TaskList')
-        for (const tlb of taskListBlocks) {
-          webContents.send('claude:task', { localSessionId: lsid, kind: 'todo_sync', todos: [] })
-        }
+        // 注意：TaskList 是查询操作（tool_result 返回 tasks 列表），不是清空。
+        // 其任务同步在 user 阶段从 tool_result 解析（见 handleTaskListResult），不在此处理。
         const blocks = normalizeBetaBlocks(aContent)
-          // 过滤掉由专属面板/卡片承载的 tool_use：AskUserQuestion / ExitPlanMode / TodoWrite / TaskList，
-          // 以及 TaskCreate / TaskUpdate（悬浮面板 Task 卡片承载，见 handleTaskPlanTool）
-          .filter((b: any) => !(b.type === 'tool_use' && (
-            b.name === 'AskUserQuestion' || b.name === 'ExitPlanMode' || b.name === 'TodoWrite' || b.name === 'TaskList'
-            || b.name === 'TaskCreate' || b.name === 'TaskUpdate'
-          )))
+          // 仅过滤由专属面板承载的 tool_use：AskUserQuestion（底部面板）/ TodoWrite（悬浮面板）。
+          // TaskCreate/TaskUpdate/TaskList/ExitPlanMode 保留进对话流，由 MetaToolCard 渲染：
+          // 既驱动悬浮面板/计划阻塞，又在主流留下可回看的记录（plan 可点开抽屉）。
         // assistant 阶段 input 完整：拦截 TaskUpdate 推 claude:task；TaskCreate 仅记录 input
         // （真实 taskId 来自后续 tool_result，见 handleTaskCreateResult）。
         if (Array.isArray(aContent)) {
@@ -421,6 +426,8 @@ export class ClaudeService {
               this.toolUseInputs.set(ab.id, { name: ab.name, input: ab.input })
             } else if (ab?.type === 'tool_use' && ab.name === 'TaskUpdate') {
               this.handleTaskPlanTool(lsid, ab, webContents)
+            } else if (ab?.type === 'tool_use' && ab.name === 'TaskList') {
+              this.toolUseInputs.set(ab.id, { name: ab.name, input: ab.input })
             }
           }
         }
@@ -458,7 +465,29 @@ export class ClaudeService {
       case 'user': {
         const results = extractToolResults(message.message?.content || [])
         for (const r of results) {
-          webContents.send('claude:blocks', { localSessionId: lsid, op: 'tool_result', toolUseId: r.toolUseId, result: { content: r.content, isError: r.isError } })
+          // subagent 内部工具的结果：回填进对应 subagent 的输出（抽屉可见），
+          // 不推主流 tool_result（subagent 工具不在主流 blocks，推了也找不到归属）。
+          const subParent = this.subagentToolUseParent.get(r.toolUseId)
+          if (subParent) {
+            webContents.send('claude:subagent-output', {
+              localSessionId: lsid,
+              toolUseId: subParent,
+              block: { type: 'tool_result', toolUseId: r.toolUseId, content: r.content, isError: r.isError },
+            })
+            this.subagentToolUseParent.delete(r.toolUseId)
+            continue
+          }
+          // ExitPlanMode 的 tool_result：提取 plan 文档磁盘路径（ExitPlanModeOutput.filePath），
+          // 附带在 tool_result 推送里。渲染端据此把 filePath 回填到计划卡片，
+          // 提供「查看计划」持久入口（抽屉读取真实文件渲染）。
+          const tcInput2 = this.toolUseInputs.get(r.toolUseId)
+          let planFilePath: string | undefined
+          if (tcInput2?.name === 'ExitPlanMode') {
+            const rawBlocks = message.message?.content || []
+            const rawBlock = Array.isArray(rawBlocks) ? rawBlocks.find((b: any) => b?.type === 'tool_result' && b.tool_use_id === r.toolUseId) : undefined
+            planFilePath = extractPlanFilePath(rawBlock)
+          }
+          webContents.send('claude:blocks', { localSessionId: lsid, op: 'tool_result', toolUseId: r.toolUseId, result: { content: r.content, isError: r.isError }, planFilePath })
           // 同步 Task subagent 收尾：tool_result 到达即表示该子代理执行结束。
           // 按 tool_use_id 找到 registry 里登记的记录,标记 completed/failed 并推送更新。
           if (this.registry && this.registry.isManaged(r.toolUseId)) {
@@ -470,6 +499,12 @@ export class ClaudeService {
           const tcInput = this.toolUseInputs.get(r.toolUseId)
           if (tcInput?.name === 'TaskCreate') {
             this.handleTaskCreateResult(lsid, r.toolUseId, contentToText(r.content), webContents)
+          } else if (tcInput?.name === 'TaskList') {
+            // TaskList 的 tool_result：解析 tasks 列表（TaskListOutput.tasks），同步给悬浮面板。
+            // 查询结果反映当前真实任务状态，用 todo_sync 整体替换（与 TodoWrite 同通道）。
+            const tlRawBlocks = message.message?.content || []
+            const tlRawBlock = Array.isArray(tlRawBlocks) ? tlRawBlocks.find((b: any) => b?.type === 'tool_result' && b.tool_use_id === r.toolUseId) : undefined
+            this.handleTaskListResult(lsid, r.toolUseId, tlRawBlock, webContents)
           }
         }
         // 检测 auto-background 命令：Bash tool_result 带 backgroundTaskId → 建 backend task
@@ -608,6 +643,56 @@ export class ClaudeService {
       activeForm,
       createdAt: Date.now(),
     })
+  }
+
+  /**
+   * 处理 TaskList 的 tool_result：从 TaskListOutput.tasks 解析当前任务列表，
+   * 整体同步给悬浮面板（todo_sync）。TaskList 是查询操作，返回 SDK 当前所有任务的真实状态。
+   *
+   * TaskListOutput.tasks 结构：{ id, subject, status: 'pending'|'in_progress'|'completed', owner?, blockedBy }
+   * tool_result 里可能在 structuredContent.tasks / content 对象.tasks / content JSON 文本。
+   */
+  private handleTaskListResult(
+    lsid: string,
+    toolUseId: string,
+    rawContent: any,
+    webContents: WebContents,
+  ): void {
+    // 从多个位置提取 tasks 数组
+    let tasks: any[] | undefined
+    // 1) structuredContent.tasks
+    const sc = (rawContent as any)?.structuredContent
+    if (sc && typeof sc === 'object' && Array.isArray(sc.tasks)) tasks = sc.tasks
+    // 2) toolUseResult.tasks（真实 SDK 主路径）
+    const tur = (rawContent as any)?.toolUseResult
+    if (!tasks && tur && typeof tur === 'object' && Array.isArray(tur.tasks)) tasks = tur.tasks
+    // 3) content 对象
+    const c = (rawContent as any)?.content
+    if (!tasks && c && typeof c === 'object' && !Array.isArray(c) && Array.isArray(c.tasks)) tasks = c.tasks
+    // 4) content 文本解析 JSON
+    if (!tasks) {
+      const text = (typeof c === 'string' || Array.isArray(c)) ? contentToText(c) : ''
+      // 文本可能是纯 JSON：{"tasks":[...]}，或包含 "tasks" 字段
+      try {
+        const parsed = JSON.parse(text)
+        if (parsed && Array.isArray(parsed.tasks)) tasks = parsed.tasks
+      } catch {
+        const m = text.match(/"tasks"\s*:\s*(\[[\s\S]*?\])/)
+        if (m) {
+          try { tasks = JSON.parse(m[1]) } catch { /* 忽略 */ }
+        }
+      }
+    }
+    if (!Array.isArray(tasks)) return
+    // 映射成 todo_sync 格式（与 TodoWrite 同通道），整体替换悬浮面板任务列表
+    const todos = tasks.map((t: any) => ({
+      id: typeof t.id === 'string' || typeof t.id === 'number' ? String(t.id) : undefined,
+      content: typeof t.subject === 'string' ? t.subject : '',
+      status: t.status === 'completed' ? 'completed'
+        : t.status === 'in_progress' ? 'in_progress'
+        : 'pending',
+    }))
+    webContents.send('claude:task', { localSessionId: lsid, kind: 'todo_sync', todos })
   }
 
   /**
