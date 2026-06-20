@@ -55,7 +55,7 @@ export function TaskCard({ tasks, folded, onToggleFold, onClickTask }: TaskCardP
         transition: 'max-height .2s ease, opacity .15s ease',
       }}>
         <div style={{ padding: 4, borderTop: '1px solid var(--border-hair)' }}>
-          {tasks.map(t => (
+          {[...tasks].sort((a, b) => (a.id || '').localeCompare(b.id || '', undefined, { numeric: true })).map(t => (
             <div
               key={t.id}
               onClick={onClickTask ? () => onClickTask(t) : undefined}

@@ -92,6 +92,13 @@ export function InputBar() {
   const [openMenu, setOpenMenu] = useState<MenuId | null>(null)
   const [editorRef, setEditorRef] = useState<any>(null)
 
+  // 新建/切换会话时自动聚焦输入框
+  useEffect(() => {
+    if (!editorRef) return
+    const timer = setTimeout(() => editorRef.commands.focus('end'), 50)
+    return () => clearTimeout(timer)
+  }, [state.activeSessionId, editorRef])
+
   // 序列化 doc 得到纯文本预览：canSend 与 doSend 都用它
   const promptPreview = serializeForPrompt(state.draft.doc)
   const canSend = promptPreview.trim().length > 0 || state.draft.attachments.length > 0
