@@ -100,6 +100,8 @@ export function ChatArea() {
   // 否则 A 发送后切到 B 会串台。activeSessionId 不再进 ref。
   const settingsRef = useRef(state.settings)
   useEffect(() => { settingsRef.current = state.settings }, [state.settings])
+  // 桌面通知防抖：同一 body 文本 10 秒内只通知一次，避免重复轰炸
+  const lastNotifRef = useRef<{ text: string; ts: number } | null>(null)
   const tasksRef = useRef(state.tasksBySession)
   useEffect(() => { tasksRef.current = state.tasksBySession }, [state.tasksBySession])
 
@@ -207,11 +209,21 @@ export function ChatArea() {
         turns: data.turns,
         isError: data.isError,
       })
-      // 任务通知：任务完成时发桌面通知（受常规设置 taskNotify 控制）
+      // 任务通知：按场景分流（主开关短路 + 子开关控制 + 10s 防抖去重）
       const s = settingsRef.current
-      if (s.taskNotify && 'Notification' in window) {
-        const n = new Notification(t('chat.taskDone'), { body: t('chat.taskDoneBody'), silent: !s.notifySound })
+      const fireNotify = (title: string, body: string) => {
+        if (!s.taskNotify) return
+        if (!('Notification' in window)) return
+        const now = Date.now()
+        if (lastNotifRef.current && lastNotifRef.current.text === body && now - lastNotifRef.current.ts < 10000) return
+        lastNotifRef.current = { text: body, ts: now }
+        const n = new Notification(title, { body, silent: !s.notifySound })
         n.onclick = () => window.focus()
+      }
+      if (data.isError) {
+        if (s.notifyOnError) fireNotify(t('chat.taskError'), t('chat.taskErrorBody'))
+      } else {
+        if (s.notifyOnComplete) fireNotify(t('chat.taskDone'), t('chat.taskDoneBody'))
       }
     })
     api.onError((data: any) => {
@@ -227,6 +239,30 @@ export function ChatArea() {
     // AskUserQuestion 等用户对话请求
     api.onDialogRequest((data) => {
       dispatch({ type: 'SHOW_DIALOG', reqId: data.reqId, sessionId: data.localSessionId, dialogKind: data.dialogKind, payload: data.payload, toolUseId: data.toolUseId })
+      // 权限请求通知：工具需要用户确认权限时发桌面通知
+      const s = settingsRef.current
+      if (s.notifyOnPermission && s.taskNotify && 'Notification' in window) {
+        const body = (data?.payload?.toolName || data?.payload?.tool_name) || t('chat.permissionRequest')
+        const now = Date.now()
+        if (!lastNotifRef.current || lastNotifRef.current.text !== body || now - lastNotifRef.current.ts >= 10000) {
+          lastNotifRef.current = { text: body, ts: now }
+          const n = new Notification(t('chat.permissionRequest'), { body, silent: !s.notifySound })
+          n.onclick = () => window.focus()
+        }
+      }
+    })
+
+    // SDK notification 事件（如 Claude 需要人类介入/确认）：原生拦截后发桌面通知
+    api.onNotification((data: any) => {
+      const s = settingsRef.current
+      if (!s.notifyOnConfirm || !s.taskNotify) return
+      if (!('Notification' in window)) return
+      const body = data?.text || t('chat.needsAttention')
+      const now = Date.now()
+      if (lastNotifRef.current && lastNotifRef.current.text === body && now - lastNotifRef.current.ts < 10000) return
+      lastNotifRef.current = { text: body, ts: now }
+      const n = new Notification(t('chat.needsAttention'), { body, silent: !s.notifySound })
+      n.onclick = () => window.focus()
     })
 
     return () => {
