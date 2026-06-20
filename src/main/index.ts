@@ -309,6 +309,7 @@ function buildAppMenu(updateMgr: UpdateManager): Menu {
     ? [
         { role: 'appMenu', submenu: [checkUpdate, { type: 'separator' }, { role: 'quit' }] },
         { role: 'editMenu' },
+        { role: 'windowMenu', submenu: [{ role: 'close' }, { role: 'minimize' }] },
       ]
     : [
         { label: '文件', submenu: [{ role: 'quit' }] },
