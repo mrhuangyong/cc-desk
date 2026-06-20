@@ -238,10 +238,11 @@ describe('HooksSettings', () => {
     expect(await screen.findByRole('textbox')).toBeTruthy()
   })
 
-  it('空数据显示无事件占位', async () => {
+  it('空数据时显示全部27事件', async () => {
     render(<HooksSettings />)
-    await screen.findByText('选择左侧事件查看或编辑 hook 配置')
-    expect(screen.queryByText('PreToolUse')).toBeNull()
+    await screen.findByText('PreToolUse')
+    expect(screen.getByText('Stop')).toBeTruthy()
+    expect(screen.getByText('FileChanged')).toBeTruthy()
   })
 
   it('展示自定义事件的 matcher', async () => {
