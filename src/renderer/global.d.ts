@@ -108,7 +108,11 @@ interface ClaudeConfigAPI {
     get(): Promise<ClaudePlugin[]>
     setEnabled(id: string, enabled: boolean): Promise<void>
   }
-  skills: { get(): Promise<ClaudeSkill[]> }
+  skills: {
+    get(): Promise<ClaudeSkill[]>
+    getFile(id: string): Promise<string>
+    saveFile(id: string, content: string): Promise<void>
+  }
   commands: { get(): Promise<ClaudeCommand[]> }
   hooks: {
     get(): Promise<ClaudeHook[]>
