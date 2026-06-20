@@ -267,7 +267,7 @@ describe('McpSettings', () => {
   it('添加 MCP 只打开编辑弹窗，保存前不写入占位项', async () => {
     render(<McpSettings />)
     await loaded()
-    fireEvent.click(screen.getByTitle('添加'))
+    fireEvent.click(screen.getByLabelText('添加'))
 
     expect(mcpSave).not.toHaveBeenCalled()
     expect(screen.getByText('编辑 MCP 服务器')).toBeTruthy()
@@ -276,7 +276,7 @@ describe('McpSettings', () => {
   it('取消新增 MCP 会丢弃本地占位项', async () => {
     render(<McpSettings />)
     await loaded()
-    fireEvent.click(screen.getByTitle('添加'))
+    fireEvent.click(screen.getByLabelText('添加'))
     fireEvent.click(screen.getByText('取消'))
 
     expect(mcpSave).not.toHaveBeenCalled()
@@ -286,7 +286,7 @@ describe('McpSettings', () => {
   it('保存新增 MCP 用编辑后的名称作为持久化配置名', async () => {
     render(<McpSettings />)
     await loaded()
-    fireEvent.click(screen.getByTitle('添加'))
+    fireEvent.click(screen.getByLabelText('添加'))
 
     fireEvent.change(screen.getByDisplayValue('new-mcp-3'), { target: { value: 'local-e2e' } })
     fireEvent.change(screen.getByPlaceholderText('npx'), { target: { value: 'node' } })
@@ -308,7 +308,7 @@ describe('McpSettings', () => {
     render(<McpSettings />)
     await loaded()
     const row = screen.getByText('playwright').closest('div')!.parentElement!
-    fireEvent.click(within(row).getByTitle('删除'))
+    fireEvent.click(within(row).getByLabelText('删除'))
     fireEvent.click(within(row).getByText('确认？'))
 
     expect(lastSave().map((s: any) => s.id)).toEqual(['reader'])
@@ -318,7 +318,7 @@ describe('McpSettings', () => {
     render(<McpSettings />)
     await loaded()
     const row = screen.getByText('playwright').closest('div')!.parentElement!
-    fireEvent.click(within(row).getByTitle('编辑'))
+    fireEvent.click(within(row).getByLabelText('编辑'))
 
     fireEvent.change(screen.getByDisplayValue('playwright'), { target: { value: 'local-playwright' } })
     fireEvent.change(screen.getByDisplayValue('用户'), { target: { value: '工作区' } })
@@ -341,7 +341,7 @@ describe('McpSettings', () => {
     render(<McpSettings />)
     await loaded()
     const row = screen.getByText('reader').closest('div')!.parentElement!
-    fireEvent.click(within(row).getByTitle('编辑'))
+    fireEvent.click(within(row).getByLabelText('编辑'))
     fireEvent.click(screen.getByText('JSON'))
 
     const textarea = screen.getByDisplayValue(new RegExp('https://example\\.com/mcp'))
@@ -354,7 +354,8 @@ describe('McpSettings', () => {
     expect(lastSave()[1]).toMatchObject({ name: 'json-reader', command: 'https://new.example/mcp' })
 
     mcpSave.mockClear()
-    fireEvent.click(screen.getByText('json-reader').closest('div')!.parentElement!.querySelector('button[title="编辑"]')!)
+    const row2 = screen.getByText('json-reader').closest('div')!.parentElement!
+    fireEvent.click(within(row2).getByLabelText('编辑'))
     fireEvent.click(screen.getByText('JSON'))
     fireEvent.change(screen.getByDisplayValue(new RegExp('https://new\\.example/mcp')), { target: { value: '{bad json' } })
     fireEvent.click(screen.getByText('保存'))

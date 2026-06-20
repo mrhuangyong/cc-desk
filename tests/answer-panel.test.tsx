@@ -155,7 +155,7 @@ describe('AnswerPanel', () => {
   it('取消 → dialogResponse 带 cancelled + ANSWER_DIALOG', () => {
     setState([{ question: 'q?', options: [{ label: 'X' }] }])
     render(<AnswerPanel />)
-    fireEvent.click(screen.getByTitle('取消'))
+    fireEvent.click(screen.getByLabelText('取消'))
     expect((window as any).api.claude.dialogResponse).toHaveBeenCalledWith({
       reqId: 'r1', result: { behavior: 'cancelled' },
     })

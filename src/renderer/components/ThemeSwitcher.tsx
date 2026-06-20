@@ -21,7 +21,6 @@ export function ThemeSwitcher() {
       <Tooltip label="切换主题">
       <button
         onClick={() => setOpen(o => !o)}
-        title="切换主题"
         aria-label="切换主题"
         style={{
           width: 26, height: 26, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',

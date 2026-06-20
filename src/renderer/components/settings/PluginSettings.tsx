@@ -37,7 +37,7 @@ export function PluginSettings() {
       {/* 标题 + 刷新 */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
         <h2 style={{ color: 'var(--text)', fontSize: 18, margin: 0 }}>插件管理</h2>
-        <Tooltip label="刷新"><button title="刷新" onClick={reload} style={topIconBtn}><RefreshCw size={14} /></button></Tooltip>
+        <Tooltip label="刷新"><button onClick={reload} style={topIconBtn}><RefreshCw size={14} /></button></Tooltip>
       </div>
       <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 14 }}>
         来自 ~/.cc-desk/claude/plugins/installed_plugins.json + 各插件 manifest，启用状态读写 settings.json 的 enabledPlugins。

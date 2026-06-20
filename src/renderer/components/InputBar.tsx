@@ -386,7 +386,6 @@ export function InputBar() {
             <button
               onClick={() => toggleMenu('add')}
               style={{ ...btnBase, background: openMenu === 'add' ? 'var(--bg-hover)' : undefined, color: openMenu === 'add' ? 'var(--text)' : undefined }}
-              title="添加"
             >
               <Plus size={14} />
             </button>
@@ -532,7 +531,6 @@ export function InputBar() {
           <Tooltip label={isStreaming ? t('input.stop') : t('input.send')}>
           <button
             onClick={onSendClick}
-            title={isStreaming ? t('input.stop') : t('input.send')}
             aria-label={isStreaming ? t('input.stop') : t('input.send')}
             style={{
               width: 28, height: 28, borderRadius: '50%',

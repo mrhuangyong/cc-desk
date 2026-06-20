@@ -29,7 +29,9 @@ export function Tooltip({ label, children, placement = 'bottom', showDelay = 400
   useEffect(() => clearTimers, [])
 
   const measure = () => {
-    const el = triggerRef.current
+    // 包裹层是 display:contents，自身无盒模型，getBoundingClientRect 返回 0；
+    // 取它的第一个元素子节点（真正的触发元素，如图标按钮）来定位
+    const el = triggerRef.current?.firstElementChild as HTMLElement | null
     if (!el) return
     const r = el.getBoundingClientRect()
     // 气泡宽度未知，先粗略居中，渲染后由 transform: translateX(-50%) 修正

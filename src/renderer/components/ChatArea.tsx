@@ -36,7 +36,7 @@ export function CopyButton({ text, inline }: { text: string; inline?: boolean })
     })
   }
   return (
-    <Tooltip label="复制"><button className={inline ? 'msg-copy msg-copy-inline' : 'msg-copy'} onClick={onCopy} title="复制" aria-label="复制">
+    <Tooltip label="复制"><button className={inline ? 'msg-copy msg-copy-inline' : 'msg-copy'} onClick={onCopy} aria-label="复制">
       {copied ? <Check size={13} /> : <Copy size={13} />}
     </button></Tooltip>
   )
@@ -331,7 +331,6 @@ export function ChatArea() {
           <button
             onClick={() => scrollToBottom('smooth')}
             aria-label="回到底部"
-            title="回到底部"
             style={{
               position: 'absolute', left: '50%', transform: 'translateX(-50%)', bottom: '100%', marginBottom: 20,
               width: 34, height: 34, borderRadius: '50%',
