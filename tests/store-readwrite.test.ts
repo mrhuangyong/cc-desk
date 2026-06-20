@@ -28,6 +28,11 @@ describe('settings-store 真实读写', () => {
     expect(s.modelRoleMap['anthropic:sonnet']).toBe('model-sonnet')
     expect(s.codePreview.showLineNumbers).toBe(true)
     expect(s.lang).toBe('zh-CN')
+    // 细粒度通知开关默认全部开启
+    expect(s.notifyOnComplete).toBe(true)
+    expect(s.notifyOnError).toBe(true)
+    expect(s.notifyOnConfirm).toBe(true)
+    expect(s.notifyOnPermission).toBe(true)
   })
 
   it('getSettings 落盘到 ~/.cc-desk/settings.json', async () => {

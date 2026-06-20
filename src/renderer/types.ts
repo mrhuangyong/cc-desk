@@ -228,6 +228,10 @@ export interface AppSettings {
   terminalFont: string
   taskNotify: boolean
   notifySound: boolean
+  notifyOnComplete: boolean
+  notifyOnError: boolean
+  notifyOnConfirm: boolean
+  notifyOnPermission: boolean
   queueMode: string
   showThinking: boolean
   showTodo: boolean

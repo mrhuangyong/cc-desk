@@ -24,6 +24,7 @@ interface ClaudeAPI {
   onError(cb: (data: { error: string }) => void): void
   onAborted(cb: (data: any) => void): void
   onDialogRequest(cb: (data: any) => void): void
+  onNotification(cb: (data: { localSessionId: string; text: string; priority: string }) => void): void
   onBuiltinResult(cb: (data: any) => void): void
   onPlan(cb: (data: any) => void): void
   onSubagentOutput(cb: (data: any) => void): void
