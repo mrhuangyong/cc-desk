@@ -86,6 +86,7 @@ export interface AppSettings {
   theme: string             // 界面主题 id（与 ThemeId 对应）
   lang: string              // 界面语言
   zoom: string              // 界面缩放 small | normal | large
+  chatWidth: string         // 对话宽度 compact | standard | wide | xwide
   proxy: string             // HTTP 代理
   inheritTerminal: boolean
   terminalFont: string
@@ -95,7 +96,7 @@ export interface AppSettings {
   notifyOnError: boolean
   notifyOnConfirm: boolean
   notifyOnPermission: boolean
-  queueMode: string         // queue | interrupt
+  queueMode: string         // queue | guide
   showThinking: boolean
   showTodo: boolean
   showBackendTask: boolean
@@ -184,6 +185,7 @@ const defaults: AppSettings = {
   theme: 'codex-light',
   lang: 'zh-CN',
   zoom: 'normal',
+  chatWidth: 'wide',
   proxy: '',
   inheritTerminal: true,
   terminalFont: 'MesloLGS NF, monospace',
@@ -242,9 +244,11 @@ function withDefaults(raw: Partial<AppSettings>): AppSettings {
   merged.modelRoleMap = raw.modelRoleMap ?? defaults.modelRoleMap
   merged.codePreview = { ...defaults.codePreview, ...(raw.codePreview ?? {}) }
   // 标量类：undefined 时回落默认（用 ?? 兜底，保留 false/0/'' 等合法值）
-  ;(['theme', 'lang', 'zoom', 'proxy', 'terminalFont', 'queueMode', 'archiveDays'] as const).forEach(k => {
+  ;(['theme', 'lang', 'zoom', 'chatWidth', 'proxy', 'terminalFont', 'queueMode', 'archiveDays'] as const).forEach(k => {
     ;(merged as any)[k] = (raw as any)[k] ?? (defaults as any)[k]
   })
+  // queueMode 旧值兼容：interrupt → guide
+  if (merged.queueMode === 'interrupt') merged.queueMode = 'guide'
   ;(['inheritTerminal', 'taskNotify', 'notifySound', 'notifyOnComplete', 'notifyOnError', 'notifyOnConfirm', 'notifyOnPermission', 'showThinking', 'showTodo', 'showBackendTask', 'autoArchive', 'devTools'] as const).forEach(k => {
     ;(merged as any)[k] = (raw as any)[k] ?? (defaults as any)[k]
   })
