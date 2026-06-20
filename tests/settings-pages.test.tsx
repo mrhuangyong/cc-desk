@@ -14,6 +14,7 @@ import { McpSettings } from '../src/renderer/components/settings/McpSettings'
 import { PluginSettings } from '../src/renderer/components/settings/PluginSettings'
 import { CommandSettings } from '../src/renderer/components/settings/CommandSettings'
 import { HooksSettings } from '../src/renderer/components/settings/HooksSettings'
+import { GeneralSettings } from '../src/renderer/components/settings/GeneralSettings'
 import { SettingsPage } from '../src/renderer/components/settings/SettingsPage'
 
 function baseSettings(overrides: Record<string, any> = {}) {
@@ -32,6 +33,10 @@ function baseSettings(overrides: Record<string, any> = {}) {
     terminalFont: 'mono',
     taskNotify: true,
     notifySound: true,
+    notifyOnComplete: true,
+    notifyOnError: true,
+    notifyOnConfirm: true,
+    notifyOnPermission: true,
     queueMode: 'queue',
     showThinking: false,
     showTodo: false,
@@ -418,6 +423,32 @@ describe('McpSettings', () => {
     fireEvent.click(screen.getByText('保存'))
     expect(mcpSave).not.toHaveBeenCalled()
     expect(screen.getByText(/JSON 格式错误/)).toBeTruthy()
+  })
+})
+
+describe('GeneralSettings 通知折叠', () => {
+  beforeEach(() => {
+    dispatch.mockClear()
+    mockState = { settings: baseSettings() }
+    setApi({ cc: { general: { get: vi.fn().mockResolvedValue({ proxy: '' }), save: vi.fn() } }, settings: { save: vi.fn() } })
+  })
+
+  it('通知主开关开启时渲染 5 个子开关', async () => {
+    render(<GeneralSettings />)
+    await screen.findByText('桌面通知')
+    expect(screen.getByText('任务完成')).toBeTruthy()
+    expect(screen.getByText('任务出错')).toBeTruthy()
+    expect(screen.getByText('需要确认')).toBeTruthy()
+    expect(screen.getByText('权限请求')).toBeTruthy()
+    expect(screen.getByText('通知声音')).toBeTruthy()
+  })
+
+  it('通知主开关关闭时子开关不渲染', async () => {
+    mockState = { settings: baseSettings({ taskNotify: false }) }
+    render(<GeneralSettings />)
+    await screen.findByText('桌面通知')
+    expect(screen.queryByText('任务完成')).toBeNull()
+    expect(screen.queryByText('通知声音')).toBeNull()
   })
 })
 
