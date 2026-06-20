@@ -184,26 +184,30 @@ describe('PluginSettings', () => {
 
 describe('CommandSettings', () => {
   const commandsGet = vi.fn()
+  const cmdCreate = vi.fn()
+  const cmdGetFile = vi.fn()
+  const cmdSaveFile = vi.fn()
+  const cmdDelete = vi.fn()
 
   beforeEach(() => {
     commandsGet.mockClear()
-    setApi({ cc: { commands: { get: commandsGet } } })
+    cmdGetFile.mockResolvedValue('')
+    setApi({ cc: { commands: { get: commandsGet, create: cmdCreate, getFile: cmdGetFile, saveFile: cmdSaveFile, delete: cmdDelete } } })
   })
 
-  it('命令页加载命令并保持只读禁用', async () => {
+  it('自定义 Tab 加载命令并支持搜索', async () => {
     commandsGet.mockResolvedValue([
-      { id: 'c1', name: '/review', desc: '审查代码', enabled: true },
-      { id: 'c2', name: '/compact', desc: '压缩上下文', enabled: false },
+      { id: 'user:review', name: '/review', desc: '审查代码', enabled: true, source: 'user' },
+      { id: 'user:deploy', name: '/deploy', desc: '部署应用', enabled: true, source: 'user' },
     ])
 
     render(<CommandSettings />)
     expect(await screen.findByText('/review')).toBeTruthy()
-    expect(screen.getByText('压缩上下文')).toBeTruthy()
-    expect(screen.getByRole('checkbox', { name: '启用 /review' })).toBeDisabled()
+    expect(screen.getByText('部署应用')).toBeTruthy()
 
-    fireEvent.change(screen.getByPlaceholderText('搜索命令…'), { target: { value: 'compact' } })
+    fireEvent.change(screen.getByPlaceholderText('搜索命令...'), { target: { value: 'deploy' } })
     expect(screen.queryByText('/review')).toBeNull()
-    expect(screen.getByText('/compact')).toBeTruthy()
+    expect(screen.getByText('/deploy')).toBeTruthy()
   })
 })
 
@@ -425,13 +429,13 @@ describe('SettingsPage routing', () => {
       activeSettingsSection: 'commands',
       projects: [],
     }
-    setApi({ cc: { commands: { get: vi.fn().mockResolvedValue([]) } } })
+    setApi({ cc: { commands: { get: vi.fn().mockResolvedValue([]), create: vi.fn(), getFile: vi.fn(), saveFile: vi.fn(), delete: vi.fn() } } })
   })
 
   it('根据 activeSettingsSection 渲染对应设置子页', async () => {
     render(<SettingsPage />)
-    expect(await screen.findByRole('heading', { name: '命令' })).toBeTruthy()
-    expect(screen.getByPlaceholderText('搜索命令…')).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: '命令管理' })).toBeTruthy()
+    expect(screen.getByPlaceholderText('搜索命令...')).toBeTruthy()
   })
 
   it('返回工作区按钮 dispatch SET_VIEW', () => {
