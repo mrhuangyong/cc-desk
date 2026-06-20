@@ -182,7 +182,7 @@ describe('hooks 后端读写', () => {
     const d = await getHooksFull()
     expect(d.custom.length).toBe(1)
     expect(d.custom[0].eventName).toBe('PreToolUse')
-    expect(d.custom[0].matchers[0].hooks[0].command).toBe('echo test')
+    expect((d.custom[0].matchers[0].hooks[0] as any).command).toBe('echo test')
   })
 
   it('saveHooks 拒绝未知事件名', async () => {
