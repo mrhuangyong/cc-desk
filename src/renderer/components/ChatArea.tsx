@@ -376,7 +376,7 @@ export function ChatArea() {
               userSelect: 'text', cursor: 'text',
               position: 'relative',
             }}>
-              {/* 编辑重发按钮：仅最后一条用户消息 + 非流式 + 非编辑态时显示 */}
+              {/* 编辑重发按钮：仅最后一条用户消息 + 非流式 + 非编辑态时显示，紧贴复制钮左侧 */}
               {m.id === lastUserMessage?.id && !isStreaming && state.editingMessageId !== m.id && (
                 <button
                   onClick={() => {
@@ -385,15 +385,7 @@ export function ChatArea() {
                     dispatch({ type: 'SET_EDITING_MESSAGE', messageId: m.id })
                   }}
                   title={t('chat.edit')}
-                  className="edit-resend-btn"
-                  style={{
-                    position: 'absolute', left: -28, top: 0, opacity: 0,
-                    width: 24, height: 24, borderRadius: '50%', border: 'none',
-                    background: 'var(--surface-1)', boxShadow: 'var(--shadow-float)',
-                    color: 'var(--text-muted)', cursor: 'pointer',
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    transition: 'opacity .15s',
-                  }}
+                  className="msg-copy edit-resend-btn"
                 >
                   <Pencil size={13} />
                 </button>
