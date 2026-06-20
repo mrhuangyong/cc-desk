@@ -225,6 +225,15 @@ export class ClaudeService {
     // 记录会话是否已存在：复用时 buildQuery 不再执行，permissionMode 只在 buildQuery 里
     // 声明，故必须在复用路径里用 setPermissionMode control request 实时切换，否则下拉框
     // 改权限会被忽略（首个权限被首条消息锁死）。新建会话由 buildQuery 内 permissionMode 直接生效。
+    //
+    // 【竞态防护】用户点击「停止并立即发送」时，interrupt() 发送 control request 后
+    // 200ms 即调用 send()。此时旧循环可能仍在跑（isIterating=true），若复用旧 session
+    // 则新消息推入旧 controller，但 interrupt() 的 2s 超时后会 ac.abort()，导致
+    // AbortError → controller.close() + sessions.delete()，正在执行的新 task 被中断。
+    // 故：isIterating 时先 closeSession 强制结束旧循环，再 ensureSession 重建。
+    if (this.manager?.isIterating(lsid)) {
+      await this.manager.closeSession(lsid)
+    }
     const sessionExisted = this.manager.sessions.has(lsid)
     this.manager.ensureSession({
       localSessionId: lsid,
