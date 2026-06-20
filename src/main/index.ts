@@ -193,12 +193,14 @@ function registerIpcHandlers(): void {
     node: process.versions.node,
   }))
 
-  // 开发者工具：开关 DevTools（受常规设置 devTools 控制）
+  // 开发者工具：开关 DevTools（受常规设置 devTools 控制）。同时重建菜单更新可见性。
   ipcMain.handle('app:set-devtools', (_e, enabled: boolean) => {
     const w = getActiveWin()
     if (!w) return
     if (enabled) w.webContents.openDevTools({ mode: 'detach' })
     else w.webContents.closeDevTools()
+    // 重建菜单让「开发者工具」项可见性跟随设置
+    Menu.setApplicationMenu(buildAppMenu(updateManager))
   })
 }
 
@@ -239,18 +241,14 @@ function createWindow() {
     win.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
-  // 开发者工具快捷键：仅当 devTools 设置开启时生效（F12 / Cmd+Option+I）
+  // 刷新页面快捷键（Cmd/Ctrl+Shift+R）— 菜单 accelerator 已注册，这里做兜底防止菜单被覆盖
   win.webContents.on('before-input-event', (_event, input) => {
     if (input.type !== 'keyDown') return
-    const s = getSettings()
-    if (!s.devTools) return
-    const isF12 = input.key === 'F12'
-    const isCmdOptI = (process.platform === 'darwin'
-      ? input.meta && input.alt && input.key === 'i'
-      : input.control && input.shift && input.key === 'I')
-    if (isF12 || isCmdOptI) {
-      if (win.webContents.isDevToolsOpened()) win.webContents.closeDevTools()
-      else win.webContents.openDevTools({ mode: 'detach' })
+    const isReload = (process.platform === 'darwin'
+      ? input.meta && input.shift && input.key.toLowerCase() === 'r'
+      : input.control && input.shift && input.key.toLowerCase() === 'r')
+    if (isReload) {
+      win.webContents.reload()
       _event.preventDefault()
     }
   })
@@ -329,14 +327,40 @@ function buildAppMenu(updateMgr: UpdateManager): Menu {
     label: '检查更新',
     click: () => updateMgr.checkNow(),
   }
+  // 刷新页面（Cmd/Ctrl+Shift+R）
+  const reloadPage: Electron.MenuItemConstructorOptions = {
+    label: '刷新页面',
+    accelerator: 'CmdOrCtrl+Shift+R',
+    click: () => { getActiveWin()?.webContents.reload() },
+  }
+  // 开发者工具（Cmd/Ctrl+Option/Alt+I）— 仅当设置开启时可见可用
+  const toggleDevTools: Electron.MenuItemConstructorOptions = {
+    label: '开发者工具',
+    accelerator: isMac ? 'Cmd+Alt+I' : 'Ctrl+Shift+I',
+    visible: getSettings().devTools,
+    click: () => {
+      const wc = getActiveWin()?.webContents
+      if (!wc) return
+      if (wc.isDevToolsOpened()) wc.closeDevTools()
+      else wc.openDevTools({ mode: 'detach' })
+    },
+  }
   const template: Electron.MenuItemConstructorOptions[] = isMac
     ? [
         { role: 'appMenu', submenu: [checkUpdate, { type: 'separator' }, { role: 'quit' }] },
         { role: 'editMenu' },
+        {
+          label: '视图',
+          submenu: [reloadPage, { type: 'separator' }, toggleDevTools],
+        },
         { role: 'windowMenu', submenu: [{ role: 'close' }, { role: 'minimize' }] },
       ]
     : [
         { label: '文件', submenu: [{ role: 'quit' }] },
+        {
+          label: '视图',
+          submenu: [reloadPage, { type: 'separator' }, toggleDevTools],
+        },
         { label: '帮助', submenu: [checkUpdate, { role: 'about' }] },
       ]
   return Menu.buildFromTemplate(template)
