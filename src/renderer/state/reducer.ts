@@ -146,6 +146,40 @@ function pickSurvivingSessionId(projects: Project[], excludedId: string): string
   return null
 }
 
+// 反查 session 属于哪个 project（归档前 state 上找原属项目，用于补建新会话定位）
+function findProjectIdBySessionId(projects: Project[], sessionId: string): string | null {
+  for (const p of projects) {
+    if (p.sessions.some(s => s.id === sessionId)) return p.id
+  }
+  return null
+}
+
+// 全局无存活（未归档）会话时，在指定 project 下补建一个空会话并设为 active，
+// 让对话区进入「新会话」状态，而非空占位 / 残留已归档会话的旧内容。
+// 返回 null 表示无需补建（全局已有存活会话，或连 project 都没有）。
+function ensureAliveSession(
+  projects: Project[],
+  fallbackProjectId: string | null,
+  tabsBySession: Record<string, Tab[]>,
+  activeTabIdBySession: Record<string, string | null>,
+): { projects: Project[]; activeSessionId: string; tabsBySession: Record<string, Tab[]>; activeTabIdBySession: Record<string, string | null> } | null {
+  // 全局还有存活会话 → 不补建
+  if (pickSurvivingSessionId(projects, '') !== null) return null
+  // 选定补建的 project：优先 fallbackProjectId，否则第一个 project
+  const targetProject = (fallbackProjectId && projects.find(p => p.id === fallbackProjectId)) || projects[0]
+  if (!targetProject) return null
+  const newSession: Session = { id: nextId('s'), title: '新会话', messages: [], updatedAt: Date.now() }
+  const newProjects = projects.map(p =>
+    p.id === targetProject.id ? { ...p, sessions: [...p.sessions, newSession] } : p
+  )
+  return {
+    projects: newProjects,
+    activeSessionId: newSession.id,
+    tabsBySession: { ...tabsBySession, [newSession.id]: [] },
+    activeTabIdBySession: { ...activeTabIdBySession, [newSession.id]: null },
+  }
+}
+
 export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'ADD_PROJECT': {
@@ -177,12 +211,17 @@ export function reducer(state: AppState, action: Action): AppState {
           ? { ...p, sessions: p.sessions.filter(s => s.id !== action.sessionId) }
           : p
       )
-      // 若删的是当前激活会话，自动切到另一个存活会话
-      let activeSessionId = state.activeSessionId
-      if (state.activeSessionId === action.sessionId) {
-        activeSessionId = pickSurvivingSessionId(projects, action.sessionId) ?? state.activeSessionId
+      // 若删的不是当前激活会话，不动 active
+      if (state.activeSessionId !== action.sessionId) {
+        return { ...state, projects }
       }
-      return { ...state, projects, activeSessionId }
+      // 删的是激活会话：优先切到另一个存活会话
+      const surviving = pickSurvivingSessionId(projects, action.sessionId)
+      if (surviving) return { ...state, projects, activeSessionId: surviving }
+      // 全局无存活会话：在被删会话原属 project 下补建新会话，进入新会话状态
+      const ensured = ensureAliveSession(projects, action.projectId, state.tabsBySession, state.activeTabIdBySession)
+      if (ensured) return { ...state, ...ensured }
+      return { ...state, projects, activeSessionId: state.activeSessionId }
     }
     case 'ADD_SESSION': {
       const project = state.projects.find(p => p.id === action.projectId)
@@ -583,7 +622,7 @@ export function reducer(state: AppState, action: Action): AppState {
       const s = action.snapshot
       // 重置 ID 计数器到已恢复的最大序号，避免后续新增 ID 冲突
       setIdCounter(s.lastSeq)
-      // 收集所有存活 session id，用于清理孤儿 tab（指向已不存在 session）
+      // 收集所有 session id（含归档），用于清理孤儿 tab（指向已不存在 session）
       const aliveSessionIds = new Set(s.projects.flatMap(p => p.sessions.map(sess => sess.id)))
       const tabsBySession = Object.fromEntries(
         Object.entries(s.tabsBySession).filter(([k]) => aliveSessionIds.has(k))
@@ -591,18 +630,27 @@ export function reducer(state: AppState, action: Action): AppState {
       const activeTabIdBySession = Object.fromEntries(
         Object.entries(s.activeTabIdBySession).filter(([k]) => aliveSessionIds.has(k))
       )
-      const fallbackActive = s.activeSessionId && aliveSessionIds.has(s.activeSessionId)
-        ? s.activeSessionId
-        : (s.projects[0]?.sessions[0]?.id ?? '')
-      return {
+      // 优先沿用快照 active（若仍是未归档存活会话）；否则任意存活会话；都没有则留空，下面补建。
+      // 注意：必须排除已归档会话，否则 active 落到归档会话上会让对话区残留旧内容。
+      const liveSessionIds = new Set(s.projects.flatMap(p => p.sessions.filter(sess => !sess.archived).map(sess => sess.id)))
+      const survivingActive = (s.activeSessionId && liveSessionIds.has(s.activeSessionId) ? s.activeSessionId : null)
+        ?? pickSurvivingSessionId(s.projects, '')
+      const base: AppState = {
         ...state,
         projects: s.projects,
-        activeSessionId: fallbackActive,
+        activeSessionId: survivingActive ?? '',
         tabsBySession,
         activeTabIdBySession,
         claudeSessionMap: s.claudeSessionMap,
         // 保留 theme/currentView/settings/draft/streaming 等其余字段
       }
+      // 快照里没有任何存活会话（全新用户 / 会话全归档）→ 补建空会话到第一个 project，
+      // 让启动后对话区直接是新会话状态，而非「无选中会话」空占位。
+      if (!survivingActive) {
+        const ensured = ensureAliveSession(s.projects, null, state.tabsBySession, state.activeTabIdBySession)
+        if (ensured) return { ...base, ...ensured }
+      }
+      return base
     }
     case 'SET_CLAUDE_SESSION_ID': {
       return {
@@ -717,11 +765,18 @@ export function reducer(state: AppState, action: Action): AppState {
         ...p,
         sessions: p.sessions.map(s => s.id === action.sessionId ? { ...s, archived: true, archivedAt: Date.now() } : s),
       }))
-      let activeSessionId = state.activeSessionId
-      if (state.activeSessionId === action.sessionId) {
-        activeSessionId = pickSurvivingSessionId(projects, action.sessionId) ?? state.activeSessionId
+      // 归档的不是当前激活会话，不动 active
+      if (state.activeSessionId !== action.sessionId) {
+        return { ...state, projects }
       }
-      return { ...state, projects, activeSessionId }
+      // 归档的是激活会话：优先切到另一个存活会话（跨 project 也可切）
+      const surviving = pickSurvivingSessionId(projects, action.sessionId)
+      if (surviving) return { ...state, projects, activeSessionId: surviving }
+      // 全局无存活会话：在被归档会话原属 project 下补建新会话，避免对话区残留旧内容
+      const archivedProjectId = findProjectIdBySessionId(state.projects, action.sessionId)
+      const ensured = ensureAliveSession(projects, archivedProjectId, state.tabsBySession, state.activeTabIdBySession)
+      if (ensured) return { ...state, ...ensured }
+      return { ...state, projects, activeSessionId: state.activeSessionId }
     }
     case 'RESTORE_SESSION': {
       const projects = state.projects.map(p => ({

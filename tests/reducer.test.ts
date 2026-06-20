@@ -637,6 +637,107 @@ describe('reducer HYDRATE 持久化恢复', () => {
   })
 })
 
+// 归档/删除全局最后一个存活会话、启动无会话时，应补建一个空会话进入「新会话」状态，
+// 而非残留已归档会话旧内容或显示「无选中会话」空占位。
+describe('reducer 无存活会话时补建新会话', () => {
+  // 全局只剩一个存活会话的场景
+  function singleAliveState(): AppState {
+    return {
+      ...initialState(),
+      projects: [{
+        id: 'p1', name: 'p', path: '/p',
+        sessions: [
+          { id: 'only', title: '唯一的会话', messages: [{ id: 'm', role: 'user', content: [{ type: 'text', text: 'hi' }] }], updatedAt: 1000 },
+        ],
+      }],
+      activeSessionId: 'only',
+      tabsBySession: { only: [] },
+      activeTabIdBySession: { only: null },
+    }
+  }
+
+  it('ARCHIVE_SESSION 归档全局最后一个会话后，补建空会话并设为 active', () => {
+    const state = singleAliveState()
+    const next = reducer(state, { type: 'ARCHIVE_SESSION', sessionId: 'only' })
+    // 新 active 不是被归档的 only，且指向一个真实存在的空会话
+    expect(next.activeSessionId).not.toBe('only')
+    const activeSession = next.projects.flatMap(p => p.sessions).find(s => s.id === next.activeSessionId)!
+    expect(activeSession).toBeDefined()
+    expect(activeSession.archived).toBeFalsy()
+    expect(activeSession.messages.length).toBe(0)
+    // 新会话补在原 project 下
+    expect(next.projects[0].sessions.some(s => s.id === next.activeSessionId)).toBe(true)
+    // 新会话有对应 tab 分片
+    expect(next.tabsBySession[next.activeSessionId]).toEqual([])
+  })
+
+  it('ARCHIVE_SESSION 归档非最后一个会话时，active 切到存活会话（不补建）', () => {
+    const state = initialState() // p1 有 s1..s8，p2 有 s3
+    const next = reducer(state, { type: 'ARCHIVE_SESSION', sessionId: 's1' })
+    // 切到另一个存活会话，不新建
+    expect(next.activeSessionId).not.toBe('s1')
+    // 总会话数不变（归档不删数据，也未补建新会话）
+    const totalCountBefore = state.projects.flatMap(p => p.sessions).length
+    const totalCountAfter = next.projects.flatMap(p => p.sessions).length
+    expect(totalCountAfter).toBe(totalCountBefore)
+    // s1 被标记归档
+    const s1 = next.projects.flatMap(p => p.sessions).find(s => s.id === 's1')!
+    expect(s1.archived).toBe(true)
+  })
+
+  it('DELETE_SESSION 删除全局最后一个会话后，补建空会话并设为 active', () => {
+    const state = singleAliveState()
+    const next = reducer(state, { type: 'DELETE_SESSION', projectId: 'p1', sessionId: 'only' })
+    expect(next.activeSessionId).not.toBe('only')
+    const activeSession = next.projects.flatMap(p => p.sessions).find(s => s.id === next.activeSessionId)!
+    expect(activeSession).toBeDefined()
+    expect(activeSession.messages.length).toBe(0)
+    expect(next.projects[0].sessions.some(s => s.id === next.activeSessionId)).toBe(true)
+  })
+
+  it('HYDRATE 快照无存活会话时，补建空会话并设为 active（非空字符串）', () => {
+    const state = initialState()
+    const next = reducer(state, {
+      type: 'HYDRATE',
+      snapshot: {
+        projects: [{ id: 'p1', name: 'p', path: '/p', sessions: [] }],
+        activeSessionId: '',
+        tabsBySession: {},
+        activeTabIdBySession: {},
+        claudeSessionMap: {},
+        lastSeq: 0,
+      },
+    })
+    expect(next.activeSessionId).not.toBe('')
+    const activeSession = next.projects.flatMap(p => p.sessions).find(s => s.id === next.activeSessionId)!
+    expect(activeSession).toBeDefined()
+    expect(activeSession.messages.length).toBe(0)
+  })
+
+  it('HYDRATE 快照会话全部已归档时，补建空会话（active 不落在归档会话上）', () => {
+    const state = initialState()
+    const next = reducer(state, {
+      type: 'HYDRATE',
+      snapshot: {
+        projects: [{
+          id: 'p1', name: 'p', path: '/p',
+          sessions: [{ id: 'arch', title: '已归档', archived: true, messages: [{ id: 'm', role: 'user', content: [{ type: 'text', text: 'x' }] }], updatedAt: 1000 }],
+        }],
+        activeSessionId: 'arch', // 指向已归档会话
+        tabsBySession: {},
+        activeTabIdBySession: {},
+        claudeSessionMap: {},
+        lastSeq: 0,
+      },
+    })
+    // active 不能落在归档会话上
+    expect(next.activeSessionId).not.toBe('arch')
+    const activeSession = next.projects.flatMap(p => p.sessions).find(s => s.id === next.activeSessionId)!
+    expect(activeSession.archived).toBeFalsy()
+    expect(activeSession.messages.length).toBe(0)
+  })
+})
+
 // 自动归档：验证 ARCHIVE_STALE 清理陈旧空会话，保留有消息/当前激活的
 describe('reducer ARCHIVE_STALE 自动归档', () => {
   it('删除陈旧空会话，保留有消息和当前激活的', () => {
