@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react'
+import { useEffect, type CSSProperties } from 'react'
 import { Settings, Plus, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, ListChecks, Download } from 'lucide-react'
 import { ThemeSwitcher } from './ThemeSwitcher'
 import { Tooltip } from './Tooltip'
@@ -40,12 +40,33 @@ function GhostButton({ children, title, onClick, ariaLabel, active }: {
 // 更新按钮：单一状态机，位置在 TitleBar 左侧最右边（折叠入口之后、项目名之前）。
 // idle/checking/error 不渲染；available 蓝灰；downloading 显示进度；ready 绿色。
 function UpdateButton() {
-  const { state } = useStore()
+  const { state, dispatch } = useStore()
   const { t } = useI18n()
   const s = state.updateStatus
+
+  // up-to-date 提示 3 秒后自动消失回 idle（须在 early return 之前调用，遵守 Rules of Hooks）
+  useEffect(() => {
+    if (s.state === 'up-to-date') {
+      const timer = setTimeout(() => dispatch({ type: 'UPDATE_STATUS', status: { state: 'idle' } }), 3000)
+      return () => clearTimeout(timer)
+    }
+  }, [s.state, dispatch])
+
   if (s.state === 'idle' || s.state === 'checking' || s.state === 'error') return null
 
   const isMac = navigator.userAgent.includes('Macintosh')
+
+  if (s.state === 'up-to-date') {
+    return (
+      <span style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4, height: 24,
+        padding: '0 8px', borderRadius: 6,
+        color: '#34c759', fontFamily: 'var(--font-mono)', fontSize: 11, ...noDrag,
+      }}>
+        &#x2713; 已是最新版本
+      </span>
+    )
+  }
 
   if (s.state === 'downloading') {
     const percentText = s.percent && s.percent > 0 ? `${s.percent}%` : '…'
