@@ -223,6 +223,7 @@ export interface AppSettings {
   theme: string
   lang: string
   zoom: string
+  chatWidth: string
   proxy: string
   inheritTerminal: boolean
   terminalFont: string

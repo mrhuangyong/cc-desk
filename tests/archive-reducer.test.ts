@@ -16,7 +16,7 @@ function makeState(): AppState {
     streamingBySession: {},
     settings: {
       apiKey: '', model: 'model-sonnet', cwd: '', providers: [], models: [], modelRoleMap: {},
-      theme: 'codex-light', lang: 'zh-CN', zoom: 'normal', proxy: '', inheritTerminal: true,
+      theme: 'codex-light', lang: 'zh-CN', zoom: 'normal', chatWidth: 'wide', proxy: '', inheritTerminal: true,
       terminalFont: 'MesloLGS NF, monospace', taskNotify: true, notifySound: true, queueMode: 'queue',
       showThinking: false, showTodo: false, showBackendTask: true, autoArchive: true, archiveDays: '7', dataPath: '',
       codePreview: { lightTheme: 'GitHub Light', darkTheme: 'GitHub Dark', showLineNumbers: true, wordWrap: false, fontSize: 12 },
