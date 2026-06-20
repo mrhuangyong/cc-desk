@@ -8,3 +8,4 @@ out/
 .codegraph/
 # iconset 中间产物（iconutil 用，成品 icns/png 已提交）
 build/icons/icon.iconset/
+/release/
