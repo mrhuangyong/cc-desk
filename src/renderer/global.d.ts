@@ -129,7 +129,13 @@ interface ClaudeConfigAPI {
     saveFile(id: string, content: string): Promise<void>
     setEnabled(name: string, enabled: boolean): Promise<void>
   }
-  commands: { get(): Promise<ClaudeCommand[]> }
+  commands: {
+    get(): Promise<ClaudeCommand[]>
+    create(name: string, description: string): Promise<{ success: boolean; message: string }>
+    getFile(source: string, name: string): Promise<string>
+    saveFile(name: string, content: string): Promise<void>
+    delete(name: string): Promise<void>
+  }
   hooks: {
     get(): Promise<ClaudeHook[]>
     setEnabled(name: string, enabled: boolean): Promise<void>

@@ -67,7 +67,13 @@ contextBridge.exposeInMainWorld('api', {
       saveFile: (id: string, content: string) => ipcRenderer.invoke('cc:skill:save', id, content),
       setEnabled: (name: string, enabled: boolean) => ipcRenderer.invoke('cc:skill:set-enabled', name, enabled),
     },
-    commands: { get: () => ipcRenderer.invoke('cc:commands:get') },
+    commands: {
+      get: () => ipcRenderer.invoke('cc:commands:get'),
+      create: (name: string, description: string) => ipcRenderer.invoke('cc:command:create', name, description),
+      getFile: (source: string, name: string) => ipcRenderer.invoke('cc:command:get-file', source, name),
+      saveFile: (name: string, content: string) => ipcRenderer.invoke('cc:command:save', name, content),
+      delete: (name: string) => ipcRenderer.invoke('cc:command:delete', name),
+    },
     hooks: {
       get: () => ipcRenderer.invoke('cc:hooks:get'),
       setEnabled: (name: string, enabled: boolean) => ipcRenderer.invoke('cc:hook:set-enabled', name, enabled),
