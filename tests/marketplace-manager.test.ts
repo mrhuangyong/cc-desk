@@ -170,3 +170,29 @@ describe('setAutoUpdate', () => {
     expect(m.autoUpdate).toBe(false)
   })
 })
+
+describe('getMarketplacePlugins + searchMarketplacePlugins', () => {
+  it('读取仓库内插件列表', async () => {
+    const { addMarketplace, getMarketplacePlugins } = await import('../src/main/marketplace-manager')
+    const mpPath = await makeTmpMarketplace()
+    await addMarketplace(mpPath)
+    const plugins = await getMarketplacePlugins('test-market')
+    expect(plugins.length).toBe(1)
+    expect(plugins[0].name).toBe('plugin-a')
+  })
+  it('搜索跨仓库匹配插件', async () => {
+    const { addMarketplace, searchMarketplacePlugins } = await import('../src/main/marketplace-manager')
+    const mpPath = await makeTmpMarketplace()
+    await addMarketplace(mpPath)
+    const results = await searchMarketplacePlugins('plugin')
+    expect(results.length).toBe(1)
+    expect(results[0].pluginName).toBe('plugin-a')
+    expect(results[0].marketplace).toBe('test-market')
+    expect(results[0].installed).toBe(false)
+  })
+  it('搜索无匹配返回空', async () => {
+    const { searchMarketplacePlugins } = await import('../src/main/marketplace-manager')
+    const results = await searchMarketplacePlugins('xyz-nothing')
+    expect(results).toEqual([])
+  })
+})
