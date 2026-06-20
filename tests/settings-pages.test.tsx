@@ -100,7 +100,7 @@ describe('SkillsSettings', () => {
 
   beforeEach(() => {
     skillsGet.mockClear()
-    setApi({ cc: { skills: { get: skillsGet } } })
+    setApi({ cc: { skills: { get: skillsGet, setEnabled: vi.fn().mockResolvedValue(undefined) } } })
   })
 
   it('加载技能列表并按名称/描述搜索', async () => {
@@ -124,7 +124,7 @@ describe('SkillsSettings', () => {
     ])
 
     render(<SkillsSettings />)
-    const sw = await screen.findByRole('switch', { name: 'electron 状态' })
+    const sw = await screen.findByRole('switch', { name: '禁用 electron' })
     fireEvent.click(sw)
 
     await waitFor(() => expect(skillsGet).toHaveBeenCalledTimes(2))
