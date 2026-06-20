@@ -99,6 +99,7 @@
     },
     "linux": {
       "icon": "build/icons/icon.png",
+      "maintainer": "mrhuangyong <mrhuangyong@live.cn>",
       "target": [
         "AppImage",
         "deb"
