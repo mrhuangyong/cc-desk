@@ -8,6 +8,7 @@ import { getSettings, saveSettings } from './settings-store'
 import { getModelProvidersConfig, saveModelProvidersConfig } from './cc-desk-store'
 import { getProjectsSnapshot, saveProjectsSnapshot } from './projects-store'
 import * as cc from './claude-config'
+import * as mkt from './marketplace-manager'
 import { getMemoryFile, saveMemoryFile } from './memory-file'
 import { BackendTaskRegistry } from './backend-task-registry'
 import { ensureClaudeConfigDir } from './paths'
@@ -103,6 +104,16 @@ function createWindow() {
   ipcMain.handle('cc:mcp:save', (_e, servers) => cc.saveMcpServers(servers))
   ipcMain.handle('cc:plugins:get', () => cc.getPlugins())
   ipcMain.handle('cc:plugin:set-enabled', (_e, id, enabled) => cc.setPluginEnabled(id, enabled))
+  ipcMain.handle('cc:marketplace:get', () => mkt.getMarketplaces())
+  ipcMain.handle('cc:marketplace:get-plugins', (_e, name: string) => mkt.getMarketplacePlugins(name))
+  ipcMain.handle('cc:marketplace:search', (_e, query: string) => mkt.searchMarketplacePlugins(query))
+  ipcMain.handle('cc:marketplace:add', (_e, source: string, options?: any) => mkt.addMarketplace(source, options))
+  ipcMain.handle('cc:marketplace:remove', (_e, name: string) => mkt.removeMarketplace(name))
+  ipcMain.handle('cc:marketplace:refresh', (_e, name: string) => mkt.refreshMarketplace(name))
+  ipcMain.handle('cc:marketplace:refresh-all', () => mkt.refreshAllMarketplaces())
+  ipcMain.handle('cc:marketplace:set-auto-update', (_e, name: string, enabled: boolean) => mkt.setMarketplaceAutoUpdate(name, enabled))
+  ipcMain.handle('cc:plugin:install', (_e, pluginId: string) => cc.installPlugin(pluginId))
+  ipcMain.handle('cc:plugin:uninstall', (_e, pluginId: string) => cc.uninstallPlugin(pluginId))
   ipcMain.handle('cc:skills:get', () => cc.getSkills())
   ipcMain.handle('cc:skill:get', (_e, id: string) => cc.getSkillFile(id))
   ipcMain.handle('cc:skill:save', (_e, id: string, content: string) => cc.saveSkillFile(id, content))

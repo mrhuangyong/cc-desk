@@ -48,6 +48,18 @@ contextBridge.exposeInMainWorld('api', {
     plugins: {
       get: () => ipcRenderer.invoke('cc:plugins:get'),
       setEnabled: (id: string, enabled: boolean) => ipcRenderer.invoke('cc:plugin:set-enabled', id, enabled),
+      install: (pluginId: string) => ipcRenderer.invoke('cc:plugin:install', pluginId),
+      uninstall: (pluginId: string) => ipcRenderer.invoke('cc:plugin:uninstall', pluginId),
+    },
+    marketplaces: {
+      get: () => ipcRenderer.invoke('cc:marketplace:get'),
+      getPlugins: (name: string) => ipcRenderer.invoke('cc:marketplace:get-plugins', name),
+      search: (query: string) => ipcRenderer.invoke('cc:marketplace:search', query),
+      add: (source: string, options?: any) => ipcRenderer.invoke('cc:marketplace:add', source, options),
+      remove: (name: string) => ipcRenderer.invoke('cc:marketplace:remove', name),
+      refresh: (name: string) => ipcRenderer.invoke('cc:marketplace:refresh', name),
+      refreshAll: () => ipcRenderer.invoke('cc:marketplace:refresh-all'),
+      setAutoUpdate: (name: string, enabled: boolean) => ipcRenderer.invoke('cc:marketplace:set-auto-update', name, enabled),
     },
     skills: {
       get: () => ipcRenderer.invoke('cc:skills:get'),

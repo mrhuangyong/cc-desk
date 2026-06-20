@@ -7,6 +7,9 @@ import type {
   ClaudeMcpServer, ClaudePlugin, ClaudeSkill, ClaudeCommand, ClaudeHook,
   ModelConfig, GeneralConfig,
 } from '../main/claude-config'
+import type {
+  KnownMarketplace, PluginMarketplaceEntry, SearchResult,
+} from '../main/marketplace-manager'
 
 interface ClaudeAPI {
   send(opts: { prompt: string; localSessionId?: string; sessionId?: string; cwd?: string; permission?: string; thinking?: 'low' | 'medium' | 'high'; extraDirs?: string[] }): Promise<void>
@@ -107,6 +110,18 @@ interface ClaudeConfigAPI {
   plugins: {
     get(): Promise<ClaudePlugin[]>
     setEnabled(id: string, enabled: boolean): Promise<void>
+    install(pluginId: string): Promise<{ success: boolean; message: string }>
+    uninstall(pluginId: string): Promise<{ success: boolean; message: string }>
+  }
+  marketplaces: {
+    get(): Promise<KnownMarketplace[]>
+    getPlugins(name: string): Promise<PluginMarketplaceEntry[]>
+    search(query: string): Promise<SearchResult[]>
+    add(source: string, options?: { type?: string; ref?: string; autoUpdate?: boolean }): Promise<{ name: string; alreadyExists: boolean }>
+    remove(name: string): Promise<{ cascadedPlugins: string[] }>
+    refresh(name: string): Promise<void>
+    refreshAll(): Promise<void>
+    setAutoUpdate(name: string, enabled: boolean): Promise<void>
   }
   skills: {
     get(): Promise<ClaudeSkill[]>
