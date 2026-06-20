@@ -160,3 +160,62 @@ describe('projects-store 真实读写', () => {
     expect(s2!.messages.length).toBe(1)                     // 新格式 → 保留
   })
 })
+
+describe('hooks 后端读写', () => {
+  let orig: string | undefined
+  beforeEach(() => { orig = process.env.HOME })
+  afterEach(() => { process.env.HOME = orig; vi.resetModules() })
+
+  it('getHooksFull 空配置返回空数组', async () => {
+    await withFakeHome()
+    const { getHooksFull } = await import('../src/main/claude-config')
+    const d = await getHooksFull()
+    expect(d.custom).toEqual([])
+    expect(d.plugins).toEqual([])
+  })
+
+  it('saveHooks 写入后 getHooksFull 能读到', async () => {
+    await withFakeHome()
+    const { saveHooks, getHooksFull } = await import('../src/main/claude-config')
+    const r = await saveHooks({ PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'echo test' }] }] })
+    expect(r.success).toBe(true)
+    const d = await getHooksFull()
+    expect(d.custom.length).toBe(1)
+    expect(d.custom[0].eventName).toBe('PreToolUse')
+    expect(d.custom[0].matchers[0].hooks[0].command).toBe('echo test')
+  })
+
+  it('saveHooks 拒绝未知事件名', async () => {
+    await withFakeHome()
+    const { saveHooks } = await import('../src/main/claude-config')
+    const r = await saveHooks({ FakeEvent: [{ matcher: '', hooks: [{ type: 'command', command: 'x' }] }] })
+    expect(r.success).toBe(false)
+    expect(r.errors[0]).toContain('未知事件名')
+  })
+
+  it('saveHooks 拒绝未知 hook 类型', async () => {
+    await withFakeHome()
+    const { saveHooks } = await import('../src/main/claude-config')
+    const r = await saveHooks({ Stop: [{ matcher: '', hooks: [{ type: 'unknown', command: 'x' }] }] })
+    expect(r.success).toBe(false)
+    expect(r.errors[0]).toContain('未知 type')
+  })
+
+  it('getHooksJson / saveHooksJson 往返一致', async () => {
+    await withFakeHome()
+    const { saveHooksJson, getHooksJson } = await import('../src/main/claude-config')
+    const json = JSON.stringify({ Stop: [{ matcher: '', hooks: [{ type: 'command', command: 'echo done' }] }] }, null, 2)
+    const r = await saveHooksJson(json)
+    expect(r.success).toBe(true)
+    const readBack = await getHooksJson()
+    expect(JSON.parse(readBack)).toEqual(JSON.parse(json))
+  })
+
+  it('saveHooksJson 拒绝非法 JSON', async () => {
+    await withFakeHome()
+    const { saveHooksJson } = await import('../src/main/claude-config')
+    const r = await saveHooksJson('{ invalid json }}}')
+    expect(r.success).toBe(false)
+    expect(r.errors[0]).toContain('JSON 解析失败')
+  })
+})
