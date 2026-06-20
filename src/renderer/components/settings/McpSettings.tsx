@@ -19,14 +19,14 @@ export function McpSettings() {
   const [pendingNewId, setPendingNewId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // 挂载与刷新：从 ~/.claude.json 的 mcpServers 读取真实配置
+  // 挂载与刷新：从 ~/.cc-desk/claude/.claude.json 的 mcpServers 读取真实配置
   const reload = () => {
     setLoading(true)
     window.api?.cc?.mcp.get().then(list => { setServers(list); setLoading(false) })
   }
   useEffect(() => { reload() }, [])
 
-  // 保存：整体写回 ~/.claude.json 的 mcpServers（append-only 不动其它 key）
+  // 保存：整体写回 ~/.cc-desk/claude/.claude.json 的 mcpServers（append-only 不动其它 key）
   const persist = (next: ClaudeMcpServer[]) => {
     setServers(next)
     window.api?.cc?.mcp.save(next)
@@ -70,7 +70,7 @@ export function McpSettings() {
         </div>
       </div>
       <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 14 }}>
-        读写 ~/.claude.json 的 mcpServers（全局配置）。管理 Agent 使用的 MCP 服务器。
+        读写 ~/.cc-desk/claude/.claude.json 的 mcpServers（全局配置）。管理 Agent 使用的 MCP 服务器。
       </div>
 
       {/* 搜索框 */}

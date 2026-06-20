@@ -10,6 +10,6 @@ export function CommandSettings() {
   }, [])
 
   return (
-    <EntryListSection title="命令" entries={entries} loading={loading} desc="来自已启用插件的 commands/ 目录 + 用户级 ~/.claude/commands/。" />
+    <EntryListSection title="命令" entries={entries} loading={loading} desc="来自已启用插件的 commands/ 目录 + 用户级 ~/.cc-desk/claude/commands/。" />
   )
 }

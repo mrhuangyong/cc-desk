@@ -24,7 +24,7 @@ export function HooksSettings() {
       entries={entries}
       loading={loading}
       onToggle={onToggle}
-      desc="读写 ~/.claude/settings.json 的 hooks 字段。"
+      desc="读写 ~/.cc-desk/claude/settings.json 的 hooks 字段。"
     />
   )
 }

@@ -109,7 +109,7 @@ export function SkillModal({ skill, onClose }: Props) {
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          width: 'min(880px, 100%)', maxHeight: '86vh', display: 'flex', flexDirection: 'column',
+          width: 'min(880px, 100%)', height: '86vh', display: 'flex', flexDirection: 'column',
           background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)',
           boxShadow: 'var(--shadow-float)', overflow: 'hidden'
         }}
@@ -139,7 +139,7 @@ export function SkillModal({ skill, onClose }: Props) {
         )}
 
         {/* 编辑器 */}
-        <div style={{ flex: 1, minHeight: 0 }}>
+        <div style={{ flex: 1, minHeight: 200 }}>
           {loading ? (
             <div style={{ padding: 24, color: 'var(--text-muted)', textAlign: 'center', fontSize: 13 }}>加载中…</div>
           ) : (
