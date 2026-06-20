@@ -706,13 +706,24 @@ export class ClaudeService {
   }
 
   /**
-   * 中断当前轮次（不杀进程，后台任务存活）。
-   * 策略：先 query.interrupt()（优雅中断，发 control request 给 CLI）；
-   * 若 2s 后 session 仍在迭代（工具执行中 interrupt 可能不立即生效），
-   * 用 abortController.abort() 强制中止，确保停止按钮可靠生效。
+   * 中断当前轮次，并终止所有正在运行的 task/subagent。
+   * 策略：①先逐个 stopTask 杀掉 registry 中 running 状态的子任务；
+   *       ②再 query.interrupt()（优雅中断当前轮次）；
+   *       ③若 2s 后 session 仍在迭代，abortController.abort() 强制中止。
    */
-  async interrupt(localSessionId: string): Promise<void> {
+  async interrupt(localSessionId: string, webContents?: import('electron').WebContents): Promise<void> {
     if (!this.manager) return
+    // 先终止所有正在运行的 task/subagent（彻底停止，释放子进程资源）
+    if (this.registry) {
+      const running = this.registry.listBySession(localSessionId)
+        .filter(t => t.status === 'running')
+      for (const task of running) {
+        try { await this.manager.stopTask(localSessionId, task.id) } catch { /* ignore */ }
+        // 同步标记 registry 状态为 stopped，并推送更新让 UI 立即反馈
+        const t = this.registry.handleTaskNotification(localSessionId, { task_id: task.id, status: 'stopped' })
+        if (t && webContents) webContents.send('claude:backend-task', { localSessionId, op: 'update', task: t })
+      }
+    }
     await this.manager.interrupt(localSessionId)
     // interrupt 是 control request，CLI 可能正在执行工具无法立即响应。
     // 等待 2s 后检查：若仍在迭代，abort 强制中止。
