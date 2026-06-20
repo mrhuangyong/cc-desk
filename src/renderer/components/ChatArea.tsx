@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowDown, Copy, Check, Sparkles } from 'lucide-react'
+import { ArrowDown, Copy, Check, Sparkles, Pencil } from 'lucide-react'
 import { useStore } from '../state/store'
 import { useI18n } from '../i18n/useI18n'
 import { AttachmentChip } from './AttachmentChip'
@@ -7,6 +7,8 @@ import { BackendTaskPanel } from './BackendTaskPanel'
 import { PlanCard } from './PlanCard'
 import { InputBar } from './InputBar'
 import { InputDock } from './InputDock'
+import { PromptEditor } from '../editor/PromptEditor'
+import { serializeForPrompt } from '../editor/serialize'
 import { renderBlocks } from './blocks/BlockRenderer'
 import { Notices } from './Notices'
 import { Tooltip } from './Tooltip'
@@ -53,6 +55,39 @@ export function ChatArea() {
 
   // 当前会话的流式状态（增量拼接的 blocks/notices）
   const streaming = state.streamingBySession[state.activeSessionId]
+  const isStreaming = !!streaming
+
+  // 最后一条用户消息（编辑重发仅作用于它）
+  const lastUserMessage = (() => {
+    if (!session) return null
+    for (let i = session.messages.length - 1; i >= 0; i--) {
+      if (session.messages[i].role === 'user') return session.messages[i]
+    }
+    return null
+  })()
+
+  // 就地编辑态
+  const [editDoc, setEditDoc] = useState<any>(null)
+
+  // 编辑重发：截断历史 + 用新文本发送
+  const handleEditResend = () => {
+    if (!lastUserMessage) return
+    const newPrompt = editDoc ? serializeForPrompt(editDoc).trim() : ''
+    if (!newPrompt) return
+    dispatch({ type: 'EDIT_RESEND', sessionId: state.activeSessionId, messageId: lastUserMessage.id, newPrompt })
+    setEditDoc(null)
+    // 截断后用新文本发送
+    const claudeSessionId = state.claudeSessionMap?.[state.activeSessionId]
+    const project = state.projects.find(p => p.sessions.some(s => s.id === state.activeSessionId))
+    const cwd = project?.path || state.settings?.cwd || undefined
+    dispatch({ type: 'STREAM_START', sessionId: state.activeSessionId })
+    window.api?.claude?.send({
+      prompt: newPrompt,
+      localSessionId: state.activeSessionId,
+      sessionId: claudeSessionId || undefined,
+      cwd,
+    })
+  }
 
   // ===== 滚动「贴底」逻辑 =====
   // 原则：AI 输出时若用户在底部则自动滚动跟随；用户主动上滑后停止自动滚动，
@@ -339,10 +374,61 @@ export function ChatArea() {
               color: 'var(--text)',
               display: 'flex', flexDirection: 'column', gap: 2,
               userSelect: 'text', cursor: 'text',
+              position: 'relative',
             }}>
-              {m.attachment && <AttachmentChip attachment={{ type: 'pickedElement', el: m.attachment }} />}
-              {renderBlocks(m.content, true, state.subagentOutputBySession[state.activeSessionId] ?? {}, new Set((state.backendTasksBySession[state.activeSessionId] ?? []).filter(t => t.kind === 'subagent' && t.toolUseId).map(t => t.toolUseId!)))}
-              <CopyButton text={extractText(m.content)} />
+              {/* 编辑重发按钮：仅最后一条用户消息 + 非流式 + 非编辑态时显示 */}
+              {m.id === lastUserMessage?.id && !isStreaming && state.editingMessageId !== m.id && (
+                <button
+                  onClick={() => {
+                    const origText = extractText(m.content)
+                    setEditDoc({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: origText }] }] })
+                    dispatch({ type: 'SET_EDITING_MESSAGE', messageId: m.id })
+                  }}
+                  title={t('chat.edit')}
+                  className="edit-resend-btn"
+                  style={{
+                    position: 'absolute', left: -28, top: 0, opacity: 0,
+                    width: 24, height: 24, borderRadius: '50%', border: 'none',
+                    background: 'var(--surface-1)', boxShadow: 'var(--shadow-float)',
+                    color: 'var(--text-muted)', cursor: 'pointer',
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    transition: 'opacity .15s',
+                  }}
+                >
+                  <Pencil size={13} />
+                </button>
+              )}
+              {state.editingMessageId === m.id && editDoc ? (
+                /* 就地编辑态：PromptEditor + 取消/重发 */
+                <div style={{ minWidth: 280 }}>
+                  <PromptEditor
+                    doc={editDoc}
+                    placeholder=""
+                    allSlashItems={[]}
+                    getCwd={() => ''}
+                    onDocChange={(doc) => setEditDoc(doc)}
+                    onSend={handleEditResend}
+                    onEditorReady={() => {}}
+                  />
+                  <div style={{ display: 'flex', gap: 8, marginTop: 8, justifyContent: 'flex-end' }}>
+                    <button
+                      onClick={() => { setEditDoc(null); dispatch({ type: 'SET_EDITING_MESSAGE', messageId: null }) }}
+                      style={{ padding: '4px 12px', fontSize: 12, cursor: 'pointer', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', color: 'var(--text-muted)' }}
+                    >{t('chat.editCancel')}</button>
+                    <button
+                      onClick={handleEditResend}
+                      disabled={!serializeForPrompt(editDoc).trim()}
+                      style={{ padding: '4px 12px', fontSize: 12, cursor: serializeForPrompt(editDoc).trim() ? 'pointer' : 'not-allowed', border: 'none', borderRadius: 6, background: serializeForPrompt(editDoc).trim() ? 'var(--accent)' : 'var(--bg-hover)', color: serializeForPrompt(editDoc).trim() ? 'var(--accent-text)' : 'var(--text-faint)' }}
+                    >{t('chat.editSend')}</button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {m.attachment && <AttachmentChip attachment={{ type: 'pickedElement', el: m.attachment }} />}
+                  {renderBlocks(m.content, true, state.subagentOutputBySession[state.activeSessionId] ?? {}, new Set((state.backendTasksBySession[state.activeSessionId] ?? []).filter(t => t.kind === 'subagent' && t.toolUseId).map(t => t.toolUseId!)))}
+                  <CopyButton text={extractText(m.content)} />
+                </>
+              )}
             </div>
           )
         )})}
