@@ -356,23 +356,54 @@ function buildAppMenu(updateMgr: UpdateManager): Menu {
       else wc.openDevTools({ mode: 'detach' })
     },
   }
+  // macOS app 菜单：显式设置 label 以覆盖系统语言，与 app 语言设置保持一致
+  const appMenu: Electron.MenuItemConstructorOptions = isMac
+    ? {
+        label: app.name,
+        submenu: [
+          { role: 'about', label: t('menu.about') },
+          checkUpdate,
+          { type: 'separator' },
+          { role: 'quit', label: t('menu.quit') },
+        ],
+      }
+    : { label: t('menu.file'), submenu: [{ role: 'quit', label: t('menu.quit') }] }
+
+  const editMenu: Electron.MenuItemConstructorOptions = {
+    label: t('menu.edit'),
+    submenu: [
+      { role: 'undo', label: t('menu.undo') },
+      { role: 'redo', label: t('menu.redo') },
+      { type: 'separator' },
+      { role: 'cut', label: t('menu.cut') },
+      { role: 'copy', label: t('menu.copy') },
+      { role: 'paste', label: t('menu.paste') },
+      { role: 'selectAll', label: t('menu.selectAll') },
+    ],
+  }
+
+  const viewMenu: Electron.MenuItemConstructorOptions = {
+    label: t('menu.view'),
+    submenu: [reloadPage, { type: 'separator' }, toggleDevTools],
+  }
+
+  const windowMenu: Electron.MenuItemConstructorOptions = {
+    label: t('menu.window'),
+    submenu: [
+      { role: 'minimize', label: t('menu.minimize') },
+      { role: 'zoom', label: t('menu.zoom') },
+      ...(isMac ? [{ type: 'separator' as const }, { role: 'front' as const, label: t('menu.bringToFront') }] : [{ role: 'close' as const, label: t('menu.close') }]),
+    ],
+  }
+
+  const helpMenu: Electron.MenuItemConstructorOptions = {
+    label: t('menu.help'),
+    submenu: [checkUpdate, ...(isMac ? [] : [{ role: 'about' as const, label: t('menu.about') }])],
+  }
+
   const template: Electron.MenuItemConstructorOptions[] = isMac
-    ? [
-        { role: 'appMenu', submenu: [checkUpdate, { type: 'separator' }, { role: 'quit' }] },
-        { role: 'editMenu' },
-        {
-          label: t('menu.view'),
-          submenu: [reloadPage, { type: 'separator' }, toggleDevTools],
-        },
-        { role: 'windowMenu', submenu: [{ role: 'close' }, { role: 'minimize' }] },
-      ]
-    : [
-        { label: t('menu.file'), submenu: [{ role: 'quit' }] },
-        {
-          label: t('menu.view'),
-          submenu: [reloadPage, { type: 'separator' }, toggleDevTools],
-        },
-        { label: t('menu.help'), submenu: [checkUpdate, { role: 'about' }] },
-      ]
+    ? [appMenu, editMenu, viewMenu, windowMenu]
+    : [appMenu, editMenu, viewMenu, helpMenu]
+
   return Menu.buildFromTemplate(template)
 }
