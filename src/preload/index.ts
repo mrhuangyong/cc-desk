@@ -122,4 +122,19 @@ contextBridge.exposeInMainWorld('api', {
       return () => ipcRenderer.removeListener(channel, handler)
     },
   },
+  update: {
+    // 主→渲染：状态机变更。返回 unsubscribe，防监听器累加（沿用 onArchiveTick 模式）
+    onState: (cb: (s: any) => void) => {
+      const channel = 'update:state'
+      const handler = (_: unknown, s: any) => cb(s)
+      ipcRenderer.on(channel, handler)
+      return () => ipcRenderer.removeListener(channel, handler)
+    },
+    check: () => ipcRenderer.invoke('update:check'),
+    install: () => ipcRenderer.invoke('update:install'),
+    downloadAndOpen: () => ipcRenderer.invoke('update:download-and-open'),
+  },
+  appVersion: {
+    get: () => ipcRenderer.invoke('app:version'),
+  },
 })
