@@ -13,7 +13,7 @@
 //   <pluginPath>/commands/<name>.md        —— 命令
 //
 // 写策略：深合并 + 仅动受管字段，保留用户的其他配置（append-only 思想，不删除未知 key）。
-import { readFile, writeFile, readdir, stat, mkdir } from 'fs/promises'
+import { readFile, writeFile, readdir, stat, mkdir, cp, rm } from 'fs/promises'
 import { existsSync } from 'fs'
 import { join, dirname } from 'path'
 import { BUILTIN_COMMANDS } from './builtin-commands'
@@ -533,3 +533,111 @@ export async function saveGeneralConfig(cfg: Partial<GeneralConfig>): Promise<vo
 
 // 导出 PLUGINS_CACHE_DIR 供其它用途（暂留）
 export { PLUGINS_CACHE_DIR }
+
+// ---- 插件安装 / 卸载 ----
+
+// 安装插件：从 marketplace 目录拷贝到 versioned cache + 写 installed_plugins.json + 写 settings.json。
+// pluginId 格式：plugin@marketplace。当前仅支持本地相对路径 source（'./xxx'）。
+export async function installPlugin(pluginId: string): Promise<{ success: boolean; message: string }> {
+  const [pluginName, marketplaceName] = pluginId.split('@')
+  if (!pluginName || !marketplaceName) {
+    return { success: false, message: `无效的插件 ID: ${pluginId}（格式：plugin@marketplace）` }
+  }
+
+  // 从 known_marketplaces.json 找仓库条目（含 installLocation + source）
+  const knownConfig = await readJson<Record<string, any>>(join(CLAUDE_DIR, 'plugins', 'known_marketplaces.json'), {})
+  const mktEntry = knownConfig[marketplaceName]
+  if (!mktEntry) {
+    return { success: false, message: `仓库「${marketplaceName}」未注册` }
+  }
+
+  // 读 marketplace.json 找插件 entry
+  const { getMarketplacePlugins } = await import('./marketplace-manager')
+  let entry: any
+  try {
+    const plugins = await getMarketplacePlugins(marketplaceName)
+    entry = plugins.find((p: any) => p.name === pluginName)
+  } catch {
+    return { success: false, message: `仓库「${marketplaceName}」不存在或无法读取` }
+  }
+  if (!entry) {
+    return { success: false, message: `插件「${pluginName}」在仓库「${marketplaceName}」中未找到` }
+  }
+
+  // 判断 source 类型：仅支持本地相对路径（'./xxx'）
+  if (typeof entry.source !== 'string' || !entry.source.startsWith('./')) {
+    return { success: false, message: `插件「${pluginName}」使用远程 source，当前版本暂不支持远程插件安装` }
+  }
+
+  // marketplaceDir：directory/file 取 installLocation（原路径），github/git 取 clone 出来的目录
+  const marketplaceDir = mktEntry.source.source === 'directory' ? mktEntry.installLocation
+    : mktEntry.source.source === 'file' ? dirname(mktEntry.installLocation)
+    : mktEntry.installLocation
+
+  const sourcePath = join(marketplaceDir, entry.source)
+
+  // 读 manifest 获取 version
+  const manifestPath = join(sourcePath, '.claude-plugin', 'plugin.json')
+  const manifest = await readJson<any>(manifestPath, null)
+  if (!manifest) {
+    return { success: false, message: `插件 manifest 未找到: ${manifestPath}` }
+  }
+  const version = manifest.version || entry.version || 'unknown'
+
+  // versioned cache 路径
+  const versionedPath = join(PLUGINS_CACHE_DIR, marketplaceName, pluginName, version)
+
+  // 幂等：已安装同版本则跳过
+  const installed = await readInstalledPlugins()
+  const existing = installed.plugins[pluginId]
+  if (existing && existing.some((i: InstalledPlugin) => i.version === version)) {
+    return { success: true, message: `插件「${pluginName}」已是最新版本（${version}）` }
+  }
+
+  // 拷贝
+  await mkdir(versionedPath, { recursive: true })
+  await cp(sourcePath, versionedPath, { recursive: true })
+
+  // 写 installed_plugins.json
+  if (!installed.plugins[pluginId]) installed.plugins[pluginId] = []
+  installed.plugins[pluginId].push({ scope: 'user', installPath: versionedPath, version })
+  await writeInstalledPlugins(installed)
+
+  // 写 settings.json enabledPlugins
+  await setPluginEnabled(pluginId, true)
+
+  return { success: true, message: `插件「${pluginName}」安装成功（v${version}）` }
+}
+
+// 卸载插件：删 cache + 移除 installed_plugins.json + 移除 settings.json enabledPlugins。
+export async function uninstallPlugin(pluginId: string): Promise<{ success: boolean; message: string }> {
+  const installed = await readInstalledPlugins()
+  const installations = installed.plugins[pluginId]
+  if (!installations || installations.length === 0) {
+    throw new Error(`插件「${pluginId}」未安装`)
+  }
+
+  // 删除 versioned cache（仅当无其他安装引用该路径）
+  for (const inst of installations) {
+    const stillUsed = Object.entries(installed.plugins)
+      .filter(([id]) => id !== pluginId)
+      .some(([, arr]) => arr.some((i: InstalledPlugin) => i.installPath === inst.installPath))
+    if (!stillUsed) {
+      await rm(inst.installPath, { recursive: true, force: true }).catch(() => {})
+    }
+  }
+
+  // 从 installed_plugins.json 移除
+  delete installed.plugins[pluginId]
+  await writeInstalledPlugins(installed)
+
+  // 从 settings.json enabledPlugins 移除（整对象替换确保删除生效）
+  const settings = await getSettingsJson()
+  const map: Record<string, boolean> = { ...(settings.enabledPlugins ?? {}) }
+  delete map[pluginId]
+  settings.enabledPlugins = map
+  await writeJson(SETTINGS_PATH, settings)
+
+  const [pluginName] = pluginId.split('@')
+  return { success: true, message: `插件「${pluginName}」已卸载` }
+}
