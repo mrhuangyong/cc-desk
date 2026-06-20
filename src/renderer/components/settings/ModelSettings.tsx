@@ -126,7 +126,7 @@ export function ModelSettings() {
       <div style={{ padding: '0 0 14px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <h2 style={{ color: 'var(--text)', fontSize: 18, margin: 0 }}>{t('model.title')}</h2>
-          <Tooltip label="刷新"><button title="刷新" style={iconBtn} onClick={reload}><RefreshCw size={14} /></button></Tooltip>
+          <Tooltip label="刷新"><button aria-label="刷新" style={iconBtn} onClick={reload}><RefreshCw size={14} /></button></Tooltip>
         </div>
         <div style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 6 }}>{t('model.desc')}</div>
       </div>
@@ -161,7 +161,7 @@ export function ModelSettings() {
                 ) : (
                   <span style={{ color: 'var(--text)', fontSize: 14, fontWeight: 600 }}>{provider.name}</span>
                 )}
-                <Tooltip label="编辑名称"><button title="编辑名称" onClick={() => setEditingName(true)} style={iconBtn}><Pencil size={13} /></button></Tooltip>
+                <Tooltip label="编辑名称"><button aria-label="编辑名称" onClick={() => setEditingName(true)} style={iconBtn}><Pencil size={13} /></button></Tooltip>
                 <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
                   <button onClick={() => updateProvider({ enabled: !provider.enabled })} style={provider.enabled ? { ...smallBtn, background: 'var(--accent)', color: 'var(--accent-text)', borderColor: 'var(--accent)' } : smallBtn}>
                     {provider.enabled ? t('model.enabled') : t('model.enable')}
@@ -169,7 +169,7 @@ export function ModelSettings() {
                   {confirmingProvider === provider.id ? (
                     <button onClick={() => removeProvider(provider.id)} style={{ ...smallBtn, color: 'var(--danger)', borderColor: 'var(--danger)' }}>{t('model.confirmDelete')}</button>
                   ) : (
-                    <Tooltip label="删除"><button title="删除" onClick={() => setConfirmingProvider(provider.id)} style={{ ...iconBtn, color: 'var(--danger)' }}><Trash2 size={13} /></button></Tooltip>
+                    <Tooltip label="删除"><button aria-label="删除" onClick={() => setConfirmingProvider(provider.id)} style={{ ...iconBtn, color: 'var(--danger)' }}><Trash2 size={13} /></button></Tooltip>
                   )}
                 </span>
               </div>
@@ -180,7 +180,7 @@ export function ModelSettings() {
               <div style={fieldLabelStyle}>{t('model.apiKey')}</div>
               <div style={{ position: 'relative' }}>
                 <input type={showKey ? 'text' : 'password'} value={provider.apiKey} onChange={e => updateProvider({ apiKey: e.target.value })} placeholder="sk-..." style={inputStyle} />
-                <Tooltip label={showKey ? '隐藏' : '显示'}><button onClick={() => setShowKey(s => !s)} title={showKey ? '隐藏' : '显示'} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', background: 'transparent', border: 'none', fontSize: 13, padding: 4, color: 'var(--text-muted)' }}>{showKey ? <EyeOff size={13} /> : <Eye size={13} />}</button></Tooltip>
+                <Tooltip label={showKey ? '隐藏' : '显示'}><button aria-label={showKey ? '隐藏' : '显示'} onClick={() => setShowKey(s => !s)} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', background: 'transparent', border: 'none', fontSize: 13, padding: 4, color: 'var(--text-muted)' }}>{showKey ? <EyeOff size={13} /> : <Eye size={13} />}</button></Tooltip>
               </div>
 
               <div style={fieldLabelStyle}>{t('model.models')}</div>
@@ -202,7 +202,7 @@ export function ModelSettings() {
                       type="number"
                       style={{ width: 100 }}
                     />
-                    <Tooltip label="删除"><button title="删除" onClick={() => removeModel(m.id)} style={{ ...iconBtn, color: 'var(--danger)' }}><Trash2 size={13} /></button></Tooltip>
+                    <Tooltip label="删除"><button aria-label="删除" onClick={() => removeModel(m.id)} style={{ ...iconBtn, color: 'var(--danger)' }}><Trash2 size={13} /></button></Tooltip>
                   </div>
                 ))}
               </div>

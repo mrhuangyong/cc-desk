@@ -133,7 +133,7 @@ function SubagentRow({ t, onKill, onRemove, onClick }: {
       </div>
       {t.status === 'running' ? (
         <Tooltip label="终止">
-          <button onClick={(e) => { e.stopPropagation(); onKill(t.id) }} title="终止" style={{
+          <button onClick={(e) => { e.stopPropagation(); onKill(t.id) }} style={{
             padding: '2px 6px', color: 'var(--text-muted)', background: 'var(--surface-2)',
             border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 11,
             display: 'inline-flex', alignItems: 'center',
@@ -143,7 +143,7 @@ function SubagentRow({ t, onKill, onRemove, onClick }: {
         </Tooltip>
       ) : (
         <Tooltip label="移除">
-          <button onClick={(e) => { e.stopPropagation(); onRemove(t.id) }} title="移除" style={{
+          <button onClick={(e) => { e.stopPropagation(); onRemove(t.id) }} style={{
             padding: '2px 4px', color: 'var(--text-muted)', background: 'none',
             border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center',
           }}>

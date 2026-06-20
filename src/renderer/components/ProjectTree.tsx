@@ -67,12 +67,12 @@ export function ProjectTree({ onOpenFiles, expandedProjects, onToggleExpand, tre
               </span>
               <span style={{ display: 'flex', gap: 8 }}>
                 <Tooltip label="新建会话">
-                  <button aria-label="新建会话" title="新建会话"
+                  <button aria-label="新建会话"
                     onClick={(e) => { e.stopPropagation(); dispatch({ type: 'ADD_SESSION', projectId: project.id }) }}
                     style={{ opacity: hoveredProject === project.id ? 0.85 : 0, transition: 'opacity .1s', pointerEvents: hoveredProject === project.id ? 'auto' : 'none', display: 'inline-flex', alignItems: 'center' }}><Plus size={13} /></button>
                 </Tooltip>
                 <Tooltip label="项目文件树">
-                  <button aria-label="项目文件树" title="项目文件树"
+                  <button aria-label="项目文件树"
                     onClick={(e) => { e.stopPropagation(); onOpenFiles(project.id) }}
                     style={{ opacity: hoveredProject === project.id ? 0.85 : 0, transition: 'opacity .1s', pointerEvents: hoveredProject === project.id ? 'auto' : 'none', display: 'inline-flex', alignItems: 'center' }}><FolderTree size={13} /></button>
                 </Tooltip>

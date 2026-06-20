@@ -45,7 +45,6 @@ export function AttachmentChip({ attachment, onRemove }: Props) {
           <button
             onClick={onRemove}
             aria-label="移除附件"
-            title="移除"
             style={{
               fontSize: 13, lineHeight: 1, padding: 0, cursor: 'pointer',
               background: 'transparent', border: 'none', color: 'var(--text-muted)',
