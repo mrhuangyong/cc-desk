@@ -1,5 +1,5 @@
 import type { Action } from './actions'
-import type { AppView, ContentBlock, Draft, Project, Session, SettingsSection, SystemNotice, Tab, ThemeId, AppSettings } from '../types'
+import type { AppView, ContentBlock, Draft, Project, Session, SettingsSection, SystemNotice, Tab, ThemeId, AppSettings, UpdateStatus } from '../types'
 import { serializeForPrompt } from '../editor/serialize'
 
 export interface AppState {
@@ -49,6 +49,8 @@ export interface AppState {
   // 用户主动中止的 session 标志:interrupt 可能不立即生效,SDK 续推的 delta 会被忽略,
   // 直到用户发新消息(STREAM_START)清除。避免停止后 streaming 被重建(停止按钮闪烁)。
   abortedBySession: Record<string, boolean>
+  // 应用更新状态机（全局单例）。TitleBar / 应用菜单 / 关于页共享。
+  updateStatus: UpdateStatus
 }
 
 // TODO: idCounter is module-level mutable state — non-deterministic IDs. Acceptable for prototype; thread through state if persistence/time-travel needed later.
@@ -772,6 +774,9 @@ export function reducer(state: AppState, action: Action): AppState {
         }),
       }))
       return { ...state, projects }
+    }
+    case 'UPDATE_STATUS': {
+      return { ...state, updateStatus: action.status }
     }
     default:
       return state
