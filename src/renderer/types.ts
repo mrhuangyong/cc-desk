@@ -170,6 +170,7 @@ export type SettingsSection =
 export type UpdateStatus =
   | { state: 'idle' }
   | { state: 'checking' }
+  | { state: 'up-to-date' }
   | { state: 'available'; version: string }
   | { state: 'downloading'; percent: number }
   | { state: 'ready'; version: string }
