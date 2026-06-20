@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import { Settings, Plus, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, ListChecks } from 'lucide-react'
+import { Settings, Plus, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, ListChecks, Download } from 'lucide-react'
 import { ThemeSwitcher } from './ThemeSwitcher'
 import { Tooltip } from './Tooltip'
 import { useStore } from '../state/store'
@@ -33,6 +33,72 @@ function GhostButton({ children, title, onClick, ariaLabel, active }: {
         onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = rest }}
       >
         {children}
+      </button>
+    </Tooltip>
+  )
+}
+
+// 更新按钮：单一状态机，位置在 TitleBar 左侧最右边（折叠入口之后、项目名之前）。
+// idle/checking/error 不渲染；available 蓝灰；downloading 显示进度；ready 绿色。
+function UpdateButton() {
+  const { state } = useStore()
+  const s = state.updateStatus
+  if (s.state === 'idle' || s.state === 'checking' || s.state === 'error') return null
+
+  const isMac = navigator.userAgent.includes('Macintosh')
+
+  if (s.state === 'downloading') {
+    return (
+      <Tooltip label={`下载更新 ${s.percent}%`}>
+        <button
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, height: 24,
+            padding: '0 8px', borderRadius: 6, border: 'none', cursor: 'default',
+            background: 'var(--bg-hover)', color: 'var(--text)',
+            fontFamily: 'var(--font-mono)', fontSize: 12, ...noDrag,
+          }}
+        >
+          <Download size={13} /> {s.percent}%
+        </button>
+      </Tooltip>
+    )
+  }
+
+  if (s.state === 'available') {
+    const onClick = isMac
+      ? () => window.api.update.downloadAndOpen()
+      : undefined
+    return (
+      <Tooltip label={isMac ? '下载并打开 dmg' : '正在下载更新…'}>
+        <button
+          onClick={onClick}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, height: 24,
+            padding: '0 10px', borderRadius: 6, border: 'none',
+            cursor: isMac ? 'pointer' : 'default',
+            background: 'var(--bg-hover)', color: 'var(--text)',
+            fontFamily: 'var(--font-mono)', fontSize: 12, ...noDrag,
+          }}
+        >
+          <Download size={13} /> {s.version}
+        </button>
+      </Tooltip>
+    )
+  }
+
+  // ready
+  return (
+    <Tooltip label="点击安装并重启">
+      <button
+        onClick={() => window.api.update.install()}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6, height: 24,
+          padding: '0 10px', borderRadius: 6, border: 'none', cursor: 'pointer',
+          background: '#1f9d55', color: '#fff', fontWeight: 600,
+          fontFamily: 'var(--font-mono)', fontSize: 12, ...noDrag,
+        }}
+      >
+        Update
       </button>
     </Tooltip>
   )
@@ -82,6 +148,9 @@ export function TitleBar({ projectName, leftCollapsed, rightCollapsed, onToggleL
           </GhostButton>
         </>
       )}
+
+      {/* 更新按钮：左侧最右边，折叠入口之后、项目名之前 */}
+      <UpdateButton />
 
       {/* 项目名：mono 小字，居中 */}
       <span style={{
