@@ -48,6 +48,38 @@ describe('claude-config 写操作真实落盘', () => {
     expect(back.find(s => s.name === 'http1')?.transport).toBe('http')
   })
 
+  it('buildMcpEntry 归一化：args/env 字符串形态正确落盘（现有行为回归）', async () => {
+    const { mod, fakeDir } = await withFakeConfigDir()
+    await mod.saveMcpServers([
+      { id: 's', name: 's', transport: 'stdio', command: 'npx',
+        args: '-y @playwright/mcp@latest', env: 'API_KEY=secret\nNODE_ENV=prod',
+        headers: '', enabled: true, scope: '用户' } as any,
+    ])
+    const data = await readJsonFile(join(fakeDir, '.claude.json'))
+    expect(data.mcpServers.s.args).toEqual(['-y', '@playwright/mcp@latest'])
+    expect(data.mcpServers.s.env).toEqual({ API_KEY: 'secret', NODE_ENV: 'prod' })
+  })
+
+  it('http 类型 headers 写盘与往返', async () => {
+    const { mod, fakeDir } = await withFakeConfigDir()
+    await mod.saveMcpServers([
+      { id: 'h', name: 'h', transport: 'http', command: 'https://api.example.com',
+        args: '', env: '', headers: 'Authorization: Bearer xxx\nContent-Type: application/json',
+        enabled: true, scope: '用户' } as any,
+    ])
+    const data = await readJsonFile(join(fakeDir, '.claude.json'))
+    expect(data.mcpServers.h.type).toBe('http')
+    expect(data.mcpServers.h.url).toBe('https://api.example.com')
+    expect(data.mcpServers.h.headers).toEqual({
+      Authorization: 'Bearer xxx',
+      'Content-Type': 'application/json',
+    })
+    const back = await mod.getMcpServers()
+    const h = back.find(s => s.name === 'h')!
+    expect(h.transport).toBe('http')
+    expect(h.headers).toBe('Authorization: Bearer xxx\nContent-Type: application/json')
+  })
+
   it('saveMcpServers：保留 .claude.json 顶层未知字段（append-only）', async () => {
     const { mod, fakeDir } = await withFakeConfigDir()
     await writeFile(join(fakeDir, '.claude.json'), JSON.stringify({ otherGlobals: { x: 1 }, numInline: 5 }))
