@@ -49,6 +49,10 @@ export interface AppState {
   // 用户主动中止的 session 标志:interrupt 可能不立即生效,SDK 续推的 delta 会被忽略,
   // 直到用户发新消息(STREAM_START)清除。避免停止后 streaming 被重建(停止按钮闪烁)。
   abortedBySession: Record<string, boolean>
+  // 就地编辑：当前正在编辑的消息 id（最后一条用户消息编辑重发）
+  editingMessageId: string | null
+  // 队列编辑：当前正在编辑的排队消息 id
+  editingQueueId: string | null
   // 应用更新状态机（全局单例）。TitleBar / 应用菜单 / 关于页共享。
   updateStatus: UpdateStatus
 }
@@ -643,6 +647,39 @@ export function reducer(state: AppState, action: Action): AppState {
     }
     case 'CLEAR_QUEUE': {
       return { ...state, queueBySession: { ...state.queueBySession, [action.sessionId]: [] } }
+    }
+    case 'SET_EDITING_MESSAGE': {
+      return { ...state, editingMessageId: action.messageId }
+    }
+    case 'SET_EDITING_QUEUE': {
+      return { ...state, editingQueueId: action.queueId }
+    }
+    case 'UPDATE_QUEUED_MESSAGE': {
+      const q = state.queueBySession[action.sessionId] ?? []
+      return {
+        ...state,
+        queueBySession: {
+          ...state.queueBySession,
+          [action.sessionId]: q.map(m => m.id === action.queueId ? { ...m, prompt: action.prompt } : m),
+        },
+      }
+    }
+    case 'EDIT_RESEND': {
+      // 截断：删除 messageId 及其之后的所有消息，用 newPrompt 替换该用户消息内容
+      const projects = state.projects.map(p => ({
+        ...p,
+        sessions: p.sessions.map(s => {
+          if (s.id !== action.sessionId) return s
+          const idx = s.messages.findIndex(m => m.id === action.messageId)
+          if (idx === -1) return s
+          const replaced = {
+            ...s.messages[idx],
+            content: [{ type: 'text' as const, text: action.newPrompt }],
+          }
+          return { ...s, messages: [...s.messages.slice(0, idx), replaced] }
+        }),
+      }))
+      return { ...state, projects, editingMessageId: null }
     }
     case 'UPSERT_TASK': {
       return upsertBySession(state, 'tasksBySession', action.sessionId, action.task)
