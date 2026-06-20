@@ -99,6 +99,8 @@ function createWindow() {
   ipcMain.handle('cc:plugins:get', () => cc.getPlugins())
   ipcMain.handle('cc:plugin:set-enabled', (_e, id, enabled) => cc.setPluginEnabled(id, enabled))
   ipcMain.handle('cc:skills:get', () => cc.getSkills())
+  ipcMain.handle('cc:skill:get', (_e, id: string) => cc.getSkillFile(id))
+  ipcMain.handle('cc:skill:save', (_e, id: string, content: string) => cc.saveSkillFile(id, content))
   ipcMain.handle('cc:commands:get', () => cc.getCommands())
   ipcMain.handle('cc:hooks:get', () => cc.getHooks())
   ipcMain.handle('cc:hook:set-enabled', (_e, name, enabled) => cc.setHookEnabled(name, enabled))
