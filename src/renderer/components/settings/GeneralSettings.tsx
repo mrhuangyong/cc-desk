@@ -174,6 +174,16 @@ export function GeneralSettings() {
           </select>
         </SettingsRow>
       </SettingsCard>
+
+      {/* 开发者 */}
+      <SettingsCard>
+        <SettingsRow title="开发者模式" desc={`打开后可使用 DevTools 控制台调试（${navigator.userAgent.includes('Macintosh') ? '⌘⌥I' : 'F12'}）。`} noBorder>
+          <Toggle on={s.devTools} onChange={v => {
+            persist({ devTools: v })
+            window.api?.setDevTools?.(v)
+          }} />
+        </SettingsRow>
+      </SettingsCard>
     </SettingsLayout>
   )
 }

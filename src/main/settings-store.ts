@@ -101,6 +101,7 @@ export interface AppSettings {
   showBackendTask: boolean
   autoArchive: boolean
   archiveDays: string
+  devTools: boolean
 
   // ===== 各设置子页 =====
   codePreview: CodePreviewSettings
@@ -198,6 +199,7 @@ const defaults: AppSettings = {
   showBackendTask: true,
   autoArchive: true,
   archiveDays: '7',
+  devTools: false,
 
   codePreview: {
     lightTheme: 'GitHub Light',
@@ -243,7 +245,7 @@ function withDefaults(raw: Partial<AppSettings>): AppSettings {
   ;(['theme', 'lang', 'zoom', 'proxy', 'terminalFont', 'queueMode', 'archiveDays'] as const).forEach(k => {
     ;(merged as any)[k] = (raw as any)[k] ?? (defaults as any)[k]
   })
-  ;(['inheritTerminal', 'taskNotify', 'notifySound', 'notifyOnComplete', 'notifyOnError', 'notifyOnConfirm', 'notifyOnPermission', 'showThinking', 'showTodo', 'showBackendTask', 'autoArchive'] as const).forEach(k => {
+  ;(['inheritTerminal', 'taskNotify', 'notifySound', 'notifyOnComplete', 'notifyOnError', 'notifyOnConfirm', 'notifyOnPermission', 'showThinking', 'showTodo', 'showBackendTask', 'autoArchive', 'devTools'] as const).forEach(k => {
     ;(merged as any)[k] = (raw as any)[k] ?? (defaults as any)[k]
   })
   return merged

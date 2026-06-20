@@ -238,6 +238,7 @@ export interface AppSettings {
   showBackendTask: boolean
   autoArchive: boolean
   archiveDays: string
+  devTools: boolean
 
   // ===== 各设置子页 =====
   codePreview: CodePreviewSettings
