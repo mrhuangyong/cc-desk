@@ -93,12 +93,15 @@ jobs:
           - os: macos-latest
             target: mac          # electron-builder 平台标志，目标格式(dmg)由 package.json build.mac.target 提供
             artifact: cc-desk-*.dmg
+            updater_yml: latest-mac.yml
           - os: windows-latest
             target: win          # 目标格式(nsis)由 build.win.target 提供
             artifact: cc-desk Setup *.exe
+            updater_yml: latest.yml
           - os: ubuntu-latest
             target: linux        # 目标格式(AppImage)由 build.linux.target 提供
             artifact: cc-desk-*.AppImage
+            updater_yml: latest-linux.yml
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -140,7 +143,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.os }}
-          path: release/${{ matrix.artifact }}
+          # 安装包 + electron-builder 生成的 latest-*.yml（更新检查依赖此文件）
+          path: |
+            release/${{ matrix.artifact }}
+            release/${{ matrix.updater_yml }}
           if-no-files-found: error
           retention-days: 14
 
