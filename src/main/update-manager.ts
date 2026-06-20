@@ -66,7 +66,10 @@ export class UpdateManager {
       this.setStatus({ state: 'available', version: info?.version ?? '' })
     })
     autoUpdater.on('download-progress', (p: any) => {
-      this.setStatus({ state: 'downloading', percent: Math.round(p?.percent ?? 0) })
+      // electron-updater 的 download-progress 在某些环境下 percent 为 undefined 或始终 0，
+      // 用 bytesPerSecond 判断是否真的在下载：有速度时按 percent 显示，无速度时显示 0（UI 层会转为「…」）
+      const percent = p?.percent != null ? Math.round(p.percent) : 0
+      this.setStatus({ state: 'downloading', percent })
     })
     autoUpdater.on('update-downloaded', (info: any) => {
       this.setStatus({ state: 'ready', version: info?.version ?? '' })
@@ -129,7 +132,9 @@ export class UpdateManager {
       }
       const url = `https://github.com/${this.repo}/releases/download/v${meta.version}/${meta.assetName}`
       const dlDir = app.getPath('downloads')
-      const path = await this.downloadFile(url, `${dlDir}/${meta.assetName}`)
+      const path = await this.downloadFile(url, `${dlDir}/${meta.assetName}`, (percent) => {
+        this.setStatus({ state: 'downloading', percent })
+      })
       await shell.openPath(path)
       // 打开后回到 available（dmg 已挂载，用户拖拽安装，不走 quitAndInstall）
       this.setStatus({ state: 'available', version: meta.version })
@@ -138,16 +143,27 @@ export class UpdateManager {
     }
   }
 
-  private async downloadFile(url: string, dest: string): Promise<string> {
+  private async downloadFile(url: string, dest: string, onProgress?: (percent: number) => void): Promise<string> {
     const { createWriteStream } = await import('fs')
     const { Readable } = await import('stream')
     const res = await fetch(url)
     if (!res.ok || !res.body) throw new Error(`下载失败 HTTP ${res.status}`)
+    const total = parseInt(res.headers.get('content-length') || '0', 10)
+    let downloaded = 0
     await new Promise<void>((resolve, reject) => {
       const ws = createWriteStream(dest)
-      Readable.fromWeb(res.body as any).pipe(ws)
+      const readable = Readable.fromWeb(res.body as any)
+      readable.on('data', (chunk: Buffer) => {
+        downloaded += chunk.length
+        if (total > 0 && onProgress) {
+          const percent = Math.round((downloaded / total) * 100)
+          onProgress(percent)
+        }
+      })
+      readable.pipe(ws)
       ws.on('finish', () => resolve())
       ws.on('error', reject)
+      readable.on('error', reject)
     })
     return dest
   }
