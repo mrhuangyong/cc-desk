@@ -227,6 +227,8 @@ button {
 /* user 消息右对齐 → 复制钮放左上；assistant 左对齐 → 放右上 */
 .msg-row.is-user .msg-copy { right: 0; }
 .msg-row.is-assistant .msg-copy { left: 0; }
+/* 编辑重发按钮：hover 用户消息行时显示 */
+.msg-row.is-user:hover .edit-resend-btn { opacity: 1 !important; }
 
 /* ===== TipTap 输入编辑器 ===== */
 .ProseMirror {
