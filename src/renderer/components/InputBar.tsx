@@ -261,17 +261,53 @@ export function InputBar() {
           {queue.map((qm, i) => (
             <div key={qm.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', background: 'var(--bg-hover)', borderRadius: 6, fontSize: 12 }}>
               <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>#{i + 1}</span>
-              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)' }}>{qm.prompt || '(空消息)'}</span>
-              <button
-                onClick={() => sendQueuedNow(qm.id)}
-                title="中断当前任务并立即发送"
-                style={{ padding: '2px 8px', fontSize: 11, cursor: 'pointer', border: '1px solid var(--accent)', borderRadius: 4, background: 'var(--accent)', color: 'var(--accent-text)' }}
-              >立即</button>
-              <button
-                onClick={() => dispatch({ type: 'DEQUEUE_MESSAGE', sessionId: state.activeSessionId, queueId: qm.id })}
-                title="取消排队"
-                style={{ padding: '0 6px', fontSize: 13, lineHeight: 1, cursor: 'pointer', border: 'none', background: 'transparent', color: 'var(--text-muted)' }}
-              >×</button>
+              {state.editingQueueId === qm.id ? (
+                <>
+                  <input
+                    type="text"
+                    defaultValue={qm.prompt}
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).blur() }
+                      if (e.key === 'Escape') { dispatch({ type: 'SET_EDITING_QUEUE', queueId: null }) }
+                    }}
+                    style={{ flex: 1, padding: '2px 6px', fontSize: 12, border: '1px solid var(--accent)', borderRadius: 4, background: 'var(--surface-1)', color: 'var(--text)' }}
+                  />
+                  <button
+                    onClick={(e) => {
+                      const val = ((e.currentTarget.parentElement?.querySelector('input')) as HTMLInputElement)?.value?.trim() ?? qm.prompt
+                      if (val) dispatch({ type: 'UPDATE_QUEUED_MESSAGE', sessionId: state.activeSessionId, queueId: qm.id, prompt: val })
+                      dispatch({ type: 'SET_EDITING_QUEUE', queueId: null })
+                    }}
+                    title="保存"
+                    style={{ padding: '2px 8px', fontSize: 11, cursor: 'pointer', border: '1px solid var(--accent)', borderRadius: 4, background: 'var(--accent)', color: 'var(--accent-text)' }}
+                  >保存</button>
+                  <button
+                    onClick={() => dispatch({ type: 'SET_EDITING_QUEUE', queueId: null })}
+                    title="取消"
+                    style={{ padding: '0 6px', fontSize: 13, lineHeight: 1, cursor: 'pointer', border: 'none', background: 'transparent', color: 'var(--text-muted)' }}
+                  >×</button>
+                </>
+              ) : (
+                <>
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)' }}>{qm.prompt || '(空消息)'}</span>
+                  <button
+                    onClick={() => sendQueuedNow(qm.id)}
+                    title="中断当前任务并立即发送"
+                    style={{ padding: '2px 8px', fontSize: 11, cursor: 'pointer', border: '1px solid var(--accent)', borderRadius: 4, background: 'var(--accent)', color: 'var(--accent-text)' }}
+                  >立即</button>
+                  <button
+                    onClick={() => dispatch({ type: 'SET_EDITING_QUEUE', queueId: qm.id })}
+                    title="编辑"
+                    style={{ padding: '2px 8px', fontSize: 11, cursor: 'pointer', border: '1px solid var(--border)', borderRadius: 4, background: 'transparent', color: 'var(--text-muted)' }}
+                  >编辑</button>
+                  <button
+                    onClick={() => dispatch({ type: 'DEQUEUE_MESSAGE', sessionId: state.activeSessionId, queueId: qm.id })}
+                    title="取消排队"
+                    style={{ padding: '0 6px', fontSize: 13, lineHeight: 1, cursor: 'pointer', border: 'none', background: 'transparent', color: 'var(--text-muted)' }}
+                  >×</button>
+                </>
+              )}
             </div>
           ))}
         </div>
