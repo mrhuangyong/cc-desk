@@ -102,7 +102,7 @@ export function InputBar() {
     if (!promptPreview.trim() && state.draft.attachments.length === 0) return
     // 流式中：按 queueMode 处理
     if (isStreaming) {
-      if (state.settings.queueMode === 'interrupt') {
+      if (state.settings.queueMode === 'guide') {
         // 引导模式：立即中断当前任务并发送
         window.api?.claude?.stop(state.activeSessionId)
         setTimeout(() => doSend(), 200)
@@ -178,11 +178,11 @@ export function InputBar() {
   }
 
   const onSendClick = () => {
-    if (isStreaming) {
-      handleStop()
+    if (!canSend) {
+      if (isStreaming) handleStop()
       return
     }
-    if (!canSend) return
+    // 有内容时，无论是否流式都走 handleSend（queue/guide 分支会接管流式情况）
     handleSend()
   }
 
@@ -528,20 +528,20 @@ export function InputBar() {
           </div>
 
           {/* 发送钮三态 */}
-          <Tooltip label={isStreaming ? t('input.stop') : t('input.send')}>
+          <Tooltip label={isStreaming && !canSend ? t('input.stop') : t('input.send')}>
           <button
             onClick={onSendClick}
-            aria-label={isStreaming ? t('input.stop') : t('input.send')}
+            aria-label={isStreaming && !canSend ? t('input.stop') : t('input.send')}
             style={{
               width: 28, height: 28, borderRadius: '50%',
-              background: isStreaming || canSend ? 'var(--accent)' : 'var(--bg-hover)',
-              color: isStreaming || canSend ? 'var(--accent-text)' : 'var(--text-faint)',
-              border: 'none', cursor: isStreaming || canSend ? 'pointer' : 'not-allowed',
+              background: canSend ? 'var(--accent)' : isStreaming ? 'var(--accent)' : 'var(--bg-hover)',
+              color: canSend ? 'var(--accent-text)' : isStreaming ? 'var(--accent-text)' : 'var(--text-faint)',
+              border: 'none', cursor: canSend || isStreaming ? 'pointer' : 'not-allowed',
               padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               fontSize: 12, lineHeight: 1,
             }}
           >
-            {isStreaming ? <Square size={12} /> : <ArrowUp size={14} />}
+            {isStreaming && !canSend ? <Square size={12} /> : <ArrowUp size={14} />}
           </button>
           </Tooltip>
         </div>
