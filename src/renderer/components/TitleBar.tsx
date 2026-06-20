@@ -48,8 +48,9 @@ function UpdateButton() {
   const isMac = navigator.userAgent.includes('Macintosh')
 
   if (s.state === 'downloading') {
+    const percentText = s.percent && s.percent > 0 ? `${s.percent}%` : '…'
     return (
-      <Tooltip label={`下载更新 ${s.percent}%`}>
+      <Tooltip label={`下载更新 ${percentText}`}>
         <button
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 6, height: 24,
@@ -58,7 +59,7 @@ function UpdateButton() {
             fontFamily: 'var(--font-mono)', fontSize: 12, ...noDrag,
           }}
         >
-          <Download size={13} /> {s.percent}%
+          <Download size={13} /> {percentText}
         </button>
       </Tooltip>
     )
