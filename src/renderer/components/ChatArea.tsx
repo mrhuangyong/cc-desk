@@ -188,7 +188,7 @@ export function ChatArea() {
       } else if (data.op === 'assistant_blocks') {
         dispatch({ type: 'STREAM_ASSISTANT_BLOCKS', sessionId: sid, blocks: data.blocks, uuid: data.uuid })
       } else if (data.op === 'tool_result') {
-        dispatch({ type: 'STREAM_TOOL_RESULT', sessionId: sid, toolUseId: data.toolUseId, result: data.result })
+        dispatch({ type: 'STREAM_TOOL_RESULT', sessionId: sid, toolUseId: data.toolUseId, result: data.result, planFilePath: data.planFilePath })
       }
     })
     // 系统通知（状态/权限/压缩/重试/任务/错误等）。localSessionId 随载荷带来，剥离后作为 notice。

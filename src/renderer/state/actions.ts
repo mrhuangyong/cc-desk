@@ -25,7 +25,7 @@ export type Action =
   | { type: 'STREAM_START'; sessionId: string }
   | { type: 'STREAM_DELTA'; sessionId: string; kind: 'text' | 'thinking'; delta: string }
   | { type: 'STREAM_TOOL_USE_START'; sessionId: string; block: Extract<ContentBlock, { type: 'tool_use' }> }
-  | { type: 'STREAM_TOOL_RESULT'; sessionId: string; toolUseId: string; result: ToolResult }
+  | { type: 'STREAM_TOOL_RESULT'; sessionId: string; toolUseId: string; result: ToolResult; planFilePath?: string }
   | { type: 'STREAM_ASSISTANT_BLOCKS'; sessionId: string; blocks: ContentBlock[]; uuid: string }
   | { type: 'STREAM_NOTICE'; sessionId: string; notice: SystemNotice }
   | { type: 'STREAM_ERROR'; sessionId: string; error: string }

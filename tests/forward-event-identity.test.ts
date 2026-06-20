@@ -137,11 +137,11 @@ describe('forwardEvent 能力识别', () => {
     expect(resolved).toBe(true)
   })
 
-  it('ExitPlanMode 不应作为普通 tool_use 卡片渲染（assistant_blocks 过滤）', async () => {
+  it('ExitPlanMode 保留进 assistant_blocks（用 MetaToolCard 渲染，提供持久入口）', async () => {
     const svc = new ClaudeService()
     const { wc, calls } = mockWebContents()
-    // ExitPlanMode 阻塞，但不影响 assistant_blocks 的推送（它在同一个 forwardEvent 调用中同步发出）
-    // 用一个无 plan 内容的 ExitPlanMode（plan 为空时 handleExitPlanMode 仍会弹 dialog，但测试只验证 blocks 过滤）
+    // ExitPlanMode 既阻塞（handleExitPlanMode 弹 dialog），又保留进对话流，
+    // 让 plan 内容可经 MetaToolCard 长期回看（解决 plan 批准后入口丢失）。
     const fwdPromise = (svc as any).forwardEvent({
       type: 'assistant',
       uuid: 'u8', session_id: 's1',
@@ -156,9 +156,11 @@ describe('forwardEvent 能力识别', () => {
 
     const blocks = calls.filter(c => c.channel === 'claude:blocks' && c.data?.op === 'assistant_blocks')
     expect(blocks.length).toBe(1)
-    // 过滤后不再含 ExitPlanMode tool_use
+    // ExitPlanMode 现在保留在 assistant_blocks（渲染端用 MetaToolCard 呈现）
     const toolUses = blocks[0].data.blocks.filter((b: any) => b.type === 'tool_use')
-    expect(toolUses.find((b: any) => b.name === 'ExitPlanMode')).toBeUndefined()
+    const planUse = toolUses.find((b: any) => b.name === 'ExitPlanMode')
+    expect(planUse).toBeDefined()
+    expect(planUse?.input?.plan).toBe('p')
 
     // 清理：取消 dialog 避免 unhandled rejection
     const dialogs = calls.filter(c => c.channel === 'claude:dialog-request')

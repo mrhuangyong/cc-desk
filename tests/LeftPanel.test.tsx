@@ -1,8 +1,10 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { AppProvider } from '../src/renderer/state/store'
+import { useStore } from '../src/renderer/state/store'
 import { LeftPanel } from '../src/renderer/components/LeftPanel'
 import { seedProjects } from './fixtures'
+import type { Project } from '../src/renderer/types'
 
 function renderWithProvider(ui: React.ReactNode) {
   return render(<AppProvider initialProjects={structuredClone(seedProjects)}>{ui}</AppProvider>)
@@ -60,5 +62,49 @@ describe('LeftPanel 顶部新建会话', () => {
     const btn = screen.getByTitle('技能')
     fireEvent.click(btn) // 不报错即通过；实际跳转由 App 视图切换体现
     expect(btn).toBeTruthy()
+  })
+})
+
+describe('LeftPanel 异步加载后默认展开项目会话', () => {
+  // 真实环境：projects 初始为空，挂载后通过 window.api.projects.get() 异步 HYDRATE 注入。
+  // LeftPanel 的 expandedProjects 初始化器只在首次挂载跑一次（那时 projects 还空），
+  // 必须靠 useEffect 把后到的项目补进展开集合，否则加载完成后默认全折叠。
+  let capturedDispatch: React.Dispatch<any> = () => {}
+  function DispatchProbe() { capturedDispatch = useStore().dispatch; return null }
+
+  function buildSnapshot(projects: Project[]) {
+    const sessionIds = projects.flatMap(p => p.sessions.map(s => s.id))
+    return {
+      projects,
+      activeSessionId: sessionIds[0] ?? '',
+      tabsBySession: Object.fromEntries(sessionIds.map(id => [id, []])),
+      activeTabIdBySession: Object.fromEntries(sessionIds.map(id => [id, null])),
+      claudeSessionMap: {},
+      lastSeq: 100,
+    }
+  }
+
+  it('空状态挂载后 HYDRATE 注入会话，项目默认展开（会话可见）', async () => {
+    render(<AppProvider><DispatchProbe /><LeftPanel collapsed={false} onOpenSearch={noop} /></AppProvider>)
+    // 注入前：没有任何会话标题
+    expect(screen.queryByText(/部署到 Vercel/)).toBeNull()
+    // 模拟 HYDRATE：异步注入与生产相同的快照
+    capturedDispatch({ type: 'HYDRATE', snapshot: buildSnapshot(structuredClone(seedProjects)) })
+    // useEffect 跑完后，项目会话应可见（说明默认展开，而非折叠）
+    expect(await screen.findByText(/部署到 Vercel/)).toBeTruthy()
+  })
+
+  it('用户手动折叠的项目，后续 HYDRATE 新增项目时保持折叠不被覆盖', async () => {
+    render(<AppProvider><DispatchProbe /><LeftPanel collapsed={false} onOpenSearch={noop} /></AppProvider>)
+    capturedDispatch({ type: 'HYDRATE', snapshot: buildSnapshot(structuredClone(seedProjects)) })
+    await screen.findByText(/部署到 Vercel/)
+    // 手动折叠 p2
+    fireEvent.click(screen.getByText('个人博客'))
+    expect(screen.queryByText(/部署到 Vercel/)).toBeNull()
+    // 再触发一次 HYDRATE（模拟新增项目/刷新）：p2 应保持折叠
+    capturedDispatch({ type: 'HYDRATE', snapshot: buildSnapshot(structuredClone(seedProjects)) })
+    // 等一帧让状态稳定
+    await new Promise(r => setTimeout(r, 0))
+    expect(screen.queryByText(/部署到 Vercel/)).toBeNull()
   })
 })

@@ -441,7 +441,14 @@ export function reducer(state: AppState, action: Action): AppState {
       const prev = state.streamingBySession[action.sessionId] || { blocks: [], notices: [] }
       const blocks = prev.blocks.map(b =>
         b.type === 'tool_use' && b.id === action.toolUseId
-          ? { ...b, result: action.result, status: action.result.isError ? 'error' as const : 'completed' as const }
+          ? {
+              ...b, result: action.result,
+              // ExitPlanMode 的 tool_result 是 SDK 退出 plan 模式时回填的占位结果
+              // （is_error: true, "Exit plan mode?"），不代表计划失败——用户授权后必经此路。
+              // 视作完成，避免卡片显示 error 红点误导用户以为计划失败。
+              status: action.result.isError && (b as any).name !== 'ExitPlanMode' ? 'error' as const : 'completed' as const,
+              ...(action.planFilePath ? { planFilePath: action.planFilePath } : {}),
+            }
           : b
       )
       const next = { ...state, streamingBySession: { ...state.streamingBySession, [action.sessionId]: { ...prev, blocks } } }
@@ -490,9 +497,9 @@ export function reducer(state: AppState, action: Action): AppState {
         if (nb.type === 'tool_use') {
           const idx = merged.findIndex(b => b.type === 'tool_use' && b.id === nb.id)
           if (idx >= 0) {
-            // 校正 input，但不降级已有的 status/result（review #3）
+            // 校正 input，但不降级已有的 status/result/planFilePath（review #3）
             const old = merged[idx] as any
-            merged[idx] = { ...nb, input: nb.input ?? old.input, status: old.status !== 'running' ? old.status : nb.status, result: old.result } as ContentBlock
+            merged[idx] = { ...nb, input: nb.input ?? old.input, status: old.status !== 'running' ? old.status : nb.status, result: old.result, ...(old.planFilePath ? { planFilePath: old.planFilePath } : {}) } as ContentBlock
           } else {
             merged.push(nb)
           }
@@ -804,13 +811,26 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'APPEND_SUBAGENT_OUTPUT': {
       const bySession = state.subagentOutputBySession[action.sessionId] ?? {}
       const existing = bySession[action.toolUseId] ?? []
+      let merged: import('../types').ContentBlock[]
+      const blk = action.block
+      if (blk.type === 'tool_result') {
+        // 工具结果回填到已存在的 tool_use（匹配 toolUseId），让抽屉里的工具卡显示结果。
+        // 与主流 STREAM_TOOL_RESULT 的合并逻辑一致。
+        merged = existing.map(b =>
+          b.type === 'tool_use' && b.id === blk.toolUseId
+            ? { ...b, result: { content: blk.content, isError: blk.isError }, status: blk.isError ? 'error' as const : 'completed' as const }
+            : b
+        )
+      } else {
+        merged = [...existing, blk]
+      }
       return {
         ...state,
         subagentOutputBySession: {
           ...state.subagentOutputBySession,
           [action.sessionId]: {
             ...bySession,
-            [action.toolUseId]: [...existing, action.block],
+            [action.toolUseId]: merged,
           },
         },
       }
