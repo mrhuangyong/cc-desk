@@ -26,6 +26,37 @@ const topIconBtn: React.CSSProperties = { padding: '4px 8px', fontSize: 14, curs
 const GROUP_LABELS: Record<string, string> = {
   tool: '工具', session: '会话', task: '任务', permission: '权限', system: '系统',
 }
+
+// 各 hook 事件的中文说明（帮助用户理解每个事件的触发时机）
+const HOOK_EVENT_DESC: Record<string, string> = {
+  PreToolUse: '工具执行前触发，可拦截或修改工具调用',
+  PostToolUse: '工具执行成功后触发',
+  PostToolUseFailure: '工具执行失败后触发',
+  UserPromptSubmit: '用户提交消息时触发，可注入额外上下文',
+  SessionStart: '会话启动时触发',
+  SessionEnd: '会话结束时触发',
+  PreCompact: '上下文压缩前触发',
+  PostCompact: '上下文压缩后触发',
+  Stop: 'Claude 完成回复停止时触发',
+  StopFailure: 'Claude 异常停止时触发',
+  SubagentStart: '子代理启动时触发',
+  SubagentStop: '子代理停止时触发',
+  TaskCreated: '创建任务时触发',
+  TaskCompleted: '任务完成时触发',
+  PermissionRequest: '请求工具权限时触发',
+  PermissionDenied: '权限被拒绝时触发',
+  Elicitation: '需要用户提供输入时触发',
+  ElicitationResult: '用户输入返回后触发',
+  Notification: 'Claude 发出通知时触发',
+  Setup: '项目初始化设置时触发',
+  TeammateIdle: '团队成员空闲时触发',
+  ConfigChange: '配置变更时触发',
+  WorktreeCreate: '创建工作树时触发',
+  WorktreeRemove: '移除工作树时触发',
+  InstructionsLoaded: '指令文件加载完成时触发',
+  CwdChanged: '工作目录变更时触发',
+  FileChanged: '被监控的文件发生变化时触发',
+}
 const GROUP_ORDER = ['tool', 'session', 'task', 'permission', 'system']
 
 // 27 个 hook 事件名 + 分组映射（与后端 claude-config.ts 同步，避免在 renderer 引入 Node path 模块）
@@ -175,7 +206,12 @@ export function HooksSettings() {
                     const isPluginOnly = ev.isReadonly
                     return (
                       <div key={ev.eventName} onClick={() => setSelectedEvent(ev.eventName)} style={eventRowStyle(selectedEvent === ev.eventName)}>
-                        <span style={{ fontSize: 12, fontWeight: isPluginOnly ? 400 : 500, opacity: isPluginOnly ? 0.7 : 1 }}>{ev.eventName}</span>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <span style={{ fontSize: 12, fontWeight: isPluginOnly ? 400 : 500, opacity: isPluginOnly ? 0.7 : 1 }}>{ev.eventName}</span>
+                          <div style={{ fontSize: 10, color: selectedEvent === ev.eventName ? 'var(--accent-text)' : 'var(--text-muted)', opacity: 0.8, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {HOOK_EVENT_DESC[ev.eventName] || ''}
+                          </div>
+                        </div>
                         <span style={badgeStyle}>{count}</span>
                       </div>
                     )
@@ -191,7 +227,8 @@ export function HooksSettings() {
             )}
             {selectedDetail && (
               <>
-                <div style={{ marginBottom: 10, fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{selectedDetail.eventName}</div>
+                <div style={{ marginBottom: 2, fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{selectedDetail.eventName}</div>
+                <div style={{ marginBottom: 10, fontSize: 11, color: 'var(--text-muted)' }}>{HOOK_EVENT_DESC[selectedDetail.eventName] || ''}</div>
                 <HookMatcherList
                   eventName={selectedEvent!}
                   matchers={customMatchers}
