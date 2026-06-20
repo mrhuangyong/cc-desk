@@ -27,8 +27,21 @@ function parseMacYml(yml: string): MacMeta | null {
   const vMatch = yml.match(/^version:\s*(.+)$/m)
   if (!vMatch) return null
   const version = vMatch[1].trim()
-  const dmgMatch = yml.match(/url:\s*([^\s]+\.dmg)\b/)
-  const assetName = dmgMatch ? dmgMatch[1].trim() : ''
+
+  // 收集所有 dmg url（electron-builder 同时构建 arm64 + x64 时 latest-mac.yml 含多条）
+  const dmgUrls: string[] = []
+  const dmgRe = /url:\s*([^\s]+\.dmg)\b/g
+  let m: RegExpExecArray | null
+  while ((m = dmgRe.exec(yml)) !== null) {
+    dmgUrls.push(m[1].trim())
+  }
+
+  // 根据当前 CPU 架构选择对应 dmg
+  // electron-builder 配置 artifactName: "${productName}-${version}-${arch}.${ext}"
+  // 生成的 dmg 文件名如 cc-desk-1.9.3-x64.dmg / cc-desk-1.9.3-arm64.dmg
+  const archSuffix = process.arch === 'arm64' ? '-arm64' : '-x64'
+  const assetName = dmgUrls.find(u => u.includes(archSuffix)) || dmgUrls[0] || ''
+
   return { version, assetName }
 }
 
