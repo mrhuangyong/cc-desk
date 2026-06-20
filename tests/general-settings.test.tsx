@@ -107,7 +107,7 @@ describe('GeneralSettings', () => {
   it('队列模式 select → persist({queueMode})', () => {
     render(<GeneralSettings />)
     const queueSelect = screen.getByDisplayValue('队列') as HTMLSelectElement
-    fireEvent.change(queueSelect, { target: { value: 'interrupt' } })
-    expect(dispatch).toHaveBeenCalledWith({ type: 'SET_SETTINGS', settings: { queueMode: 'interrupt' } })
+    fireEvent.change(queueSelect, { target: { value: 'guide' } })
+    expect(dispatch).toHaveBeenCalledWith({ type: 'SET_SETTINGS', settings: { queueMode: 'guide' } })
   })
 })
