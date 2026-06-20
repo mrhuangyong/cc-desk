@@ -38,6 +38,7 @@ export interface McpServer {
   command: string
   args: string
   env: string
+  headers: string
   enabled: boolean
   scope: '用户' | '工作区'
 }
@@ -135,12 +136,12 @@ const defaultSkills: SkillItem[] = [
 ]
 
 const defaultMcpServers: McpServer[] = [
-  { id: 'playwright', name: 'Playwright', transport: 'stdio', command: 'npx', args: '-y @playwright/mcp@latest', env: '', enabled: true, scope: '用户' },
-  { id: 'web-reader', name: 'web-reader', transport: 'http', command: 'https://open.bigmodel.cn/api/mcp/web_reader/mcp', args: '', env: '', enabled: true, scope: '用户' },
-  { id: 'web-search-prime', name: 'web-search-prime', transport: 'http', command: 'https://open.bigmodel.cn/api/mcp/web_search_prime/mcp', args: '', env: '', enabled: true, scope: '用户' },
-  { id: 'zai-mcp-server', name: 'zai-mcp-server', transport: 'stdio', command: 'npx', args: '-y @z_ai/mcp-server', env: '', enabled: true, scope: '用户' },
-  { id: 'zread', name: 'zread', transport: 'http', command: 'https://open.bigmodel.cn/api/mcp/zread/mcp', args: '', env: '', enabled: true, scope: '用户' },
-  { id: 'codegraph', name: 'codegraph', transport: 'stdio', command: 'codegraph', args: 'serve --mcp', env: '', enabled: true, scope: '用户' },
+  { id: 'playwright', name: 'Playwright', transport: 'stdio', command: 'npx', args: '-y @playwright/mcp@latest', env: '', headers: '', enabled: true, scope: '用户' },
+  { id: 'web-reader', name: 'web-reader', transport: 'http', command: 'https://open.bigmodel.cn/api/mcp/web_reader/mcp', args: '', env: '', headers: '', enabled: true, scope: '用户' },
+  { id: 'web-search-prime', name: 'web-search-prime', transport: 'http', command: 'https://open.bigmodel.cn/api/mcp/web_search_prime/mcp', args: '', env: '', headers: '', enabled: true, scope: '用户' },
+  { id: 'zai-mcp-server', name: 'zai-mcp-server', transport: 'stdio', command: 'npx', args: '-y @z_ai/mcp-server', env: '', headers: '', enabled: true, scope: '用户' },
+  { id: 'zread', name: 'zread', transport: 'http', command: 'https://open.bigmodel.cn/api/mcp/zread/mcp', args: '', env: '', headers: '', enabled: true, scope: '用户' },
+  { id: 'codegraph', name: 'codegraph', transport: 'stdio', command: 'codegraph', args: 'serve --mcp', env: '', headers: '', enabled: true, scope: '用户' },
 ]
 
 const defaultPlugins: Plugin[] = [

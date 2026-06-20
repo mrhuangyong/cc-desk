@@ -48,13 +48,32 @@ contextBridge.exposeInMainWorld('api', {
     plugins: {
       get: () => ipcRenderer.invoke('cc:plugins:get'),
       setEnabled: (id: string, enabled: boolean) => ipcRenderer.invoke('cc:plugin:set-enabled', id, enabled),
+      install: (pluginId: string) => ipcRenderer.invoke('cc:plugin:install', pluginId),
+      uninstall: (pluginId: string) => ipcRenderer.invoke('cc:plugin:uninstall', pluginId),
+    },
+    marketplaces: {
+      get: () => ipcRenderer.invoke('cc:marketplace:get'),
+      getPlugins: (name: string) => ipcRenderer.invoke('cc:marketplace:get-plugins', name),
+      search: (query: string) => ipcRenderer.invoke('cc:marketplace:search', query),
+      add: (source: string, options?: any) => ipcRenderer.invoke('cc:marketplace:add', source, options),
+      remove: (name: string) => ipcRenderer.invoke('cc:marketplace:remove', name),
+      refresh: (name: string) => ipcRenderer.invoke('cc:marketplace:refresh', name),
+      refreshAll: () => ipcRenderer.invoke('cc:marketplace:refresh-all'),
+      setAutoUpdate: (name: string, enabled: boolean) => ipcRenderer.invoke('cc:marketplace:set-auto-update', name, enabled),
     },
     skills: {
       get: () => ipcRenderer.invoke('cc:skills:get'),
       getFile: (id: string) => ipcRenderer.invoke('cc:skill:get', id),
       saveFile: (id: string, content: string) => ipcRenderer.invoke('cc:skill:save', id, content),
+      setEnabled: (name: string, enabled: boolean) => ipcRenderer.invoke('cc:skill:set-enabled', name, enabled),
     },
-    commands: { get: () => ipcRenderer.invoke('cc:commands:get') },
+    commands: {
+      get: () => ipcRenderer.invoke('cc:commands:get'),
+      create: (name: string, description: string) => ipcRenderer.invoke('cc:command:create', name, description),
+      getFile: (source: string, name: string) => ipcRenderer.invoke('cc:command:get-file', source, name),
+      saveFile: (name: string, content: string) => ipcRenderer.invoke('cc:command:save', name, content),
+      delete: (name: string) => ipcRenderer.invoke('cc:command:delete', name),
+    },
     hooks: {
       get: () => ipcRenderer.invoke('cc:hooks:get'),
       setEnabled: (name: string, enabled: boolean) => ipcRenderer.invoke('cc:hook:set-enabled', name, enabled),

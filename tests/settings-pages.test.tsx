@@ -100,7 +100,7 @@ describe('SkillsSettings', () => {
 
   beforeEach(() => {
     skillsGet.mockClear()
-    setApi({ cc: { skills: { get: skillsGet } } })
+    setApi({ cc: { skills: { get: skillsGet, setEnabled: vi.fn().mockResolvedValue(undefined) } } })
   })
 
   it('加载技能列表并按名称/描述搜索', async () => {
@@ -124,7 +124,7 @@ describe('SkillsSettings', () => {
     ])
 
     render(<SkillsSettings />)
-    const sw = await screen.findByRole('switch', { name: 'electron 状态' })
+    const sw = await screen.findByRole('switch', { name: '禁用 electron' })
     fireEvent.click(sw)
 
     await waitFor(() => expect(skillsGet).toHaveBeenCalledTimes(2))
@@ -134,11 +134,23 @@ describe('SkillsSettings', () => {
 describe('PluginSettings', () => {
   const pluginsGet = vi.fn()
   const setEnabled = vi.fn()
+  const installFn = vi.fn()
+  const uninstallFn = vi.fn()
+  const mktGet = vi.fn()
+  const mktGetPlugins = vi.fn()
+  const mktSearch = vi.fn()
+  const mktAdd = vi.fn()
+  const mktRemove = vi.fn()
+  const mktRefresh = vi.fn()
+  const mktRefreshAll = vi.fn()
+  const mktSetAutoUpdate = vi.fn()
 
   beforeEach(() => {
     pluginsGet.mockClear()
     setEnabled.mockClear()
-    setApi({ cc: { plugins: { get: pluginsGet, setEnabled } } })
+    mktGet.mockResolvedValue([])
+    mktSearch.mockResolvedValue([])
+    setApi({ cc: { plugins: { get: pluginsGet, setEnabled, install: installFn, uninstall: uninstallFn }, marketplaces: { get: mktGet, getPlugins: mktGetPlugins, search: mktSearch, add: mktAdd, remove: mktRemove, refresh: mktRefresh, refreshAll: mktRefreshAll, setAutoUpdate: mktSetAutoUpdate } } })
   })
 
   it('插件搜索过滤并显示统计', async () => {
@@ -151,7 +163,7 @@ describe('PluginSettings', () => {
     expect(await screen.findByText('superpowers')).toBeTruthy()
     expect(screen.getByText('2 技能 · 3 命令 · 1 MCP')).toBeTruthy()
 
-    fireEvent.change(screen.getByPlaceholderText('搜索插件...'), { target: { value: 'docx' } })
+    fireEvent.change(screen.getByPlaceholderText('搜索已安装插件...'), { target: { value: 'docx' } })
     expect(screen.queryByText('superpowers')).toBeNull()
     expect(screen.getByText('documents')).toBeTruthy()
   })
@@ -172,26 +184,30 @@ describe('PluginSettings', () => {
 
 describe('CommandSettings', () => {
   const commandsGet = vi.fn()
+  const cmdCreate = vi.fn()
+  const cmdGetFile = vi.fn()
+  const cmdSaveFile = vi.fn()
+  const cmdDelete = vi.fn()
 
   beforeEach(() => {
     commandsGet.mockClear()
-    setApi({ cc: { commands: { get: commandsGet } } })
+    cmdGetFile.mockResolvedValue('')
+    setApi({ cc: { commands: { get: commandsGet, create: cmdCreate, getFile: cmdGetFile, saveFile: cmdSaveFile, delete: cmdDelete } } })
   })
 
-  it('命令页加载命令并保持只读禁用', async () => {
+  it('自定义 Tab 加载命令并支持搜索', async () => {
     commandsGet.mockResolvedValue([
-      { id: 'c1', name: '/review', desc: '审查代码', enabled: true },
-      { id: 'c2', name: '/compact', desc: '压缩上下文', enabled: false },
+      { id: 'user:review', name: '/review', desc: '审查代码', enabled: true, source: 'user' },
+      { id: 'user:deploy', name: '/deploy', desc: '部署应用', enabled: true, source: 'user' },
     ])
 
     render(<CommandSettings />)
     expect(await screen.findByText('/review')).toBeTruthy()
-    expect(screen.getByText('压缩上下文')).toBeTruthy()
-    expect(screen.getByRole('checkbox', { name: '启用 /review' })).toBeDisabled()
+    expect(screen.getByText('部署应用')).toBeTruthy()
 
-    fireEvent.change(screen.getByPlaceholderText('搜索命令…'), { target: { value: 'compact' } })
+    fireEvent.change(screen.getByPlaceholderText('搜索命令...'), { target: { value: 'deploy' } })
     expect(screen.queryByText('/review')).toBeNull()
-    expect(screen.getByText('/compact')).toBeTruthy()
+    expect(screen.getByText('/deploy')).toBeTruthy()
   })
 })
 
@@ -225,8 +241,8 @@ describe('McpSettings', () => {
   const mcpSave = vi.fn()
 
   const servers = [
-    { id: 'playwright', name: 'playwright', transport: 'stdio', command: 'npx', args: '-y @playwright/mcp', env: 'TOKEN=1', enabled: true, scope: '用户' },
-    { id: 'reader', name: 'reader', transport: 'http', command: 'https://example.com/mcp', args: '', env: '', enabled: true, scope: '用户' },
+    { id: 'playwright', name: 'playwright', transport: 'stdio', command: 'npx', args: '-y @playwright/mcp', env: 'TOKEN=1', headers: '', enabled: true, scope: '用户' },
+    { id: 'reader', name: 'reader', transport: 'http', command: 'https://example.com/mcp', args: '', env: '', headers: '', enabled: true, scope: '用户' },
   ]
 
   beforeEach(() => {
@@ -322,16 +338,18 @@ describe('McpSettings', () => {
 
     fireEvent.change(screen.getByDisplayValue('playwright'), { target: { value: 'local-playwright' } })
     fireEvent.change(screen.getByDisplayValue('用户'), { target: { value: '工作区' } })
-    fireEvent.change(screen.getByDisplayValue('stdio（本地命令）'), { target: { value: 'http' } })
-    fireEvent.change(screen.getByPlaceholderText('https://...'), { target: { value: 'https://mcp.example.com' } })
+    // 保持 stdio，测命令/参数/环境变量（http headers 另行覆盖）
+    fireEvent.change(screen.getByPlaceholderText('npx'), { target: { value: 'node' } })
+    fireEvent.change(screen.getByPlaceholderText(/-y @playwright/), { target: { value: 'server.js' } })
     fireEvent.click(screen.getByText(/环境变量/))
     fireEvent.change(screen.getByPlaceholderText(/KEY=VALUE/), { target: { value: 'A=B' } })
     fireEvent.click(screen.getByText('保存'))
 
     expect(lastSave()[0]).toMatchObject({
       name: 'local-playwright',
-      transport: 'http',
-      command: 'https://mcp.example.com',
+      transport: 'stdio',
+      command: 'node',
+      args: 'server.js',
       env: 'A=B',
       scope: '工作区',
     })
@@ -342,24 +360,64 @@ describe('McpSettings', () => {
     await loaded()
     const row = screen.getByText('reader').closest('div')!.parentElement!
     fireEvent.click(within(row).getByLabelText('编辑'))
-    fireEvent.click(screen.getByText('JSON'))
+    // 弹窗 JSON tab（与列表页视图按钮同名，取弹窗内最后一个）
+    fireEvent.click(screen.getAllByText('JSON').pop()!)
 
     const textarea = screen.getByDisplayValue(new RegExp('https://example\\.com/mcp'))
     fireEvent.change(textarea, {
       target: {
-        value: JSON.stringify({ name: 'json-reader', transport: 'http', command: 'https://new.example/mcp', args: '', env: '', scope: '用户' }),
+        value: JSON.stringify({ mcpServers: { 'json-reader': { type: 'http', url: 'https://new.example/mcp' } } }),
       },
     })
     fireEvent.click(screen.getByText('保存'))
-    expect(lastSave()[1]).toMatchObject({ name: 'json-reader', command: 'https://new.example/mcp' })
+    expect(lastSave()[1]).toMatchObject({ name: 'json-reader', transport: 'http', command: 'https://new.example/mcp' })
 
     mcpSave.mockClear()
     const row2 = screen.getByText('json-reader').closest('div')!.parentElement!
     fireEvent.click(within(row2).getByLabelText('编辑'))
-    fireEvent.click(screen.getByText('JSON'))
+    fireEvent.click(screen.getAllByText('JSON').pop()!)
     fireEvent.change(screen.getByDisplayValue(new RegExp('https://new\\.example/mcp')), { target: { value: '{bad json' } })
     fireEvent.click(screen.getByText('保存'))
     expect(mcpSave).not.toHaveBeenCalled()
+  })
+
+  it('JSON 视图展示标准格式并可整段保存', async () => {
+    render(<McpSettings />)
+    await loaded()
+    // 切到 JSON 视图
+    fireEvent.click(screen.getByText('JSON'))
+    const ta = screen.getByRole('textbox')
+    // 标准格式含 mcpServers 外层 + args 数组 + env 对象
+    const text = (ta as HTMLTextAreaElement).value
+    expect(text).toContain('mcpServers')
+    expect(text).toContain('"args"')
+    expect(text).toContain('"env"')
+
+    // 整段替换为标准配置并保存
+    fireEvent.change(ta, {
+      target: {
+        value: JSON.stringify({
+          mcpServers: {
+            'new-srv': { command: 'node', args: ['app.js'], env: { K: 'V' } },
+          },
+        }),
+      },
+    })
+    fireEvent.click(screen.getByText('保存'))
+    expect(mcpSave).toHaveBeenCalled()
+    const saved = mcpSave.mock.calls[mcpSave.mock.calls.length - 1][0]
+    expect(saved[0]).toMatchObject({ name: 'new-srv', transport: 'stdio', command: 'node', args: 'app.js', env: 'K=V' })
+  })
+
+  it('JSON 视图非法 JSON 不保存并提示', async () => {
+    render(<McpSettings />)
+    await loaded()
+    fireEvent.click(screen.getByText('JSON'))
+    const ta = screen.getByRole('textbox')
+    fireEvent.change(ta, { target: { value: '{bad json' } })
+    fireEvent.click(screen.getByText('保存'))
+    expect(mcpSave).not.toHaveBeenCalled()
+    expect(screen.getByText(/JSON 格式错误/)).toBeTruthy()
   })
 })
 
@@ -371,13 +429,13 @@ describe('SettingsPage routing', () => {
       activeSettingsSection: 'commands',
       projects: [],
     }
-    setApi({ cc: { commands: { get: vi.fn().mockResolvedValue([]) } } })
+    setApi({ cc: { commands: { get: vi.fn().mockResolvedValue([]), create: vi.fn(), getFile: vi.fn(), saveFile: vi.fn(), delete: vi.fn() } } })
   })
 
   it('根据 activeSettingsSection 渲染对应设置子页', async () => {
     render(<SettingsPage />)
-    expect(await screen.findByRole('heading', { name: '命令' })).toBeTruthy()
-    expect(screen.getByPlaceholderText('搜索命令…')).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: '命令管理' })).toBeTruthy()
+    expect(screen.getByPlaceholderText('搜索命令...')).toBeTruthy()
   })
 
   it('返回工作区按钮 dispatch SET_VIEW', () => {
