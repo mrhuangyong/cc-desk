@@ -22,6 +22,8 @@ ensureClaudeConfigDir()
 // 首次启动时把 ~/.claude 的插件/技能/设置一次性迁移到隔离目录（幂等，已迁移则跳过）。
 // 让设置页与 SDK 运行时在隔离目录也能看到原有插件，cc-desk 完全自洽不再依赖 ~/.claude。
 void migrateFromClaude()
+// 应用启动后异步刷新标记了 autoUpdate 的插件仓库（不阻塞窗口加载，失败静默跳过）。
+mkt.refreshAutoUpdateMarketplaces().catch(() => {})
 
 const isDev = !app.isPackaged
 
