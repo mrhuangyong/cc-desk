@@ -58,6 +58,17 @@ export function buildSlashExtension(getItems: () => SlashMenuItem[], onBuiltinRu
             emptyHint: '无可用命令/技能',
             groupKey: (item) => item.kind,
             groupLabel: (key) => key === 'builtin' ? '内置' : key === 'command' ? '命令' : '技能',
+            // Tab = 补全命令名到输入框（纯文本），三种 kind 一视同仁：
+            // 不执行 builtinAction、不插 skillChip，仅把名字（含 /）写进去并留个空格，
+            // 用户可继续编辑或按发送键。Enter/点击才执行（builtin）或插入（command/skill）。
+            onTabComplete: (item, view, range) => {
+              const tr = view.state.tr
+                .deleteRange(range.from, range.to)
+                .insertText(item.name + ' ', range.from)
+              view.dispatch(tr)
+              view.focus()
+              return true
+            },
           }),
         },
       }

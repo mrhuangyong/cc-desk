@@ -54,6 +54,10 @@ export function SuggestionMenu<T>({
       <div
         key={`item-${i}`}
         ref={el => { itemRefs.current[i] = el }}
+        // 浮层经 Portal 挂在 body，点选项时若不禁止 mousedown 默认行为，
+        // 焦点会从编辑器移走 → suggestion 检测失焦触发 onExit 把 command 置空，
+        // 随后的 click 里 onSelectIdx 的 `if (command && items[i])` 判空失败，命令填不进去。
+        onMouseDown={(e) => e.preventDefault()}
         onMouseEnter={() => onHover(i)}
         onClick={() => onSelectIdx(i)}
         style={{
