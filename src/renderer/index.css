@@ -119,7 +119,7 @@ button {
 * { scrollbar-width: none; } /* Firefox 兜底（防御性，非 Chromium 环境生效） */
 
 /* 对话内容最大宽度：宽窗口下居中收窄，避免横向过开；窄窗口自适应 */
-:root { --chat-max-width: 800px; }
+:root { --chat-max-width: 960px; }
 
 /* ===== Codex 深色主题 ===== */
 [data-theme='codex-dark'] {

@@ -97,6 +97,15 @@ export function App() {
     return z === 'small' ? 0.85 : z === 'large' ? 1.2 : 1
   })()
 
+  // 对话宽度：按 chatWidth 档位动态写入 CSS 变量，覆盖 index.css 的 :root 默认值
+  const chatWidthPx = (() => {
+    const w = state.settings.chatWidth
+    return w === 'compact' ? 760 : w === 'standard' ? 880 : w === 'xwide' ? 1080 : 960
+  })()
+  useEffect(() => {
+    document.documentElement.style.setProperty('--chat-max-width', `${chatWidthPx}px`)
+  }, [chatWidthPx])
+
   // 工作区持久化的运行时状态：保存防抖定时器 + 是否已完成首次加载的标志
   const saveTimer = useRef<number | null>(null)
   const hydratedRef = useRef(false)
