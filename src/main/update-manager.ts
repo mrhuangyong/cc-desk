@@ -119,6 +119,8 @@ export class UpdateManager {
   }
 
   async downloadDmgAndOpen(): Promise<void> {
+    // 进入下载态给 UI 反馈（mac 下载 dmg 可能持续数十秒~几分钟）
+    this.setStatus({ state: 'downloading', percent: 0 })
     try {
       const meta = await this.fetchMacMeta()
       if (!meta || !meta.assetName) {
@@ -129,6 +131,8 @@ export class UpdateManager {
       const dlDir = app.getPath('downloads')
       const path = await this.downloadFile(url, `${dlDir}/${meta.assetName}`)
       await shell.openPath(path)
+      // 打开后回到 available（dmg 已挂载，用户拖拽安装，不走 quitAndInstall）
+      this.setStatus({ state: 'available', version: meta.version })
     } catch (e: any) {
       this.setStatus({ state: 'error', message: String(e?.message ?? e) })
     }

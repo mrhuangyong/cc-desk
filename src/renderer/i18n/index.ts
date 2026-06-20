@@ -61,7 +61,6 @@ const dict: Record<Lang, Record<string, string>> = {
     'about.retry': '重试',
     'about.upToDate': '已是最新版本',
     'update.button': 'Update',
-    'update.download': '下载更新',
     // 模型设置（多供应商）
     'model.title': '模型设置',
     'model.desc': '管理自定义模型供应商，配置后可在聊天时选择使用。',
@@ -132,7 +131,6 @@ const dict: Record<Lang, Record<string, string>> = {
     'about.retry': 'Retry',
     'about.upToDate': 'Up to date',
     'update.button': 'Update',
-    'update.download': 'Download update',
     // 模型设置（多供应商）
     'model.title': 'Model settings',
     'model.desc': 'Manage custom model providers; pick one when chatting.',

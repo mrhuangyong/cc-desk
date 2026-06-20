@@ -22,7 +22,6 @@ function GhostButton({ children, title, onClick, ariaLabel, active }: {
     <Tooltip label={title}>
       <button
         onClick={onClick}
-        title={title}
         aria-label={ariaLabel ?? title}
         style={{
           width: 26, height: 26, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -42,6 +41,7 @@ function GhostButton({ children, title, onClick, ariaLabel, active }: {
 // idle/checking/error 不渲染；available 蓝灰；downloading 显示进度；ready 绿色。
 function UpdateButton() {
   const { state } = useStore()
+  const { t } = useI18n()
   const s = state.updateStatus
   if (s.state === 'idle' || s.state === 'checking' || s.state === 'error') return null
 
@@ -98,7 +98,7 @@ function UpdateButton() {
           fontFamily: 'var(--font-mono)', fontSize: 12, ...noDrag,
         }}
       >
-        Update
+        {t('update.button')}
       </button>
     </Tooltip>
   )
