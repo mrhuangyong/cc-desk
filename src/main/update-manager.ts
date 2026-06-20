@@ -35,6 +35,7 @@ function parseMacYml(yml: string): MacMeta | null {
 export class UpdateManager {
   private status: UpdateStatus = { state: 'idle' }
   private timer: NodeJS.Timeout | null = null
+  private startupTimer: NodeJS.Timeout | null = null
   private emit: (s: UpdateStatus) => void = () => {}
   private readonly repo: string
 
@@ -153,11 +154,12 @@ export class UpdateManager {
   }
 
   startAutoCheck(): void {
-    setTimeout(() => this.checkNow(), STARTUP_DELAY)
+    this.startupTimer = setTimeout(() => this.checkNow(), STARTUP_DELAY)
     this.timer = setInterval(() => this.checkNow(), CHECK_INTERVAL)
   }
 
   dispose(): void {
+    if (this.startupTimer) { clearTimeout(this.startupTimer); this.startupTimer = null }
     if (this.timer) {
       clearInterval(this.timer)
       this.timer = null
