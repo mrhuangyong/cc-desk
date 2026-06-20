@@ -87,3 +87,4 @@ export type Action =
   | { type: 'ADD_SESSION_DIR'; sessionId: string; dir: string }
   | { type: 'SHOW_COST'; sessionId: string; text: string }
   | { type: 'COMPACT_DONE'; sessionId: string; summary: string; keepRecent: number }
+  | { type: 'UPDATE_STATUS'; status: import('../types').UpdateStatus }

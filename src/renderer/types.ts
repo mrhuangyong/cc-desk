@@ -164,7 +164,16 @@ export interface FileNode {
 // 设置子页标识
 export type SettingsSection =
   | 'general' | 'code-preview' | 'model' | 'memory' | 'skills'
-  | 'mcp' | 'plugins' | 'commands' | 'hooks' | 'archived'
+  | 'mcp' | 'plugins' | 'commands' | 'hooks' | 'archived' | 'about'
+
+// 应用更新状态机（全局单例，非按 session 分片）
+export type UpdateStatus =
+  | { state: 'idle' }
+  | { state: 'checking' }
+  | { state: 'available'; version: string }
+  | { state: 'downloading'; percent: number }
+  | { state: 'ready'; version: string }
+  | { state: 'error'; message: string }
 
 // 顶层视图
 export type AppView = 'workspace' | 'settings'
