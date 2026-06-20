@@ -81,6 +81,7 @@
     ],
     "mac": {
       "icon": "build/icons/icon.icns",
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
       "target": [
         {
           "target": "dmg",
