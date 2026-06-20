@@ -66,3 +66,50 @@ describe('技能文件读写', () => {
     expect(content).toBe('')
   })
 })
+
+describe('技能启停（disabledSkills 黑名单）', () => {
+  let origDir: string | undefined
+  beforeEach(() => { origDir = process.env.CLAUDE_CONFIG_DIR })
+  afterEach(() => {
+    if (origDir === undefined) delete process.env.CLAUDE_CONFIG_DIR
+    else process.env.CLAUDE_CONFIG_DIR = origDir
+    vi.resetModules()
+  })
+
+  it('getSkills：未在黑名单的技能 enabled=true', async () => {
+    const { mod, fakeDir } = await withFakeConfigDir()
+    const skillDir = join(fakeDir, 'skills', 'on-skill')
+    await mkdir(skillDir, { recursive: true })
+    await writeFile(join(skillDir, 'SKILL.md'), '---\nname: on-skill\ndescription: 开\n---\n正文\n', 'utf-8')
+
+    const list = await mod.getSkills()
+    const s = list.find(x => x.name === 'on-skill')!
+    expect(s.enabled).toBe(true)
+  })
+
+  it('setSkillEnabled(name,false) 加入黑名单后 getSkills 标记 enabled=false', async () => {
+    const { mod, fakeDir } = await withFakeConfigDir()
+    const skillDir = join(fakeDir, 'skills', 'off-skill')
+    await mkdir(skillDir, { recursive: true })
+    await writeFile(join(skillDir, 'SKILL.md'), '---\nname: off-skill\ndescription: 关\n---\n正文\n', 'utf-8')
+
+    await mod.setSkillEnabled('off-skill', false)
+    const list = await mod.getSkills()
+    const s = list.find(x => x.name === 'off-skill')!
+    expect(s.enabled).toBe(false)
+
+    // 落盘到 settings.json 的 disabledSkills
+    const settings = JSON.parse(await readFile(join(fakeDir, 'settings.json'), 'utf-8'))
+    expect(settings.disabledSkills).toContain('off-skill')
+  })
+
+  it('setSkillEnabled(name,true) 从黑名单移除', async () => {
+    const { mod } = await withFakeConfigDir()
+    await mod.setSkillEnabled('toggle-skill', false)
+    await mod.setSkillEnabled('toggle-skill', true)
+    const list = await mod.getSkills()
+    // 技能文件不存在不影响黑名单状态判断；这里只验证黑名单已清空
+    const settings = JSON.parse(await readFile(join(process.env.CLAUDE_CONFIG_DIR!, 'settings.json'), 'utf-8'))
+    expect(settings.disabledSkills).not.toContain('toggle-skill')
+  })
+})

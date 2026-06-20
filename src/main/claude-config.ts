@@ -348,7 +348,24 @@ export async function getSkills(): Promise<ClaudeSkill[]> {
   // 用户级技能（~/.claude/skills/）—— 这些是用户自建，默认启用
   const userSkills = await scanSkillsInDir(join(CLAUDE_DIR, 'skills'), 'user', '个人', true)
   out.push(...userSkills)
+  // 用 disabledSkills 黑名单覆盖 enabled（黑名单里的技能标记为禁用）
+  const disabled = await getDisabledSkills()
+  for (const s of out) s.enabled = !disabled.includes(s.name)
   return out
+}
+
+// 读取 settings.json 的 disabledSkills 黑名单（技能级启停）。
+export async function getDisabledSkills(): Promise<string[]> {
+  const settings = await getSettingsJson()
+  const arr = settings.disabledSkills
+  return Array.isArray(arr) ? arr.filter((x): x is string => typeof x === 'string') : []
+}
+
+// 切换单条技能启用状态：false 加入黑名单，true 从黑名单移除。落盘 settings.json。
+export async function setSkillEnabled(name: string, enabled: boolean): Promise<void> {
+  const cur = await getDisabledSkills()
+  const next = enabled ? cur.filter(n => n !== name) : [...new Set([...cur, name])]
+  await saveSettingsJsonReplace({ disabledSkills: next })
 }
 
 // 按技能 id 读取 SKILL.md 全文。找不到时返回空串（详情弹窗容错）。
