@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { SubagentDetailDrawer } from './SubagentDetailDrawer'
 import { TaskDetailDrawer } from './TaskDetailDrawer'
 import { TaskCard } from './TaskPanel'
@@ -27,6 +27,31 @@ export function BackendTaskPanel({
   const [activeTask, setActiveTask] = useState<TaskItem | null>(null)
   const subagents = backendTasks.filter(t => t.kind === 'subagent')
   const backends = backendTasks.filter(t => t.kind !== 'subagent')
+
+  // 自动展开：三分区任一出现「未见过的新任务 id」时，把该分区展开。
+  // 策略：只展开、不折叠——即便用户手动折叠过，新内容到来仍会撑开（符合「有新内容就展开」预期）。
+  // seenIds 跨会话复用（SDK task_id 全局唯一），切换会话回到旧任务不会重复展开。
+  const seenIds = useRef<{ task: Set<string>; subagent: Set<string>; backend: Set<string> }>({
+    task: new Set(), subagent: new Set(), backend: new Set(),
+  })
+  useEffect(() => {
+    const panels: Array<[keyof typeof seenIds.current, 'taskCard' | 'subagentCard' | 'backendTaskCard', { id: string }[]]> = [
+      ['task', 'taskCard', tasks],
+      ['subagent', 'subagentCard', subagents],
+      ['backend', 'backendTaskCard', backends],
+    ]
+    for (const [key, panel, list] of panels) {
+      const seen = seenIds.current[key]
+      let hasNew = false
+      for (const it of list) {
+        if (!seen.has(it.id)) { seen.add(it.id); hasNew = true }
+      }
+      if (hasNew && folded[panel]) {
+        dispatch({ type: 'SET_PANEL_FOLD', panel, folded: false })
+      }
+    }
+  }, [tasks, subagents, backends, folded, dispatch])
+
   const taskVisible = showTodo && tasks.length > 0
   const subagentVisible = showBackendTask && subagents.length > 0
   const bgVisible = showBackendTask && backends.length > 0

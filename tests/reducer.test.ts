@@ -457,6 +457,24 @@ describe('reducer', () => {
     // 不可变：原 state 未变
     expect(state.claudeSessionMap.s1).toBeUndefined()
   })
+
+  it('KILL_RUNNING_TASKS 把 pending/running 的 TaskItem 置为 killed，终态任务不变', () => {
+    const state: AppState = {
+      ...initialState(),
+      tasksBySession: {
+        s1: [
+          { id: 't1', description: 'a', taskType: 'task', status: 'pending' },
+          { id: 't2', description: 'b', taskType: 'task', status: 'running' },
+          { id: 't3', description: 'c', taskType: 'task', status: 'completed' },
+          { id: 't4', description: 'd', taskType: 'task', status: 'failed' },
+        ],
+      },
+    }
+    const next = reducer(state, { type: 'KILL_RUNNING_TASKS', sessionId: 's1' })
+    expect(next.tasksBySession.s1.map(t => t.status)).toEqual(['killed', 'killed', 'completed', 'failed'])
+    // 不影响其它会话
+    expect(next.tasksBySession.s2).toBeUndefined()
+  })
 })
 
 describe('builtin-cmd reducer actions', () => {
