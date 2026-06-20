@@ -88,7 +88,7 @@ export class UpdateManager {
       this.setStatus({ state: 'ready', version: info?.version ?? '' })
     })
     autoUpdater.on('update-not-available', () => {
-      this.setStatus({ state: 'idle' })
+      this.setStatus({ state: 'up-to-date' })
     })
     autoUpdater.on('error', (e: any) => {
       this.setStatus({ state: 'error', message: String(e?.message ?? e) })
@@ -96,7 +96,9 @@ export class UpdateManager {
   }
 
   async checkNow(): Promise<void> {
-    if (!app.isPackaged) {
+    // win/linux 的 electron-updater 仅在打包后可用，dev 模式直接返回；
+    // mac 走 fetch latest-mac.yml 比对版本，dev 下也能跑（方便测试）。
+    if (SUPPORTS_AUTO && !app.isPackaged) {
       this.setStatus({ state: 'idle' })
       return
     }
@@ -119,7 +121,7 @@ export class UpdateManager {
       if (semverGt(meta.version, app.getVersion())) {
         this.setStatus({ state: 'available', version: meta.version })
       } else {
-        this.setStatus({ state: 'idle' })
+        this.setStatus({ state: 'up-to-date' })
       }
     } catch (e: any) {
       this.setStatus({ state: 'error', message: String(e?.message ?? e) })

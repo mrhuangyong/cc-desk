@@ -91,7 +91,7 @@ describe('UpdateManager 平台分流', () => {
     expect(autoUpdaterMock.checkForUpdates).not.toHaveBeenCalled()
   })
 
-  it('mac: 版本相同 → emit idle', async () => {
+  it('mac: 版本相同 → emit up-to-date', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       text: async () => 'version: 1.0.0\n',
@@ -101,7 +101,7 @@ describe('UpdateManager 平台分流', () => {
     const emitted: any[] = []
     m.setEmit((s) => emitted.push(s))
     await m.checkNow()
-    expect(emitted).toContainEqual({ state: 'idle' })
+    expect(emitted).toContainEqual({ state: 'up-to-date' })
   })
 
   it('mac: fetch 失败 → emit error', async () => {
@@ -135,6 +135,6 @@ describe('UpdateManager 平台分流', () => {
     await m.checkNow()
     emitted.length = 0
     m.sendCurrentState()
-    expect(emitted).toContainEqual({ state: 'idle' })
+    expect(emitted).toContainEqual({ state: 'up-to-date' })
   })
 })
