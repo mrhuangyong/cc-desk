@@ -12,6 +12,7 @@ import { getProjectsSnapshot } from './projects-store'
 import { normalizeBetaBlocks, extractToolResults, extractBackgroundTaskId, contentToText, mkNotice } from './claude-normalize'
 import { getPermissionMode } from './builtin-commands'
 import { getSkills } from './claude-config'
+import { resolveClaudeCodeExecutable } from './claude-sdk-executable'
 
 /**
  * ClaudeService：渲染端 ↔ SessionQueryManager 的桥。
@@ -219,6 +220,7 @@ export class ClaudeService {
     const onError = (err: unknown) => {
       webContents.send('claude:error', { localSessionId: lsid, error: String(err) })
     }
+    const claudeCodeExecutable = resolveClaudeCodeExecutable()
 
     // ensureSession 复用已有持久 query（同 localSessionId），否则用 buildQuery 新建。
     // prompt 作为新的 user turn 通过 pushMessage 注入 controller.iterable。
@@ -249,6 +251,7 @@ export class ClaudeService {
         prompt: controller.iterable,
         options: {
           abortController: ac,
+          pathToClaudeCodeExecutable: claudeCodeExecutable,
           // env REPLACES process.env，故先铺底再覆盖。注入激活供应商的 apiKey/baseUrl
           // 与各角色模型映射（来自 ~/.cc-desk/config.json）。
           env: { ...process.env, ...proxyEnv, ...buildSdkEnv(resolved, cfg.modelRoleMap, cfg.models) },
@@ -863,6 +866,7 @@ export class ClaudeService {
     const result = query({
       prompt,
       options: {
+        pathToClaudeCodeExecutable: resolveClaudeCodeExecutable(),
         env: { ...process.env, ...buildSdkEnv(resolved, cfg.modelRoleMap, cfg.models) },
         model: resolved?.model.sdkModelId,
         cwd,

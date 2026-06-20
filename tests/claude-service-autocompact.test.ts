@@ -61,7 +61,7 @@ describe('ClaudeService.send → SDK query options', () => {
     expect(capturedQueryOptions.settings?.autoCompactEnabled).toBe(true)
   })
 
-  it('query options 含 model / permissionMode / systemPrompt（核心调用配置不丢）', async () => {
+  it('query options 含 model / permissionMode / systemPrompt / Claude 原生二进制路径（核心调用配置不丢）', async () => {
     const { ClaudeService } = await import('../src/main/claude-service')
     const { SessionQueryManager } = await import('../src/main/session-query-manager')
     const svc = new ClaudeService()
@@ -75,5 +75,6 @@ describe('ClaudeService.send → SDK query options', () => {
     expect(capturedQueryOptions.permissionMode).toBe('plan')
     expect(capturedQueryOptions.effort).toBe('high')
     expect(capturedQueryOptions.systemPrompt?.preset).toBe('claude_code')
+    expect(capturedQueryOptions.pathToClaudeCodeExecutable).toEqual(expect.stringContaining('claude-agent-sdk'))
   })
 })
