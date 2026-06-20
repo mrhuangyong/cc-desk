@@ -32,7 +32,7 @@ function makeState(): AppState {
     panelFold: { root: false, taskCard: false, subagentCard: false, backendTaskCard: false },
     subagentOutputBySession: {},
     planBySession: {},
-    abortedBySession: {},
+    abortedBySession: {}, editingMessageId: null, editingQueueId: null,
     updateStatus: { state: 'idle' },
   }
 }

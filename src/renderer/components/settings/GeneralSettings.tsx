@@ -89,7 +89,7 @@ export function GeneralSettings() {
             <option value="en">English</option>
           </select>
         </SettingsRow>
-        <SettingsRow title="界面缩放" desc="调整当前窗口中文本和控件的整体显示大小。" noBorder>
+        <SettingsRow title="界面缩放" desc="调整当前窗口中文本和控件的整体显示大小。">
           <Segmented
             value={s.zoom}
             onChange={v => persist({ zoom: v })}
@@ -97,6 +97,18 @@ export function GeneralSettings() {
               { id: 'small', label: '缩小' },
               { id: 'normal', label: '正常' },
               { id: 'large', label: '偏大' }
+            ]}
+          />
+        </SettingsRow>
+        <SettingsRow title={t('settings.chatWidth')} desc={t('settings.chatWidthDesc')} noBorder>
+          <Segmented
+            value={s.chatWidth}
+            onChange={v => persist({ chatWidth: v })}
+            options={[
+              { id: 'compact', label: t('settings.chatWidthCompact') },
+              { id: 'standard', label: t('settings.chatWidthStandard') },
+              { id: 'wide', label: t('settings.chatWidthWide') },
+              { id: 'xwide', label: t('settings.chatWidthXWide') },
             ]}
           />
         </SettingsRow>
@@ -147,10 +159,10 @@ export function GeneralSettings() {
 
       {/* 交互行为 */}
       <SettingsCard>
-        <SettingsRow title="交互行为" desc="在 Agent 运行时将后续操作加入队列。">
+        <SettingsRow title={t('settings.interaction')} desc={t('settings.interactionDesc')}>
           <select value={s.queueMode} onChange={e => persist({ queueMode: e.target.value })} style={selectStyle}>
-            <option value="queue">队列</option>
-            <option value="interrupt">中断</option>
+            <option value="queue">{t('settings.interactionQueue')}</option>
+            <option value="guide">{t('settings.interactionGuide')}</option>
           </select>
         </SettingsRow>
         <SettingsRow title="显示思考过程" desc="在消息流中展示模型思考内容。">
