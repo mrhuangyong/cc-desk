@@ -38,43 +38,25 @@ claude.setManager(sessionQueryManager)
 const ptyManager = new PtyManager()
 const updateManager = new UpdateManager({ repo: 'mrhuangyong/cc-desk' })
 
-function createWindow() {
-  const win = new BrowserWindow({
-    width: 1680,
-    height: 1040,
-    minWidth: 960,
-    minHeight: 640,
-    icon: iconPath,  // 窗口/dock 图标（替换 Electron 默认图标）
-    frame: false, // 无系统边框，用自定义 titleBar
-    // macOS: 用原生红绿灯但隐藏标题栏；hiddenInset 让红绿灯内嵌、留出空间给左侧内容
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
-    // 非 macOS 没有原生红绿灯，由自定义 titleBar 自绘窗口控制按钮（暂仅占位）
-    trafficLightPosition: process.platform === 'darwin' ? { x: 12, y: 12 } : undefined,
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      nodeIntegration: false,
-      contextIsolation: true,
-      // 启用 <webview> 标签：浏览器 Tab 用它替代 iframe，以支持元素拾取（注入脚本到任意页面）
-      webviewTag: true
-    }
-  })
 
-  // 终端输出通过 webContents 推送到渲染进程
-  ptyManager.setWebContents(win.webContents)
+// 获取当前活动窗口（IPC handler 在窗口重建后需要拿到最新 webContents）
+function getActiveWin(): Electron.BrowserWindow | null {
+  const wins = BrowserWindow.getAllWindows()
+  return wins.length > 0 ? wins[wins.length - 1] : null
+}
 
-  // 更新状态转发到当前窗口（窗口重建时在 did-finish-load 重绑）
-  updateManager.setEmit((s) => win.webContents.send('update:state', s))
+// IPC handler 全局注册一次（不随窗口重建重复注册）
+function registerIpcHandlers(): void {
 
-  // ---- IPC 通道注册 ----
 
   // Claude
   ipcMain.handle('claude:send', (_e, opts) => {
-    return claude.send({ ...opts, webContents: win.webContents })
+    return claude.send({ ...opts, webContents: getActiveWin()!.webContents })
   })
   ipcMain.handle('claude:stop', async (_e, localSessionId: string) => {
     await claude.interrupt(localSessionId)
     // 兜底：interrupt 不保证 SDK 一定再吐 result，主动发 aborted 让渲染端清 streaming 状态。
-    win.webContents.send('claude:aborted', { localSessionId })
+    getActiveWin()!.webContents.send('claude:aborted', { localSessionId })
   })
   ipcMain.handle('claude:running-sessions', () => claude.runningSessionIds())
   ipcMain.handle('claude:dialog-response', (_e, { reqId, result }) => {
@@ -84,10 +66,10 @@ function createWindow() {
   ipcMain.handle('claude:set-permission-mode', (_e, { localSessionId, permission }) => {
     return claude.setPermissionMode(localSessionId, permission)
   })
-  ipcMain.handle('cc:builtin:compact', (_e, localSessionId: string) => claude.compactSession(localSessionId, win.webContents))
-  ipcMain.handle('cc:builtin:init', (_e, opts: { cwd: string }) => claude.initProject(opts.cwd, win.webContents))
-  ipcMain.handle('cc:builtin:export', (_e, localSessionId: string) => claude.exportSession(localSessionId, win.webContents))
-  ipcMain.handle('cc:builtin:add-dir', (_e, opts: { localSessionId: string; dir: string }) => claude.addDir(opts.localSessionId, opts.dir, win.webContents))
+  ipcMain.handle('cc:builtin:compact', (_e, localSessionId: string) => claude.compactSession(localSessionId, getActiveWin()!.webContents))
+  ipcMain.handle('cc:builtin:init', (_e, opts: { cwd: string }) => claude.initProject(opts.cwd, getActiveWin()!.webContents))
+  ipcMain.handle('cc:builtin:export', (_e, localSessionId: string) => claude.exportSession(localSessionId, getActiveWin()!.webContents))
+  ipcMain.handle('cc:builtin:add-dir', (_e, opts: { localSessionId: string; dir: string }) => claude.addDir(opts.localSessionId, opts.dir, getActiveWin()!.webContents))
 
   // Settings
   ipcMain.handle('settings:get', () => getSettings())
@@ -145,7 +127,7 @@ function createWindow() {
   ipcMain.handle('fs:write-file', async (_e, filePath: string, content: string) => writeFileContent(filePath, content))
   ipcMain.handle('fs:exists', async (_e, filePath: string) => pathExists(filePath))
   ipcMain.handle('dialog:open-directory', async () => {
-    const result = await dialog.showOpenDialog(win, {
+    const result = await dialog.showOpenDialog(getActiveWin()!, {
       properties: ['openDirectory'],
     })
     if (result.canceled || result.filePaths.length === 0) return null
@@ -184,7 +166,7 @@ function createWindow() {
       await claude.stopTask(localSessionId, taskId)
       // handleTaskNotification 返回更新后的 task，直接用，免去 listBySession 线性扫描
       const t = backendTaskRegistry.handleTaskNotification(localSessionId, { task_id: taskId, status: 'stopped' })
-      if (t) win.webContents.send('claude:backend-task', { localSessionId, op: 'update', task: t })
+      if (t) getActiveWin()!.webContents.send('claude:backend-task', { localSessionId, op: 'update', task: t })
       return { ok: true }
     } catch (err) {
       console.error('[backend-task] kill failed', taskId, err)
@@ -210,6 +192,37 @@ function createWindow() {
     chrome: process.versions.chrome,
     node: process.versions.node,
   }))
+}
+
+function createWindow() {
+  const win = new BrowserWindow({
+    width: 1680,
+    height: 1040,
+    minWidth: 960,
+    minHeight: 640,
+    icon: iconPath,  // 窗口/dock 图标（替换 Electron 默认图标）
+    frame: false, // 无系统边框，用自定义 titleBar
+    // macOS: 用原生红绿灯但隐藏标题栏；hiddenInset 让红绿灯内嵌、留出空间给左侧内容
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
+    // 非 macOS 没有原生红绿灯，由自定义 titleBar 自绘窗口控制按钮（暂仅占位）
+    trafficLightPosition: process.platform === 'darwin' ? { x: 12, y: 12 } : undefined,
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      nodeIntegration: false,
+      contextIsolation: true,
+      // 启用 <webview> 标签：浏览器 Tab 用它替代 iframe，以支持元素拾取（注入脚本到任意页面）
+      webviewTag: true
+    }
+  })
+
+  // 终端输出通过 webContents 推送到渲染进程
+  ptyManager.setWebContents(win.webContents)
+
+  // 更新状态转发到当前窗口（窗口重建时在 did-finish-load 重绑）
+  updateManager.setEmit((s) => win.webContents.send('update:state', s))
+
+  // IPC handler 在 app ready 时只注册一次（见 registerIpcHandlers），
+  // 不随 createWindow 重复注册，避免窗口重建时报 'second handler' 错误。
 
   // 开发态加载 dev server，生产态加载打包文件
   if (isDev && process.env['ELECTRON_RENDERER_URL']) {
@@ -240,6 +253,7 @@ app.whenReady().then(() => {
   if (process.platform === 'darwin') {
     try { app.dock?.setIcon(iconPath) } catch { /* ignore */ }
   }
+  registerIpcHandlers()
   createWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
