@@ -187,6 +187,14 @@ export function App() {
     return () => { unsubscribe?.() }
   }, [dispatch])
 
+  // 应用更新状态：订阅主进程状态机推送（单次挂载，cleanup 取消订阅防泄漏）
+  useEffect(() => {
+    const unsubscribe = window.api?.update?.onState?.((status) => {
+      dispatch({ type: 'UPDATE_STATUS', status })
+    })
+    return () => { unsubscribe?.() }
+  }, [dispatch])
+
   if (state.currentView === 'settings') {
     return <SettingsPage />
   }
