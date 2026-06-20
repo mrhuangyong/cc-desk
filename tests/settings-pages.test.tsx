@@ -218,26 +218,53 @@ describe('CommandSettings', () => {
 
 describe('HooksSettings', () => {
   const hooksGet = vi.fn()
-  const setHookEnabled = vi.fn()
+  const hooksSave = vi.fn()
+  const hooksGetJson = vi.fn()
+  const hooksSaveJson = vi.fn()
 
   beforeEach(() => {
-    hooksGet.mockClear()
-    setHookEnabled.mockClear()
-    setApi({ cc: { hooks: { get: hooksGet, setEnabled: setHookEnabled } } })
+    hooksGet.mockClear(); hooksSave.mockClear(); hooksGetJson.mockClear(); hooksSaveJson.mockClear()
+    hooksGet.mockResolvedValue({ custom: [], plugins: [] })
+    hooksGetJson.mockResolvedValue('{}')
+    hooksSave.mockResolvedValue({ success: true, errors: [] })
+    hooksSaveJson.mockResolvedValue({ success: true, errors: [] })
+    setApi({ cc: { hooks: { get: hooksGet, save: hooksSave, getJson: hooksGetJson, saveJson: hooksSaveJson } } })
   })
 
-  it('hooks 开关写回并 reload', async () => {
-    hooksGet.mockResolvedValue([
-      { id: 'h1', name: 'PreToolUse', desc: '工具前', enabled: true },
-      { id: 'h2', name: 'PostToolUse', desc: '工具后', enabled: false },
-    ])
-    setHookEnabled.mockResolvedValue(undefined)
-
+  it('列表/JSON 视图切换', async () => {
     render(<HooksSettings />)
-    fireEvent.click(await screen.findByRole('checkbox', { name: '启用 PreToolUse' }))
+    await screen.findByText('Hooks')
+    fireEvent.click(screen.getByText('JSON'))
+    expect(await screen.findByRole('textbox')).toBeTruthy()
+  })
 
-    expect(setHookEnabled).toHaveBeenCalledWith('PreToolUse', false)
-    await waitFor(() => expect(hooksGet).toHaveBeenCalledTimes(2))
+  it('空数据显示无事件占位', async () => {
+    render(<HooksSettings />)
+    await screen.findByText('选择左侧事件查看或编辑 hook 配置')
+    expect(screen.queryByText('PreToolUse')).toBeNull()
+  })
+
+  it('展示自定义事件的 matcher', async () => {
+    hooksGet.mockResolvedValue({
+      custom: [{ eventName: 'PreToolUse', group: 'tool', matchers: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'echo hi' }] }], source: 'custom', isReadonly: false }],
+      plugins: [],
+    })
+    render(<HooksSettings />)
+    await screen.findByText('PreToolUse')
+    fireEvent.click(screen.getByText('PreToolUse'))
+    expect(await screen.findByText('echo hi')).toBeTruthy()
+  })
+
+  it('插件来源 hook 只读（无编辑按钮）', async () => {
+    hooksGet.mockResolvedValue({
+      custom: [],
+      plugins: [{ eventName: 'Stop', group: 'task', matchers: [{ matcher: '', hooks: [{ type: 'command', command: 'notify-send done' }] }], source: 'plugin:superpowers', isReadonly: true }],
+    })
+    render(<HooksSettings />)
+    await screen.findByText('Stop')
+    fireEvent.click(screen.getByText('Stop'))
+    await screen.findByText('notify-send done')
+    expect(screen.queryByText('+ 添加 hook')).toBeNull()
   })
 })
 

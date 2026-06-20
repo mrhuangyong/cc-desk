@@ -192,15 +192,14 @@ describe('claude-config 写操作真实落盘', () => {
     expect(settings.enabledPlugins['c@d']).toBe(true)
   })
 
-  it('setHookEnabled(true/false)：hooks[name] 数组化 / 清空', async () => {
+  it('saveHooks 写入后 getHooksFull 能读到', async () => {
     const { mod, fakeDir } = await withFakeConfigDir()
-    await mod.setHookEnabled('PreToolUse', true)
-    let settings = await readJsonFile(join(fakeDir, 'settings.json'))
+    const r = await mod.saveHooks({ PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'echo hi' }] }] })
+    expect(r.success).toBe(true)
+    const settings = await readJsonFile(join(fakeDir, 'settings.json'))
     expect(Array.isArray(settings.hooks.PreToolUse)).toBe(true)
-    expect(settings.hooks.PreToolUse.length).toBeGreaterThan(0)
-
-    await mod.setHookEnabled('PreToolUse', false)
-    settings = await readJsonFile(join(fakeDir, 'settings.json'))
-    expect(settings.hooks.PreToolUse).toEqual([])
+    const d = await mod.getHooksFull()
+    expect(d.custom.length).toBe(1)
+    expect(d.custom[0].eventName).toBe('PreToolUse')
   })
 })

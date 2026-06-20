@@ -4,7 +4,8 @@
 import type { AppSettings, UpdateStatus } from './types'
 import type { Project, Tab, ModelProvider, ModelItem } from './types'
 import type {
-  ClaudeMcpServer, ClaudePlugin, ClaudeSkill, ClaudeCommand, ClaudeHook,
+  ClaudeMcpServer, ClaudePlugin, ClaudeSkill, ClaudeCommand,
+  HookEntry, HookMatcher, HookEventView, HooksFull,
   ModelConfig, GeneralConfig,
 } from '../main/claude-config'
 import type {
@@ -138,8 +139,10 @@ interface ClaudeConfigAPI {
     delete(name: string): Promise<void>
   }
   hooks: {
-    get(): Promise<ClaudeHook[]>
-    setEnabled(name: string, enabled: boolean): Promise<void>
+    get(): Promise<HooksFull>
+    save(hooks: Record<string, any>): Promise<{ success: boolean; errors: string[] }>
+    getJson(): Promise<string>
+    saveJson(jsonText: string): Promise<{ success: boolean; errors: string[] }>
   }
   memory: {
     get(): Promise<string>
