@@ -64,3 +64,49 @@ describe('parseSource 智能识别', () => {
     expect(s.source).toBe('directory')
   })
 })
+
+// 构造一个合法的 marketplace.json 用于 url/file 测试
+async function makeTmpMarketplace(): Promise<string> {
+  const mp = join(TMP_DIR, 'fake-marketplace.json')
+  await writeFile(mp, JSON.stringify({
+    name: 'test-market',
+    owner: { name: 'tester' },
+    plugins: [
+      { name: 'plugin-a', description: 'A plugin', source: './plugin-a', version: '1.0.0' },
+    ],
+  }))
+  return mp
+}
+
+describe('addMarketplace + getMarketplaces', () => {
+  it('file 类型添加成功', async () => {
+    const { addMarketplace, getMarketplaces } = await import('../src/main/marketplace-manager')
+    const mpPath = await makeTmpMarketplace()
+    const result = await addMarketplace(mpPath)
+    expect(result.name).toBe('test-market')
+    const list = await getMarketplaces()
+    expect(list.length).toBe(1)
+    expect(list[0].source).toMatchObject({ source: 'file' })
+    expect(list[0].name).toBe('test-market')
+  })
+  it('source 幂等：相同 source 不重复添加', async () => {
+    const { addMarketplace, getMarketplaces } = await import('../src/main/marketplace-manager')
+    const mpPath = await makeTmpMarketplace()
+    await addMarketplace(mpPath)
+    const r2 = await addMarketplace(mpPath)
+    expect(r2.alreadyExists).toBe(true)
+    const list = await getMarketplaces()
+    expect(list.length).toBe(1)
+  })
+  it('marketplace.json 校验失败时报错', async () => {
+    const { addMarketplace } = await import('../src/main/marketplace-manager')
+    const badPath = join(TMP_DIR, 'bad.json')
+    await writeFile(badPath, '{ not json')
+    await expect(addMarketplace(badPath)).rejects.toThrow()
+  })
+  it('空目录 getMarketplaces 返回空数组', async () => {
+    const { getMarketplaces } = await import('../src/main/marketplace-manager')
+    const list = await getMarketplaces()
+    expect(list).toEqual([])
+  })
+})
