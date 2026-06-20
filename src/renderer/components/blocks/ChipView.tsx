@@ -34,7 +34,6 @@ export function ChipView({ kind, label, onRemove, selected }: Props) {
             onMouseDown={(e) => e.preventDefault()}
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove() }}
             aria-label="移除"
-            title="移除"
             style={{ fontSize: 12, lineHeight: 1, padding: 0, cursor: 'pointer',
               background: 'transparent', border: 'none', color: 'var(--text-muted)' }}
           >×</button>

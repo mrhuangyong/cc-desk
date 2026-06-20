@@ -1,7 +1,7 @@
 // window.api 类型声明 —— 由 preload 的 contextBridge 暴露。
 // 渲染进程通过 window.api.claude / .settings / .fs / .pty 调用主进程。
 
-import type { AppSettings } from './types'
+import type { AppSettings, UpdateStatus } from './types'
 import type { Project, Tab, ModelProvider, ModelItem } from './types'
 import type {
   ClaudeMcpServer, ClaudePlugin, ClaudeSkill, ClaudeCommand, ClaudeHook,
@@ -98,7 +98,7 @@ interface MiscAPI {
   onArchiveTick(cb: (data: { beforeTs: number }) => void): () => void
 }
 
-// Claude 真实配置（读写 ~/.claude/）
+// Claude 配置（读写隔离目录 ~/.cc-desk/claude/）
 interface ClaudeConfigAPI {
   mcp: {
     get(): Promise<ClaudeMcpServer[]>
@@ -108,11 +108,19 @@ interface ClaudeConfigAPI {
     get(): Promise<ClaudePlugin[]>
     setEnabled(id: string, enabled: boolean): Promise<void>
   }
-  skills: { get(): Promise<ClaudeSkill[]> }
+  skills: {
+    get(): Promise<ClaudeSkill[]>
+    getFile(id: string): Promise<string>
+    saveFile(id: string, content: string): Promise<void>
+  }
   commands: { get(): Promise<ClaudeCommand[]> }
   hooks: {
     get(): Promise<ClaudeHook[]>
     setEnabled(name: string, enabled: boolean): Promise<void>
+  }
+  memory: {
+    get(): Promise<string>
+    save(content: string): Promise<void>
   }
   model: {
     get(): Promise<ModelConfig>
@@ -145,6 +153,15 @@ declare global {
       dialog: DialogAPI
       cc: ClaudeConfigAPI
       onArchiveTick: MiscAPI['onArchiveTick']
+      update: {
+        onState: (cb: (s: UpdateStatus) => void) => () => void
+        check: () => Promise<void>
+        install: () => Promise<void>
+        downloadAndOpen: () => Promise<void>
+      }
+      appVersion: {
+        get: () => Promise<{ version: string; electron: string; chrome: string; node: string }>
+      }
     }
   }
 }

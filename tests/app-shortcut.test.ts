@@ -33,6 +33,7 @@ function makeState(): AppState {
     subagentOutputBySession: {},
     planBySession: {},
     abortedBySession: {},
+    updateStatus: { state: 'idle' },
   }
 }
 

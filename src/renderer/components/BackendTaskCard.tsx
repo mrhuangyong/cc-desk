@@ -108,7 +108,7 @@ function TaskRow({ t, onKill, onRemove }: {
       </div>
       {t.status === 'running' ? (
         <Tooltip label="终止">
-          <button onClick={() => onKill(t.id)} title="终止" style={{
+          <button aria-label="终止" onClick={() => onKill(t.id)} style={{
             padding: '2px 6px', color: 'var(--text-muted)', background: 'var(--surface-2)',
             border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 11,
             display: 'inline-flex', alignItems: 'center',
@@ -118,7 +118,7 @@ function TaskRow({ t, onKill, onRemove }: {
         </Tooltip>
       ) : (
         <Tooltip label="移除">
-          <button onClick={() => onRemove(t.id)} title="移除" style={{
+          <button aria-label="移除" onClick={() => onRemove(t.id)} style={{
             padding: '2px 4px', color: 'var(--text-muted)', background: 'none',
             border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center',
           }}>

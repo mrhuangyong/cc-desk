@@ -89,7 +89,7 @@ export function SubagentDetailDrawer({ task, outputByToolUseId, onClose }: Props
                 {task.command}
               </span>
             </div>
-            <Tooltip label="关闭"><button onClick={handleClose} title="关闭" aria-label="关闭" style={{
+            <Tooltip label="关闭"><button onClick={handleClose} aria-label="关闭" style={{
               width: 28, height: 28, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)',
               borderRadius: 6,
