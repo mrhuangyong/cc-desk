@@ -377,3 +377,51 @@ export async function refreshAutoUpdateMarketplaces(): Promise<void> {
     }
   }
 }
+
+// ---- getMarketplacePlugins + searchMarketplacePlugins ----
+
+export async function getMarketplacePlugins(name: string): Promise<PluginMarketplaceEntry[]> {
+  const config = await readKnownConfig()
+  const entry = config[name]
+  if (!entry) throw new Error(`仓库「${name}」不存在`)
+  const marketplace = await readCachedMarketplace(entry.installLocation, entry.source)
+  return marketplace.plugins || []
+}
+
+export async function searchMarketplacePlugins(query: string): Promise<SearchResult[]> {
+  const q = query.toLowerCase().trim()
+  if (!q) return []
+  const config = await readKnownConfig()
+  const results: SearchResult[] = []
+
+  // 查已安装状态
+  const { readInstalledPlugins } = await import('./claude-config')
+  const installed = await readInstalledPlugins()
+  const installedIds = new Set(Object.keys(installed.plugins))
+
+  for (const [mktName, entry] of Object.entries(config)) {
+    let marketplace: PluginMarketplace
+    try { marketplace = await readCachedMarketplace(entry.installLocation, entry.source) }
+    catch { continue }
+
+    for (const plugin of marketplace.plugins || []) {
+      const nameMatch = plugin.name.toLowerCase().includes(q)
+      const descMatch = (plugin.description || '').toLowerCase().includes(q)
+      const catMatch = (plugin.category || '').toLowerCase().includes(q)
+      const tagMatch = (plugin.tags || []).some(t => t.toLowerCase().includes(q))
+      if (nameMatch || descMatch || catMatch || tagMatch) {
+        const pluginId = `${plugin.name}@${mktName}`
+        results.push({
+          pluginName: plugin.name,
+          marketplace: mktName,
+          version: plugin.version || 'unknown',
+          description: plugin.description || '',
+          category: plugin.category,
+          tags: plugin.tags,
+          installed: installedIds.has(pluginId),
+        })
+      }
+    }
+  }
+  return results
+}
