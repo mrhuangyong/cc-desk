@@ -35,7 +35,7 @@ export function AboutSettings() {
           </div>
         )
       case 'downloading':
-        return <span>{t('about.downloading')} {s.percent}%</span>
+        return <span>{t('about.downloading')} {s.percent && s.percent > 0 ? `${s.percent}%` : '…'}</span>
       case 'ready':
         return (
           <button
