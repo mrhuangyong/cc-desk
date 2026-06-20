@@ -51,6 +51,7 @@ export interface ClaudeMcpServer {
   command: string           // stdio: 命令本体；http: URL
   args: string              // stdio: 空格分隔参数
   env: string               // KEY=VALUE 每行一个
+  headers: string           // http 类型：KEY: VALUE 每行一个
   enabled: boolean
   scope: '用户' | '工作区'  // 当前仅读全局（用户级）
 }
@@ -150,6 +151,9 @@ function parseMcpEntry(name: string, raw: any, enabled = true): ClaudeMcpServer 
       id: name, name, transport: 'http',
       command: raw.url || '',
       args: '', env: '',
+      headers: raw.headers && typeof raw.headers === 'object'
+        ? Object.entries(raw.headers).map(([k, v]) => `${k}: ${v}`).join('\n')
+        : '',
       enabled, scope: '用户',
     }
   }
@@ -160,25 +164,56 @@ function parseMcpEntry(name: string, raw: any, enabled = true): ClaudeMcpServer 
     env: raw.env && typeof raw.env === 'object'
       ? Object.entries(raw.env).map(([k, v]) => `${k}=${v}`).join('\n')
       : '',
+    headers: '',
     enabled, scope: '用户',
   }
+}
+
+// args 归一化：数组 join，字符串 split。兼容 JSON 模式传入标准格式形态。
+function normalizeArgs(args: any): string[] {
+  if (Array.isArray(args)) return args.map(String)
+  if (typeof args === 'string') {
+    const t = args.trim()
+    return t ? t.split(/\s+/) : []
+  }
+  return []
+}
+// env 归一化：对象直用，字符串按 KEY=VALUE 解析。
+function normalizeEnv(env: any): Record<string, string> {
+  if (env && typeof env === 'object') return env as Record<string, string>
+  const obj: Record<string, string> = {}
+  if (typeof env === 'string') {
+    env.split('\n').forEach(line => {
+      const i = line.indexOf('=')
+      if (i > 0) obj[line.slice(0, i).trim()] = line.slice(i + 1)
+    })
+  }
+  return obj
+}
+// headers 归一化：对象直用，字符串按 KEY: VALUE 解析。
+function normalizeHeaders(headers: any): Record<string, string> {
+  if (headers && typeof headers === 'object') return headers as Record<string, string>
+  const obj: Record<string, string> = {}
+  if (typeof headers === 'string') {
+    headers.split('\n').forEach(line => {
+      const i = line.indexOf(':')
+      if (i > 0) obj[line.slice(0, i).trim()] = line.slice(i + 1).trim()
+    })
+  }
+  return obj
 }
 
 function buildMcpEntry(s: ClaudeMcpServer): Record<string, any> {
   if (s.transport === 'http') {
     const obj: any = { type: 'http', url: s.command }
-    // 从 env 解析 headers？MCP http 用 headers，这里简化：保留原 headers 需单独管理。
-    // 先支持 url-only 写回；headers 在编辑弹窗里可扩展。
+    const headers = normalizeHeaders(s.headers)
+    if (Object.keys(headers).length) obj.headers = headers
     return obj
   }
   const obj: any = { command: s.command }
-  const args = s.args.trim() ? s.args.split(/\s+/) : []
+  const args = normalizeArgs(s.args)
   if (args.length) obj.args = args
-  const envObj: Record<string, string> = {}
-  s.env.split('\n').forEach(line => {
-    const i = line.indexOf('=')
-    if (i > 0) envObj[line.slice(0, i).trim()] = line.slice(i + 1)
-  })
+  const envObj = normalizeEnv(s.env)
   if (Object.keys(envObj).length) obj.env = envObj
   return obj
 }
