@@ -321,6 +321,12 @@ export class ClaudeService {
           this.handleTaskNotificationEvent(sys, lsid, webContents)
         } else if (subtype === 'task_progress') {
           this.handleTaskProgressEvent(sys, lsid, webContents)
+        } else if (subtype === 'notification') {
+          webContents.send('claude:notification', {
+            localSessionId: lsid,
+            text: sys.text || '',
+            priority: sys.priority || 'medium',
+          })
         }
         // 其余 system 子类型（status 瞬态、hook 协议进度等）属内部噪声，不打扰用户。
         break
