@@ -333,7 +333,19 @@ export async function refreshMarketplace(name: string): Promise<void> {
     const data = JSON.parse(await response.text())
     await writeJson(entry.installLocation, data)
   } else if (source.source === 'github' || source.source === 'git') {
-    await gitPull(entry.installLocation, source.ref)
+    // 目录不存在或 .git 丢失时回退为重新 clone
+    try {
+      await gitPull(entry.installLocation, source.ref)
+    } catch {
+      const repoName = source.source === 'github'
+        ? source.repo.split('/').pop()!.replace(/\.git$/, '')
+        : source.url.split('/').pop()!.replace(/\.git$/, '')
+      const cloneUrl = source.source === 'github'
+        ? `https://github.com/${source.repo}.git`
+        : source.url
+      await rm(entry.installLocation, { recursive: true, force: true }).catch(() => {})
+      await gitClone(cloneUrl, entry.installLocation, source.ref)
+    }
   } else if (source.source === 'file') {
     const data = JSON.parse(await readFile(source.path, 'utf-8'))
     await writeJson(entry.installLocation, data)
