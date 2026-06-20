@@ -641,3 +641,55 @@ export async function uninstallPlugin(pluginId: string): Promise<{ success: bool
   const [pluginName] = pluginId.split('@')
   return { success: true, message: `插件「${pluginName}」已卸载` }
 }
+
+// ---- 命令 CRUD（仅自定义命令：~/.cc-desk/claude/commands/*.md）----
+
+// 命令名称合法校验：仅小写字母、数字、连字符
+const COMMAND_NAME_RE = /^[a-z0-9-]+$/
+
+export async function createCommand(name: string, description: string): Promise<{ success: boolean; message: string }> {
+  const cleanName = name.trim().replace(/^\//, '')
+  if (!COMMAND_NAME_RE.test(cleanName)) {
+    return { success: false, message: '命令名称格式无效：仅允许小写字母、数字、连字符（如 my-command）' }
+  }
+  const dir = join(CLAUDE_DIR, 'commands')
+  const filePath = join(dir, `${cleanName}.md`)
+  if (existsSync(filePath)) {
+    return { success: false, message: `命令 /${cleanName} 已存在` }
+  }
+  await mkdir(dir, { recursive: true })
+  const content = `---\ndescription: ${description}\n---\n\n`
+  await writeFile(filePath, content, 'utf-8')
+  return { success: true, message: `命令 /${cleanName} 创建成功` }
+}
+
+export async function getCommandFile(source: string, name: string): Promise<string> {
+  const cleanName = name.replace(/^\//, '')
+  if (source === 'builtin') return ''
+  if (source === 'user') {
+    const filePath = join(CLAUDE_DIR, 'commands', `${cleanName}.md`)
+    if (!existsSync(filePath)) return ''
+    try { return await readFile(filePath, 'utf-8') } catch { return '' }
+  }
+  // source 为插件名：找插件 installPath
+  const plugins = await getPlugins()
+  const plugin = plugins.find(p => p.name === source)
+  if (!plugin) return ''
+  const filePath = join(plugin.installPath, 'commands', `${cleanName}.md`)
+  if (!existsSync(filePath)) return ''
+  try { return await readFile(filePath, 'utf-8') } catch { return '' }
+}
+
+export async function saveCommandFile(name: string, content: string): Promise<void> {
+  const cleanName = name.replace(/^\//, '')
+  const filePath = join(CLAUDE_DIR, 'commands', `${cleanName}.md`)
+  await writeFile(filePath, content, 'utf-8')
+}
+
+export async function deleteCommand(name: string): Promise<void> {
+  const cleanName = name.replace(/^\//, '')
+  const filePath = join(CLAUDE_DIR, 'commands', `${cleanName}.md`)
+  if (existsSync(filePath)) {
+    await rm(filePath, { force: true }).catch(() => {})
+  }
+}
