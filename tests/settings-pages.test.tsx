@@ -43,6 +43,7 @@ function baseSettings(overrides: Record<string, any> = {}) {
     showBackendTask: true,
     autoArchive: true,
     archiveDays: '7',
+    devTools: false,
     codePreview: {
       lightTheme: 'GitHub Light',
       darkTheme: 'GitHub Dark',

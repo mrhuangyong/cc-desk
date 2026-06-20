@@ -192,6 +192,14 @@ function registerIpcHandlers(): void {
     chrome: process.versions.chrome,
     node: process.versions.node,
   }))
+
+  // 开发者工具：开关 DevTools（受常规设置 devTools 控制）
+  ipcMain.handle('app:set-devtools', (_e, enabled: boolean) => {
+    const w = getActiveWin()
+    if (!w) return
+    if (enabled) w.webContents.openDevTools({ mode: 'detach' })
+    else w.webContents.closeDevTools()
+  })
 }
 
 function createWindow() {
@@ -230,6 +238,22 @@ function createWindow() {
   } else {
     win.loadFile(join(__dirname, '../renderer/index.html'))
   }
+
+  // 开发者工具快捷键：仅当 devTools 设置开启时生效（F12 / Cmd+Option+I）
+  win.webContents.on('before-input-event', (_event, input) => {
+    if (input.type !== 'keyDown') return
+    const s = getSettings()
+    if (!s.devTools) return
+    const isF12 = input.key === 'F12'
+    const isCmdOptI = (process.platform === 'darwin'
+      ? input.meta && input.alt && input.key === 'i'
+      : input.control && input.shift && input.key === 'I')
+    if (isF12 || isCmdOptI) {
+      if (win.webContents.isDevToolsOpened()) win.webContents.closeDevTools()
+      else win.webContents.openDevTools({ mode: 'detach' })
+      _event.preventDefault()
+    }
+  })
 
   // 外链用系统浏览器打开
   win.webContents.setWindowOpenHandler(({ url }) => {

@@ -159,4 +159,5 @@ contextBridge.exposeInMainWorld('api', {
   appVersion: {
     get: () => ipcRenderer.invoke('app:version'),
   },
+  setDevTools: (enabled: boolean) => ipcRenderer.invoke('app:set-devtools', enabled),
 })

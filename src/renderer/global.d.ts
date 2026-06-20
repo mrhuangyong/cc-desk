@@ -188,6 +188,7 @@ declare global {
       appVersion: {
         get: () => Promise<{ version: string; electron: string; chrome: string; node: string }>
       }
+      setDevTools: (enabled: boolean) => Promise<void>
     }
   }
 }
