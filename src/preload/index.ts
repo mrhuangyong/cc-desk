@@ -77,7 +77,9 @@ contextBridge.exposeInMainWorld('api', {
     },
     hooks: {
       get: () => ipcRenderer.invoke('cc:hooks:get'),
-      setEnabled: (name: string, enabled: boolean) => ipcRenderer.invoke('cc:hook:set-enabled', name, enabled),
+      save: (hooks: any) => ipcRenderer.invoke('cc:hooks:save', hooks),
+      getJson: () => ipcRenderer.invoke('cc:hooks:get-json'),
+      saveJson: (jsonText: string) => ipcRenderer.invoke('cc:hooks:save-json', jsonText),
     },
     memory: {
       get: () => ipcRenderer.invoke('cc:memory:get'),

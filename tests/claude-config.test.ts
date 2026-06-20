@@ -58,14 +58,11 @@ describe('claude-config 读取行为（隔离目录）', () => {
     expect(skills.length).toBe(0)
   })
 
-  it('hooks: 始终返回 7 个标准事件', async () => {
-    const { getHooks } = await import('../src/main/claude-config')
-    const hooks = await getHooks()
-    expect(hooks.length).toBe(7)
-    expect(hooks.map(h => h.name)).toEqual([
-      'PreToolUse', 'PostToolUse', 'Notification',
-      'UserPromptSubmit', 'Stop', 'SubagentStop', 'PreCompact',
-    ])
+  it('hooks: 空配置返回空 custom + plugins', async () => {
+    const { getHooksFull } = await import('../src/main/claude-config')
+    const d = await getHooksFull()
+    expect(d.custom).toEqual([])
+    expect(d.plugins).toEqual([])
   })
 
   it('模型配置: 空目录所有字段为空字符串', async () => {
