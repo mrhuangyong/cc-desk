@@ -267,6 +267,12 @@ button {
 .tab-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 .tab-scroll::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
 
+/* 悬浮面板纵向滚动：细滚动条，仅 panel-scroll 容器可见（覆盖全局 width:0） */
+.panel-scroll::-webkit-scrollbar { width: 6px; }
+.panel-scroll::-webkit-scrollbar-track { background: transparent; }
+.panel-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.panel-scroll::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
+
 /* running 态旋转动画(Loader2 图标):卡片状态指示器共用 */
 @keyframes cc-spin {
   from { transform: rotate(0deg); }

@@ -2,6 +2,7 @@
 // 任务卡片：显示当前会话的 Claude task 列表，嵌入 BackendTaskPanel 使用。
 import { CheckCircle2, Loader2, Circle, AlertCircle, XCircle } from 'lucide-react'
 import type { TaskStatus, TaskItem } from '../types'
+import { useCollapsibleHeight } from '../hooks/useCollapsibleHeight'
 
 function StatusIcon({ status }: { status: TaskStatus }) {
   const common = { size: 13, style: { flexShrink: 0 } }
@@ -28,6 +29,7 @@ interface TaskCardProps {
 
 export function TaskCard({ tasks, folded, onToggleFold, onClickTask }: TaskCardProps) {
   if (tasks.length === 0) return null
+  const col = useCollapsibleHeight(!folded)
 
   const running = tasks.filter(t => t.status === 'running').length
   const done = tasks.filter(t => t.status === 'completed').length
@@ -48,12 +50,7 @@ export function TaskCard({ tasks, folded, onToggleFold, onClickTask }: TaskCardP
           {running} 进行 · {done} 完成 · 共 {tasks.length}
         </span>
       </button>
-      <div style={{
-        maxHeight: folded ? 0 : 600,
-        opacity: folded ? 0 : 1,
-        overflow: 'hidden',
-        transition: 'max-height .2s ease, opacity .15s ease',
-      }}>
+      <div ref={col.ref} style={col.style} onTransitionEnd={col.onTransitionEnd}>
         <div style={{ padding: 4, borderTop: '1px solid var(--border-hair)' }}>
           {[...tasks].sort((a, b) => (a.id || '').localeCompare(b.id || '', undefined, { numeric: true })).map(t => (
             <div
