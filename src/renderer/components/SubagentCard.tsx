@@ -4,6 +4,7 @@ import { Bot, Loader2, Square, X, Trash2, CheckCircle2, AlertCircle } from 'luci
 import type { BackendTask } from '../types'
 import { formatSessionTime } from '../utils/formatSessionTime'
 import { Tooltip } from './Tooltip'
+import { useCollapsibleHeight } from '../hooks/useCollapsibleHeight'
 
 const STATUS_LABEL: Record<BackendTask['status'], string> = {
   running: '运行中', completed: '已完成', failed: '已退出', stopped: '已终止',
@@ -30,6 +31,7 @@ interface Props {
 }
 
 export function SubagentCard({ tasks, folded, onToggleFold, onKill, onRemove, onClearFinished, onClickTask }: Props) {
+  const col = useCollapsibleHeight(!folded)
   if (tasks.length === 0) return null
   const runningTasks = tasks.filter(t => t.status === 'running')
   const finishedTasks = tasks.filter(t => t.status !== 'running')
@@ -52,12 +54,7 @@ export function SubagentCard({ tasks, folded, onToggleFold, onKill, onRemove, on
           {runningTasks.length} 运行 · {doneCount} 完成 · 共 {tasks.length}
         </span>
       </button>
-      <div style={{
-        maxHeight: folded ? 0 : 600,
-        opacity: folded ? 0 : 1,
-        overflow: 'hidden',
-        transition: 'max-height .2s ease, opacity .15s ease',
-      }}>
+      <div ref={col.ref} style={col.style} onTransitionEnd={col.onTransitionEnd}>
         <div style={{ padding: 4, borderTop: '1px solid var(--border-hair)' }}>
           {runningTasks.map(t => (
             <SubagentRow key={t.id} t={t} onKill={onKill} onRemove={onRemove} onClick={onClickTask} />

@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type Dispatch } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
-import { ExternalLink } from 'lucide-react'
+import { ChevronDown, ExternalLink, FileText, Globe2 } from 'lucide-react'
 import { URL_RE, cleanUrl } from '../../utils/url'
 import { tokenizeLinks, resolvePath } from '../../utils/links'
 import { useStore } from '../../state/store'
+import type { Action } from '../../state/actions'
 import { CodeBlock } from './CodeBlock'
 import { MermaidBlock } from './MermaidBlock'
 
@@ -87,6 +88,175 @@ function LinkText({ href, children }: { href?: string; children: React.ReactNode
   )
 }
 
+function linkFromInlineCode(raw: string): { kind: 'url'; href: string } | { kind: 'file'; href: string } | null {
+  if (!raw || raw.includes('\n')) return null
+  const text = raw.trim()
+  if (text !== raw) return null
+  const tokens = tokenizeLinks(text)
+  if (tokens.length !== 1) return null
+  if (tokens[0].raw !== text) return null
+  if (tokens[0].kind === 'url' && tokens[0].href) {
+    return { kind: 'url', href: tokens[0].href }
+  }
+  if (tokens[0].kind === 'path' && tokens[0].path) {
+    const hash = tokens[0].line ? `#L${tokens[0].line}` : ''
+    return { kind: 'file', href: `file:${tokens[0].path}${hash}` }
+  }
+  return null
+}
+
+type ResourceItem =
+  | { kind: 'url'; href: string; title: string; subtitle: string }
+  | { kind: 'file'; href: string; filePath: string; title: string; subtitle: string }
+
+function extractResourceItems(text: string, cwd: string): ResourceItem[] {
+  const items: ResourceItem[] = []
+  const seen = new Set<string>()
+  for (const tk of tokenizeLinks(text)) {
+    if (tk.kind === 'url' && tk.href) {
+      const key = `url:${tk.href}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      items.push({
+        kind: 'url',
+        href: tk.href,
+        title: displayUrlTitle(tk.href),
+        subtitle: '网站',
+      })
+    } else if (tk.kind === 'path' && tk.path) {
+      const filePath = resolvePath(tk.path, cwd)
+      const key = `file:${filePath}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      items.push({
+        kind: 'file',
+        href: `file:${tk.path}${tk.line ? `#L${tk.line}` : ''}`,
+        filePath,
+        title: filePath.split(/[\\/]/).pop() || filePath,
+        subtitle: '文件',
+      })
+    }
+  }
+  return items
+}
+
+function displayUrlTitle(href: string): string {
+  try {
+    const url = new URL(href)
+    return url.host || href
+  } catch {
+    return href
+  }
+}
+
+function ResourceCards({ text }: { text: string }) {
+  const store = useOptionalStore()
+  if (!store) return null
+  const { state, dispatch } = store
+  const cwd = useCwd(state)
+  const resources = extractResourceItems(text, cwd)
+  if (resources.length === 0) return null
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+      {resources.map((item) => <ResourceCard key={`${item.kind}:${item.href}`} item={item} dispatch={dispatch} />)}
+    </div>
+  )
+}
+
+function useOptionalStore() {
+  try {
+    return useStore()
+  } catch {
+    return null
+  }
+}
+
+function ResourceCard({ item, dispatch }: { item: ResourceItem; dispatch: Dispatch<Action> }) {
+  const [exists, setExists] = useState(item.kind === 'url')
+  useEffect(() => {
+    if (item.kind !== 'file') return
+    let cancelled = false
+    window.api?.fs?.exists(item.filePath).then((ok: boolean) => {
+      if (!cancelled) setExists(ok)
+    }).catch(() => { if (!cancelled) setExists(false) })
+    return () => { cancelled = true }
+  }, [item.kind, item.kind === 'file' ? item.filePath : ''])
+
+  if (!exists) return null
+
+  const open = () => {
+    if (item.kind === 'url') {
+      dispatch({ type: 'OPEN_TAB', tabType: 'browser', url: item.href })
+    } else {
+      dispatch({ type: 'OPEN_FILE_TAB', filePath: item.filePath, fileName: item.title })
+    }
+  }
+  const Icon = item.kind === 'url' ? Globe2 : FileText
+  const testIdValue = item.kind === 'url' ? item.href : item.filePath
+
+  return (
+    <div
+      data-testid={`resource-card-${item.kind}-${testIdValue}`}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 14,
+        width: '100%',
+        minHeight: 86,
+        padding: '14px 18px 14px 14px',
+        border: '1px solid var(--border)',
+        borderRadius: 18,
+        background: 'var(--surface-0, var(--bg))',
+        boxShadow: '0 1px 0 rgba(0,0,0,0.04)',
+      }}
+    >
+      <div style={{
+        width: 52,
+        height: 52,
+        borderRadius: 10,
+        background: 'var(--surface-1)',
+        color: 'var(--text-muted)',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+      }}>
+        <Icon size={27} strokeWidth={1.8} />
+      </div>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ fontSize: 18, fontWeight: 650, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {item.title}
+        </div>
+        <div style={{ marginTop: 7, fontSize: 14, fontWeight: 600, color: 'var(--text-faint)' }}>
+          {item.subtitle}
+        </div>
+      </div>
+      <button
+        data-testid={`resource-open-${testIdValue}`}
+        onClick={open}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 8,
+          height: 38,
+          padding: '0 12px 0 15px',
+          borderRadius: 12,
+          border: '1px solid var(--border)',
+          background: 'var(--bg)',
+          color: 'var(--text)',
+          fontSize: 16,
+          fontWeight: 650,
+          cursor: 'pointer',
+          flexShrink: 0,
+        }}
+      >
+        打开
+        <ChevronDown size={16} color="var(--text-muted)" />
+      </button>
+    </div>
+  )
+}
+
 // 文件路径链接：file: 伪协议。异步校验存在性，存在才可点击打开，
 // 不存在则渲染为普通文本（避免把误识别的词变成可点链接）。
 function FilePathLink({ url, children }: { url: string; children: React.ReactNode }) {
@@ -132,6 +302,9 @@ function FilePathLink({ url, children }: { url: string; children: React.ReactNod
         color: 'var(--text)',
         fontFamily: 'var(--font-mono)',
         fontSize: '0.9em',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
         textDecoration: 'underline',
         textDecorationColor: 'var(--text-faint)',
         textUnderlineOffset: '2px',
@@ -141,6 +314,7 @@ function FilePathLink({ url, children }: { url: string; children: React.ReactNod
       onMouseEnter={(e) => { e.currentTarget.style.textDecorationColor = 'var(--text)' }}
       onMouseLeave={(e) => { e.currentTarget.style.textDecorationColor = 'var(--text-faint)' }}
     >
+      <FileText size={12} style={{ flexShrink: 0, opacity: 0.6 }} />
       {label}
     </span>
   )
@@ -148,7 +322,8 @@ function FilePathLink({ url, children }: { url: string; children: React.ReactNod
 
 // 取当前激活会话所属项目的 cwd，回退 settings.cwd
 function useCwd(state: any): string {
-  const project = state.projects.find((p: any) => p.sessions.some((s: any) => s.id === state.activeSessionId))
+  const projects = Array.isArray(state?.projects) ? state.projects : []
+  const project = projects.find((p: any) => Array.isArray(p.sessions) && p.sessions.some((s: any) => s.id === state.activeSessionId))
   return project?.path || state.settings?.cwd || ''
 }
 
@@ -165,6 +340,13 @@ export function MarkdownRenderer({ text }: { text: string }) {
             const lang = langFromClassName(className)
             const raw = String(children ?? '').replace(/\n$/, '')
             if (!lang) {
+              const inlineLink = linkFromInlineCode(raw)
+              if (inlineLink?.kind === 'file') {
+                return <FilePathLink url={inlineLink.href}>{raw}</FilePathLink>
+              }
+              if (inlineLink?.kind === 'url') {
+                return <LinkText href={inlineLink.href}>{raw}</LinkText>
+              }
               return <code className={className} {...props}>{children}</code>
             }
             if (lang === 'mermaid') {
@@ -184,6 +366,7 @@ export function MarkdownRenderer({ text }: { text: string }) {
       >
         {text}
       </ReactMarkdown>
+      <ResourceCards text={text} />
     </div>
   )
 }
