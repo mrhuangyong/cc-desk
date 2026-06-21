@@ -63,11 +63,12 @@ export function BackendTaskPanel({
   return (
     <div style={{
       position: 'absolute', top: 12, right: 16, zIndex: 50,
-      width: 280, maxHeight: 480,
+      width: 280, maxHeight: 'calc(100vh - 96px)',
       display: 'flex', flexDirection: 'column',
     }}>
-      {/* 内层滚动容器:padding 让卡片 boxShadow 不被裁,内容溢出时仅此处滚动 */}
-      <div style={{
+      {/* 内层滚动容器:padding 让卡片 boxShadow 不被裁,内容溢出时仅此处滚动。
+          maxHeight 跟随视口,内容少时贴合内容,多时触发滚动;panel-scroll 让滚动条可见(全局默认隐藏)。 */}
+      <div className="panel-scroll" style={{
         flex: 1, minHeight: 0, overflowY: 'auto',
         paddingRight: 6, paddingLeft: 6, paddingBottom: 6,
         display: 'flex', flexDirection: 'column', gap: 8,
