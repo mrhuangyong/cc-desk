@@ -171,12 +171,32 @@ function useOptionalStore() {
   }
 }
 
+// 判断路径是否为「可打开的文件」：仅文件才生成卡片/可点链接，
+// 文件夹虽存在但不适合走文件预览，故排除。优先用 fs.statKind（区分文件/目录），
+// 回退到老的 fs.exists（保持向后兼容，老 mock/老主进程仍能用）。
+async function isFile(filePath: string): Promise<boolean> {
+  try {
+    const fs = (window as any)?.api?.fs
+    if (!fs) return false
+    if (typeof fs.statKind === 'function') {
+      const kind: string = await fs.statKind(filePath)
+      return kind === 'file'
+    }
+    if (typeof fs.exists === 'function') {
+      return Boolean(await fs.exists(filePath))
+    }
+    return false
+  } catch {
+    return false
+  }
+}
+
 function ResourceCard({ item, dispatch }: { item: ResourceItem; dispatch: Dispatch<Action> }) {
   const [exists, setExists] = useState(item.kind === 'url')
   useEffect(() => {
     if (item.kind !== 'file') return
     let cancelled = false
-    window.api?.fs?.exists(item.filePath).then((ok: boolean) => {
+    isFile(item.filePath).then((ok: boolean) => {
       if (!cancelled) setExists(ok)
     }).catch(() => { if (!cancelled) setExists(false) })
     return () => { cancelled = true }
@@ -274,7 +294,7 @@ function FilePathLink({ url, children }: { url: string; children: React.ReactNod
     if (checked.current) return
     checked.current = true
     let cancelled = false
-    window.api?.fs?.exists(absPath).then((ok: boolean) => {
+    isFile(absPath).then((ok: boolean) => {
       if (!cancelled) setExists(ok)
     }).catch(() => { if (!cancelled) setExists(false) })
     return () => { cancelled = true }
