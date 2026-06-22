@@ -14,12 +14,24 @@ export const PATH_RE = new RegExp(
   'g'
 )
 
+// 可识别为可点击「文档」路径的扩展名白名单。
+// 代码文件名（.ts/.js/.py 等）在文档正文里频繁被提及，全量识别会把整段文档底部刷成「打开」卡片，
+// 噪声远大于价值。故仅保留 markdown 类文档——它们适合用内置预览打开，与 FileTab 的 isMarkdown 一致。
+export const DOC_EXTENSIONS = ['md', 'markdown', 'mdown', 'mkd']
+
 // 从路径匹配里剥离行号后缀，返回 { path, line }
 export function splitLine(raw: string): { path: string; line?: number } {
   const m = /^(.*?)(?::(\d+)(?::(\d+))?)?$/.exec(raw)
   if (!m) return { path: raw }
   const line = m[2] ? Number(m[2]) : undefined
   return { path: m[1], line }
+}
+
+// 判断路径是否为 markdown 类文档（按扩展名白名单）。代码文件名（.ts/.js 等）返回 false，
+// 避免文档正文里被频繁提及的代码文件刷成「打开」卡片。
+export function isDocPath(p: string): boolean {
+  const ext = p.split(/[\\/]/).pop()?.split('.').pop()
+  return !!ext && DOC_EXTENSIONS.includes(ext.toLowerCase())
 }
 
 // 解析相对路径到绝对路径（渲染进程，不依赖 node path 模块）
@@ -82,6 +94,9 @@ export function tokenizeLinks(text: string): LinkToken[] {
     // 修剪尾部标点
     const trimmed = raw.replace(/[,;:!?)>*]+$/, '')
     const sl = splitLine(trimmed)
+    // 仅保留 markdown 类文档路径：代码文件名（.ts/.js 等）在正文里频繁出现，
+    // 全量识别会让文档底部刷出大量「打开」卡片，噪声过大。
+    if (!isDocPath(sl.path)) continue
     hits.push({ start: m.index, end: m.index + trimmed.length, token: { kind: 'path', raw: trimmed, path: sl.path, line: sl.line } })
   }
 
