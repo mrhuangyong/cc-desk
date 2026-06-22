@@ -3,7 +3,7 @@ import { join } from 'path'
 import { ClaudeService } from './claude-service'
 import { SessionQueryManager } from './session-query-manager'
 import { PtyManager } from './pty-manager'
-import { readDirTree, readFileContent, searchFiles, writeFileContent, pathExists } from './file-service'
+import { readDirTree, readFileContent, searchFiles, writeFileContent, pathExists, statKind } from './file-service'
 import { getSettings, saveSettings } from './settings-store'
 import { menuT } from './menu-i18n'
 import { getModelProvidersConfig, saveModelProvidersConfig } from './cc-desk-store'
@@ -142,6 +142,7 @@ function registerIpcHandlers(): void {
   ipcMain.handle('fs:search-files', async (_e, dirPath: string) => searchFiles(dirPath))
   ipcMain.handle('fs:write-file', async (_e, filePath: string, content: string) => writeFileContent(filePath, content))
   ipcMain.handle('fs:exists', async (_e, filePath: string) => pathExists(filePath))
+  ipcMain.handle('fs:stat-kind', async (_e, filePath: string) => statKind(filePath))
   ipcMain.handle('dialog:open-directory', async () => {
     const result = await dialog.showOpenDialog(getActiveWin()!, {
       properties: ['openDirectory'],

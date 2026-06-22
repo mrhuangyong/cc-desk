@@ -106,6 +106,7 @@ contextBridge.exposeInMainWorld('api', {
     searchFiles: (dirPath: string) => ipcRenderer.invoke('fs:search-files', dirPath),
     writeFile: (filePath: string, content: string) => ipcRenderer.invoke('fs:write-file', filePath, content),
     exists: (filePath: string) => ipcRenderer.invoke('fs:exists', filePath),
+    statKind: (filePath: string) => ipcRenderer.invoke('fs:stat-kind', filePath),
   },
   dialog: {
     openDirectory: () => ipcRenderer.invoke('dialog:open-directory'),
