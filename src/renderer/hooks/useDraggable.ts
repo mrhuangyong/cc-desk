@@ -113,6 +113,7 @@ export function useDraggable({ initial, onChange, size, margin = 8 }: Options) {
       window.removeEventListener('pointermove', onMoveWrapped as EventListener)
       window.removeEventListener('pointerup', onUp as EventListener)
       window.removeEventListener('pointercancel', onUp as EventListener)
+      cancelAnimationFrame(rafRef.current)
       document.body.style.userSelect = ''
     }
   }, [dragging, clamp, applyTransform, onChange])
@@ -126,5 +127,5 @@ export function useDraggable({ initial, onChange, size, margin = 8 }: Options) {
     setPositionState(p)
   }, [])
 
-  return { ref, position, dragging, onPointerDown, setPosition, moved: moved.current }
+  return { ref, position, dragging, onPointerDown, setPosition }
 }
