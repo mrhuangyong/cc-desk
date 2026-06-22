@@ -146,6 +146,24 @@ describe('MarkdownRenderer', () => {
     })
   })
 
+  it('文件夹路径不输出文件资源卡片（即便存在）', async () => {
+    const cwd = '/workspace/cc-desk'
+    const relPath = 'docs/superpowers/specs'
+    const absPath = `${cwd}/${relPath}`
+    // statKind 明确返回 'dir'：文件夹虽存在，但不适合走文件预览，不应生成卡片
+    vi.stubGlobal('window', Object.assign(window, {
+      api: { fs: { statKind: vi.fn(async (path: string) => (path === absPath ? 'dir' : 'absent')) } },
+    }))
+
+    const { queryByTestId } = renderMdWithProject(`请打开 \`${relPath}\``, cwd)
+
+    // 等待异步校验落定后，卡片不应出现
+    await waitFor(() => {
+      expect(queryByTestId(`resource-card-file-${absPath}`)).toBeNull()
+    })
+    expect(queryByTestId(`resource-open-${absPath}`)).toBeNull()
+  })
+
   it('数学公式：行内 $...$ 渲染为 katex', () => {
     const { container } = renderMd('公式 $E=mc^2$ 在此')
     expect(container.querySelector('.katex')).toBeTruthy()

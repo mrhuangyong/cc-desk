@@ -5,6 +5,7 @@ import type { BackendTask } from '../types'
 import { formatSessionTime } from '../utils/formatSessionTime'
 import { Tooltip } from './Tooltip'
 import { useCollapsibleHeight } from '../hooks/useCollapsibleHeight'
+import { FoldBadge } from './FoldBadge'
 
 const STATUS_LABEL: Record<BackendTask['status'], string> = {
   running: '运行中', completed: '已完成', failed: '已退出', stopped: '已终止',
@@ -41,18 +42,31 @@ export function SubagentCard({ tasks, folded, onToggleFold, onKill, onRemove, on
     <div style={{
       background: 'var(--surface-1)',
       borderRadius: 10, boxShadow: 'var(--shadow-float)', fontSize: 12, overflow: 'hidden',
+      ...(folded ? { width: 36, height: 36, alignSelf: 'flex-start' } : {}),
     }}>
-      <button onClick={onToggleFold} style={{
+      <button onClick={onToggleFold} aria-label="子代理" style={folded ? {
+        width: '100%', height: '100%', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text)', fontWeight: 600, position: 'relative',
+      } : {
         width: '100%', padding: '8px 12px', display: 'flex', alignItems: 'center',
         justifyContent: 'space-between', background: 'none', border: 'none',
         cursor: 'pointer', color: 'var(--text)', fontWeight: 600,
       }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <Bot size={13} /> 子代理
-        </span>
-        <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: 11 }}>
-          {runningTasks.length} 运行 · {doneCount} 完成 · 共 {tasks.length}
-        </span>
+        {folded ? (
+          <>
+            <Bot size={15} />
+            {tasks.length > 0 && <FoldBadge count={tasks.length} />}
+          </>
+        ) : (
+          <>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <Bot size={13} /> 子代理
+            </span>
+            <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: 11 }}>
+              {runningTasks.length} 运行 · {doneCount} 完成 · 共 {tasks.length}
+            </span>
+          </>
+        )}
       </button>
       <div ref={col.ref} style={col.style} onTransitionEnd={col.onTransitionEnd}>
         <div style={{ padding: 4, borderTop: '1px solid var(--border-hair)' }}>
