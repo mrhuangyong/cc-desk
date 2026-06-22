@@ -83,8 +83,9 @@ export type Action =
   | { type: 'RESTORE_SESSION'; sessionId: string }
   // 移动会话到另一个项目（修改空会话的关联项目）
   | { type: 'MOVE_SESSION'; sessionId: string; toProjectId: string }
-  // 右上角 Panel 折叠状态（三层独立）
-  | { type: 'SET_PANEL_FOLD'; panel: 'root' | 'taskCard' | 'subagentCard' | 'backendTaskCard'; folded: boolean }
+  // 悬浮任务面板：root 折叠态 + 拖动位置
+  | { type: 'SET_PANEL_FOLD'; panel: 'root'; folded: boolean }
+  | { type: 'SET_PANEL_POSITION'; position: { x: number; y: number } }
   | { type: 'APPEND_SUBAGENT_OUTPUT'; sessionId: string; toolUseId: string; block: import('../types').ContentBlock }
   // 计划模式（ExitPlanMode 提交的计划）
   | { type: 'SHOW_PLAN'; sessionId: string; plan: import('../types').PlanProposal }

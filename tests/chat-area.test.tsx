@@ -129,7 +129,7 @@ describe('ChatArea IPC 监听 → dispatch 链路', () => {
       settings: { showTodo: false, showBackendTask: false, taskNotify: false, notifySound: false },
       tasksBySession: {}, backendTasksBySession: {}, subagentOutputBySession: {}, planBySession: {},
       streamingBySession: {},
-      panelFold: { root: false, taskCard: false, subagentCard: false, backendTaskCard: false },
+      panelFold: { root: false }, panelPosition: { x: 0, y: 0 },
     }
   }
 
@@ -241,7 +241,7 @@ describe('ChatArea 渲染', () => {
       ] }] }],
       settings: { showTodo: false, showBackendTask: false }, streamingBySession: {},
       tasksBySession: {}, backendTasksBySession: {}, subagentOutputBySession: {}, planBySession: {},
-      panelFold: { root: false, taskCard: false, subagentCard: false, backendTaskCard: false },
+      panelFold: { root: false }, panelPosition: { x: 0, y: 0 },
     }
     const { container } = render(<ChatArea />)
     const userMsg = container.querySelector('.is-user')
@@ -257,7 +257,7 @@ describe('ChatArea 渲染', () => {
       ] }] }],
       settings: { showTodo: false, showBackendTask: false }, streamingBySession: {},
       tasksBySession: {}, backendTasksBySession: {}, subagentOutputBySession: {}, planBySession: {},
-      panelFold: { root: false, taskCard: false, subagentCard: false, backendTaskCard: false },
+      panelFold: { root: false }, panelPosition: { x: 0, y: 0 },
     }
     const { container } = render(<ChatArea />)
     expect(container.querySelector('.is-assistant')).toBeTruthy()
