@@ -72,6 +72,7 @@ interface FsAPI {
   writeFile(filePath: string, content: string): Promise<void>
   searchFiles(dirPath: string): Promise<any[]>
   exists(filePath: string): Promise<boolean>
+  statKind(filePath: string): Promise<'file' | 'dir' | 'absent'>
 }
 
 interface PtyAPI {

@@ -43,6 +43,18 @@ export async function pathExists(filePath: string): Promise<boolean> {
   }
 }
 
+// 区分路径类型，供渲染端决定是否把路径识别为可点击「文件」链接/卡片：
+// 文件夹虽然存在，但不适合走「打开文件预览」，故返回 'dir' 让渲染端忽略。
+// 'absent' 表示不存在或 stat 失败。任何异常都视为不存在。
+export async function statKind(filePath: string): Promise<'file' | 'dir' | 'absent'> {
+  try {
+    const s = await stat(filePath)
+    return s.isDirectory() ? 'dir' : 'file'
+  } catch {
+    return 'absent'
+  }
+}
+
 export async function readFileContent(filePath: string): Promise<string> {
   const s = await stat(filePath)
   if (s.size > 1024 * 200) throw new Error('文件过大（>200KB）')
