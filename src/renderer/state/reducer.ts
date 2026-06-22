@@ -40,8 +40,10 @@ export interface AppState {
   tasksBySession: Record<string, import('../types').TaskItem[]>
   // 后台任务：按会话隔离的后台任务列表（悬浮面板）
   backendTasksBySession: Record<string, import('../types').BackendTask[]>
-  // 右上角 Panel 折叠状态（四层独立）
-  panelFold: { root: boolean; taskCard: boolean; subagentCard: boolean; backendTaskCard: boolean }
+  // 右上角悬浮任务面板：根级折叠态（重设计后不再有分区独立折叠）
+  panelFold: { root: boolean }
+  // 悬浮面板拖动位置（内存态；开启记忆时由 settings.panelPosition 覆盖）
+  panelPosition: { x: number; y: number }
   // 子代理对话输出：按会话 + 触发它的 Task tool_use id 索引，累积 ContentBlock[]
   subagentOutputBySession: Record<string, Record<string, import('../types').ContentBlock[]>>
   // 计划模式：模型提交的计划（ExitPlanMode）。按会话隔离，每次提交覆盖前一条。
@@ -837,7 +839,10 @@ export function reducer(state: AppState, action: Action): AppState {
       }
     }
     case 'SET_PANEL_FOLD': {
-      return { ...state, panelFold: { ...state.panelFold, [action.panel]: action.folded } }
+      return { ...state, panelFold: { root: action.folded } }
+    }
+    case 'SET_PANEL_POSITION': {
+      return { ...state, panelPosition: action.position }
     }
     case 'SHOW_PLAN': {
       return { ...state, planBySession: { ...state.planBySession, [action.sessionId]: action.plan } }

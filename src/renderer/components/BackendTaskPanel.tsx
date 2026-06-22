@@ -6,7 +6,7 @@ import { BackendTaskCard } from './BackendTaskCard'
 import { SubagentCard } from './SubagentCard'
 import type { TaskItem, BackendTask, ContentBlock } from '../types'
 
-interface FoldState { root: boolean; taskCard: boolean; subagentCard: boolean; backendTaskCard: boolean }
+interface FoldState { root: boolean }
 
 interface Props {
   tasks: TaskItem[]
@@ -35,19 +35,19 @@ export function BackendTaskPanel({
     task: new Set(), subagent: new Set(), backend: new Set(),
   })
   useEffect(() => {
-    const panels: Array<[keyof typeof seenIds.current, 'taskCard' | 'subagentCard' | 'backendTaskCard', { id: string }[]]> = [
-      ['task', 'taskCard', tasks],
-      ['subagent', 'subagentCard', subagents],
-      ['backend', 'backendTaskCard', backends],
+    const panels: Array<[keyof typeof seenIds.current, { id: string }[]]> = [
+      ['task', tasks],
+      ['subagent', subagents],
+      ['backend', backends],
     ]
-    for (const [key, panel, list] of panels) {
+    for (const [key, list] of panels) {
       const seen = seenIds.current[key]
       let hasNew = false
       for (const it of list) {
         if (!seen.has(it.id)) { seen.add(it.id); hasNew = true }
       }
-      if (hasNew && folded[panel]) {
-        dispatch({ type: 'SET_PANEL_FOLD', panel, folded: false })
+      if (hasNew && folded.root) {
+        dispatch({ type: 'SET_PANEL_FOLD', panel: 'root', folded: false })
       }
     }
   }, [tasks, subagents, backends, folded, dispatch])
@@ -74,15 +74,15 @@ export function BackendTaskPanel({
         display: 'flex', flexDirection: 'column', gap: 8,
       }}>
         {taskVisible && (
-          <TaskCard tasks={tasks} folded={folded.taskCard}
-            onToggleFold={() => dispatch({ type: 'SET_PANEL_FOLD', panel: 'taskCard', folded: !folded.taskCard })}
+          <TaskCard tasks={tasks} folded={folded.root}
+            onToggleFold={() => dispatch({ type: 'SET_PANEL_FOLD', panel: 'root', folded: !folded.root })}
             onClickTask={(task) => setActiveTask(task)} />
         )}
         {subagentVisible && (
           <SubagentCard
             tasks={subagents}
-            folded={folded.subagentCard}
-            onToggleFold={() => dispatch({ type: 'SET_PANEL_FOLD', panel: 'subagentCard', folded: !folded.subagentCard })}
+            folded={folded.root}
+            onToggleFold={() => dispatch({ type: 'SET_PANEL_FOLD', panel: 'root', folded: !folded.root })}
             onKill={(taskId) => { void window.api.backendTask.kill(activeSessionId, taskId) }}
             onRemove={(taskId) => { void window.api?.backendTask?.remove?.(activeSessionId, taskId); dispatch({ type: 'REMOVE_BACKEND_TASK', sessionId: activeSessionId, taskId }) }}
             onClearFinished={() => {
@@ -96,8 +96,8 @@ export function BackendTaskPanel({
         {bgVisible && (
           <BackendTaskCard
             tasks={backends}
-            folded={folded.backendTaskCard}
-            onToggleFold={() => dispatch({ type: 'SET_PANEL_FOLD', panel: 'backendTaskCard', folded: !folded.backendTaskCard })}
+            folded={folded.root}
+            onToggleFold={() => dispatch({ type: 'SET_PANEL_FOLD', panel: 'root', folded: !folded.root })}
             onKill={(taskId) => { void window.api.backendTask.kill(activeSessionId, taskId) }}
             onRemove={(taskId) => { void window.api?.backendTask?.remove?.(activeSessionId, taskId); dispatch({ type: 'REMOVE_BACKEND_TASK', sessionId: activeSessionId, taskId }) }}
             onClearFinished={() => {
