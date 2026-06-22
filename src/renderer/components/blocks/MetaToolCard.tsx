@@ -116,7 +116,12 @@ export function MetaToolCard({ block }: Props) {
 
       {open && (
         <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {block.input != null && (
+          {isPlan ? (
+            // 提交计划：plan 是 Markdown 文档，直接渲染（而非 JSON.stringify 原始 input）。
+            // 默认折叠到固定高度 + 渐隐遮罩，点击「展开全文」切换；容器有独立背景/边框/圆角，
+            // 与对话流正文区分。allowedPrompts 以小标签列出，不再混入 JSON。
+            <PlanDoc plan={planText} allowedPrompts={block.input?.allowedPrompts} />
+          ) : block.input != null && (
             <div>
               <div style={{ color: 'var(--text-faint)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>输入</div>
               <pre style={{
@@ -151,6 +156,73 @@ export function MetaToolCard({ block }: Props) {
       <PlanDrawer filePath={planFilePath} plan={planText} open={planOpen} onClose={() => setPlanOpen(false)} />
     )}
     </>
+  )
+}
+
+// 计划文档展示：把 ExitPlanMode 的 plan（Markdown）渲染为可折叠文档区。
+// 默认限高 + 底部渐隐遮罩，点击「展开全文」切换；容器有独立背景/边框/圆角与对话流区分。
+// allowedPrompts（计划需要的工具权限）以小标签列出，替代原先整块 JSON 的低可读性展示。
+const PLAN_COLLAPSED_HEIGHT = 240
+function PlanDoc({ plan, allowedPrompts }: { plan: string; allowedPrompts?: any[] }) {
+  const [expanded, setExpanded] = useState(false)
+  // 内容短于折叠高度时不显示「展开全文」（避免短计划还多个按钮）
+  const [collapsible, setCollapsible] = useState(false)
+  const measureRef = (el: HTMLDivElement | null) => {
+    if (el) setCollapsible(el.scrollHeight > PLAN_COLLAPSED_HEIGHT + 8)
+  }
+  const prompts: any[] = Array.isArray(allowedPrompts) ? allowedPrompts : []
+
+  return (
+    <div style={{
+      // 与对话流正文区分：卡片化容器
+      border: '1px solid var(--border)', borderRadius: 8,
+      background: 'var(--surface-1)', overflow: 'hidden',
+    }}>
+      <div style={{
+        position: 'relative',
+        maxHeight: expanded ? 'none' : PLAN_COLLAPSED_HEIGHT,
+        overflow: expanded ? 'visible' : 'hidden',
+        transition: 'max-height .2s ease',
+        padding: '10px 14px',
+      }}>
+        <div ref={measureRef}>
+          {plan ? <MarkdownRenderer text={plan} /> : <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>（无计划内容）</div>}
+        </div>
+        {/* 折叠态底部渐隐遮罩，暗示下方还有内容 */}
+        {!expanded && collapsible && (
+          <div style={{
+            position: 'absolute', left: 0, right: 0, bottom: 0, height: 48, pointerEvents: 'none',
+            background: 'linear-gradient(to bottom, transparent, var(--surface-1))',
+          }} />
+        )}
+      </div>
+      {collapsible && (
+        <div style={{ padding: '4px 14px 8px', textAlign: 'center' }}>
+          <button onClick={() => setExpanded(v => !v)} style={{
+            fontSize: 11, padding: '3px 12px', borderRadius: 5, cursor: 'pointer',
+            border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-muted)',
+          }}>
+            {expanded ? '收起' : '展开全文'}
+          </button>
+        </div>
+      )}
+      {prompts.length > 0 && (
+        <div style={{
+          padding: '6px 14px 10px', borderTop: '1px solid var(--border-hair, var(--border))',
+          display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center',
+        }}>
+          <span style={{ color: 'var(--text-faint)', fontSize: 10 }}>所需权限：</span>
+          {prompts.map((p, i) => (
+            <span key={i} style={{
+              fontSize: 10.5, padding: '2px 7px', borderRadius: 4,
+              background: 'var(--surface-2)', color: 'var(--text-muted)',
+            }}>
+              {p?.tool ? `${p.tool}` : ''}{p?.prompt ? `· ${p.prompt}` : ''}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
