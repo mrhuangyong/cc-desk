@@ -120,6 +120,7 @@ export interface Session {
   archived?: boolean
   archivedAt?: number
   updatedAt?: number    // 最后活动时间戳（ms），用于自动归档判断
+  lastUserSentAt?: number   // 用户最后一次发送消息的时间戳（ms），用于会话列表稳定排序（离散事件，不随流式 tick 抖动）
   // 会话级权限/思考（持久化到 projects.json）；undefined 时用默认
   permissionMode?: string          // '变更前确认' | '自动编辑' | '计划模式' | '完全访问'
   thinking?: 'low' | 'medium' | 'high'   // SDK EffortLevel 子集
