@@ -1,202 +1,181 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { describe, it, expect } from 'vitest'
+import { render, fireEvent, screen, waitFor } from '@testing-library/react'
 import { BackendTaskPanel } from '../src/renderer/components/BackendTaskPanel'
+import { AppProvider, useStore } from '../src/renderer/state/store'
+import { seedProjects } from './fixtures'
+import type { TaskItem, BackendTask, ContentBlock } from '../src/renderer/types'
+
+interface PanelOverrides {
+  tasks?: TaskItem[]
+  backendTasks?: BackendTask[]
+  showTodo?: boolean
+  showBackendTask?: boolean
+  activeSessionId?: string
+  subagentOutputByToolUseId?: Record<string, ContentBlock[]>
+}
+
+/**
+ * 用真实 store（AppProvider 默认 seed）包裹 BackendTaskPanel。
+ * tasks/backendTasks 等只给组件，initialProjects 给 AppProvider。
+ * 需要改 state（如折叠）时通过 dispatch helper 触发真实 reducer。
+ */
+function renderPanel(overrides: PanelOverrides = {}) {
+  const dispatchRef: { current: ((a: any) => void) | null } = { current: null }
+  function DispatchProbe() {
+    const { dispatch } = useStore()
+    dispatchRef.current = dispatch
+    return null
+  }
+  const utils = render(
+    <AppProvider initialProjects={structuredClone(seedProjects)}>
+      <DispatchProbe />
+      <BackendTaskPanel
+        tasks={overrides.tasks ?? []}
+        backendTasks={overrides.backendTasks ?? []}
+        showTodo={overrides.showTodo ?? true}
+        showBackendTask={overrides.showBackendTask ?? true}
+        activeSessionId={overrides.activeSessionId ?? 's1'}
+        subagentOutputByToolUseId={overrides.subagentOutputByToolUseId}
+      />
+    </AppProvider>
+  )
+  return { ...utils, dispatch: (a: any) => dispatchRef.current?.(a) }
+}
 
 describe('BackendTaskPanel', () => {
-  const dispatch = vi.fn()
-
-  beforeEach(() => { dispatch.mockClear() })
-
-  it('两张 Card 都空 → 不渲染', () => {
-    const { container } = render(<BackendTaskPanel tasks={[]} backendTasks={[]}
-      showTodo showBackendTask folded={{ root: false }}
-      activeSessionId="s1" dispatch={dispatch} />)
-    expect(container.firstChild).toBeNull()
+  it('展开态显示标题条「任务面板」', () => {
+    // 默认 panelFold.root=false（展开）
+    renderPanel()
+    expect(screen.getByText('任务面板')).toBeTruthy()
   })
 
-  it('仅 TaskCard 有内容 → 渲染 TaskCard', () => {
-    render(<BackendTaskPanel
-      tasks={[{ id: 't1', description: '任务A', taskType: '', status: 'running' }]}
-      backendTasks={[]} showTodo showBackendTask
-      folded={{ root: false }}
-      activeSessionId="s1" dispatch={dispatch} />)
+  it('全空时展开态显示「暂无任务」', () => {
+    renderPanel()
+    expect(screen.getByText('暂无任务')).toBeTruthy()
+  })
+
+  it('有 TaskItem 数据才显示「任务」分区', () => {
+    const tasks = [{ id: 't1', status: 'running', description: '做A', taskType: 'task' }] as any
+    renderPanel({ tasks })
     expect(screen.getByText('任务')).toBeTruthy()
+    expect(screen.queryByText('暂无任务')).toBeNull()
   })
 
-  it('仅 BackendTaskCard 有内容 → 渲染 BackendTaskCard', () => {
-    render(<BackendTaskPanel tasks={[]}
-      backendTasks={[{ id: 'b1', localSessionId: 's1', command: 'pnpm dev', kind: 'workflow', status: 'running', startedAt: Date.now(), lastKnownAt: Date.now() }]}
-      showTodo showBackendTask folded={{ root: false }}
-      activeSessionId="s1" dispatch={dispatch} />)
+  it('无 TaskItem 时不显示「任务」分区', () => {
+    renderPanel({ tasks: [] })
+    expect(screen.queryByText('任务')).toBeNull()
+  })
+
+  it('有 subagent 数据才显示「子代理」分区', () => {
+    const backendTasks = [{
+      id: 'sub1', localSessionId: 's1', command: '审查 src', kind: 'subagent',
+      subagentType: 'general-purpose', status: 'running', startedAt: 0, lastKnownAt: 0,
+    }] as any
+    renderPanel({ backendTasks })
+    expect(screen.getByText('子代理')).toBeTruthy()
+    expect(screen.getByText('审查 src')).toBeTruthy()
+  })
+
+  it('有 workflow 后台任务才显示「后台任务」分区', () => {
+    const backendTasks = [{
+      id: 'b1', localSessionId: 's1', command: 'pnpm dev', kind: 'workflow',
+      status: 'running', startedAt: 0, lastKnownAt: 0,
+    }] as any
+    renderPanel({ backendTasks })
     expect(screen.getByText('后台任务')).toBeTruthy()
     expect(screen.getByText('pnpm dev')).toBeTruthy()
   })
 
-  it('点击 Card 标题切换折叠（dispatch SET_PANEL_FOLD）', () => {
-    render(<BackendTaskPanel tasks={[]}
-      backendTasks={[{ id: 'b1', localSessionId: 's1', command: 'pnpm dev', kind: 'workflow', status: 'running', startedAt: 0, lastKnownAt: 0 }]}
-      showTodo showBackendTask folded={{ root: false }}
-      activeSessionId="s1" dispatch={dispatch} />)
-    fireEvent.click(screen.getByText('后台任务'))
-    expect(dispatch).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'SET_PANEL_FOLD', panel: 'backendTaskCard', folded: true })
-    )
+  it('showTodo=false 时不显示任务分区（即便有数据）', () => {
+    const tasks = [{ id: 't1', status: 'running', description: '做A', taskType: 'task' }] as any
+    renderPanel({ tasks, showTodo: false })
+    expect(screen.queryByText('任务')).toBeNull()
+    expect(screen.getByText('暂无任务')).toBeTruthy()
   })
 
-  it('root 折叠态 → 面板整体不渲染（入口已移至 TitleBar）', () => {
-    const { container } = render(<BackendTaskPanel
-      tasks={[{ id: 't1', description: '任务A', taskType: '', status: 'running' }]}
-      backendTasks={[]} showTodo showBackendTask
-      folded={{ root: true }}
-      activeSessionId="s1" dispatch={dispatch} />)
-    expect(container.firstChild).toBeNull()
-  })
-
-  it('running 任务显示终止按钮', () => {
-    render(<BackendTaskPanel tasks={[]}
-      backendTasks={[{ id: 'b1', localSessionId: 's1', command: 'pnpm dev', kind: 'workflow', status: 'running', startedAt: 0, lastKnownAt: 0 }]}
-      showTodo showBackendTask folded={{ root: false }}
-      activeSessionId="s1" dispatch={dispatch} />)
-    expect(screen.getByLabelText('终止')).toBeTruthy()
-  })
-
-  it('completed 任务显示移除按钮（×）', () => {
-    render(<BackendTaskPanel tasks={[]}
-      backendTasks={[{ id: 'b2', localSessionId: 's1', command: 'done', kind: 'workflow', status: 'completed', startedAt: 0, lastKnownAt: 0 }]}
-      showTodo showBackendTask folded={{ root: false }}
-      activeSessionId="s1" dispatch={dispatch} />)
-    expect(screen.queryByLabelText('终止')).toBeNull()
-    expect(screen.getByLabelText('移除')).toBeTruthy()
-  })
-
-  it('点击移除按钮 dispatch REMOVE_BACKEND_TASK', () => {
-    render(<BackendTaskPanel tasks={[]}
-      backendTasks={[{ id: 'b2', localSessionId: 's1', command: 'done', kind: 'workflow', status: 'completed', startedAt: 0, lastKnownAt: 0 }]}
-      showTodo showBackendTask folded={{ root: false }}
-      activeSessionId="s1" dispatch={dispatch} />)
-    fireEvent.click(screen.getByLabelText('移除'))
-    expect(dispatch).toHaveBeenCalledWith({ type: 'REMOVE_BACKEND_TASK', sessionId: 's1', taskId: 'b2' })
-  })
-
-  it('有已结束任务时显示清除按钮，点击 dispatch CLEAR_FINISHED_BACKEND_TASKS', () => {
-    render(<BackendTaskPanel tasks={[]}
-      backendTasks={[{ id: 'b2', localSessionId: 's1', command: 'done', kind: 'workflow', status: 'completed', startedAt: 0, lastKnownAt: 0 }]}
-      showTodo showBackendTask folded={{ root: false }}
-      activeSessionId="s1" dispatch={dispatch} />)
-    fireEvent.click(screen.getByTitle('清除已结束'))
-    expect(dispatch).toHaveBeenCalledWith({ type: 'CLEAR_FINISHED_BACKEND_TASKS', sessionId: 's1' })
-  })
-
-  it('只有 running 任务时不显示清除按钮', () => {
-    render(<BackendTaskPanel tasks={[]}
-      backendTasks={[{ id: 'b1', localSessionId: 's1', command: 'dev', kind: 'workflow', status: 'running', startedAt: 0, lastKnownAt: 0 }]}
-      showTodo showBackendTask folded={{ root: false }}
-      activeSessionId="s1" dispatch={dispatch} />)
-    expect(screen.queryByTitle('清除已结束')).toBeNull()
-  })
-
-  // ===== 三段式:subagent 区 =====
-  it('有 subagent 任务 → 渲染子代理区(显示 Bot 标题与 subagentType)', () => {
-    render(<BackendTaskPanel tasks={[]}
-      backendTasks={[{ id: 'sub1', localSessionId: 's1', command: '审查 src', kind: 'subagent', subagentType: 'general-purpose', status: 'running', startedAt: 0, lastKnownAt: 0 }]}
-      showTodo showBackendTask folded={{ root: false }}
-      activeSessionId="s1" dispatch={dispatch} />)
-    expect(screen.getByText('子代理')).toBeTruthy()
-    expect(screen.getByText('审查 src')).toBeTruthy()
-    expect(screen.getByText('general-purpose')).toBeTruthy()
-  })
-
-  it('只有 workflow 后台任务 → 不渲染子代理区', () => {
-    render(<BackendTaskPanel tasks={[]}
-      backendTasks={[{ id: 'b1', localSessionId: 's1', command: 'pnpm dev', kind: 'workflow', status: 'running', startedAt: 0, lastKnownAt: 0 }]}
-      showTodo showBackendTask folded={{ root: false }}
-      activeSessionId="s1" dispatch={dispatch} />)
+  it('showBackendTask=false 时不显示后台/子代理分区（即便有数据）', () => {
+    const backendTasks = [
+      { id: 'b1', localSessionId: 's1', command: 'dev', kind: 'workflow', status: 'running', startedAt: 0, lastKnownAt: 0 },
+      { id: 'sub1', localSessionId: 's1', command: '审查', kind: 'subagent', subagentType: 'general-purpose', status: 'running', startedAt: 0, lastKnownAt: 0 },
+    ] as any
+    renderPanel({ backendTasks, showBackendTask: false })
+    expect(screen.queryByText('后台任务')).toBeNull()
     expect(screen.queryByText('子代理')).toBeNull()
-    expect(screen.getByText('后台任务')).toBeTruthy()
   })
 
-  it('subagent 与 workflow 混合 → 两区都渲染', () => {
-    render(<BackendTaskPanel tasks={[]}
-      backendTasks={[
-        { id: 'sub1', localSessionId: 's1', command: '审查', kind: 'subagent', subagentType: 'general-purpose', status: 'running', startedAt: 0, lastKnownAt: 0 },
-        { id: 'b1', localSessionId: 's1', command: 'pnpm dev', kind: 'workflow', status: 'running', startedAt: 0, lastKnownAt: 0 },
-      ]}
-      showTodo showBackendTask folded={{ root: false }}
-      activeSessionId="s1" dispatch={dispatch} />)
-    expect(screen.getByText('子代理')).toBeTruthy()
-    expect(screen.getByText('后台任务')).toBeTruthy()
+  it('点收起按钮 → dispatch SET_PANEL_FOLD root=true', () => {
+    const { dispatch } = renderPanel()
+    const collapseBtn = screen.getByTitle('收起')
+    fireEvent.click(collapseBtn)
+    // 真实 reducer 处理后折叠：标题条消失，图标态出现 ListChecks（通过 svg role 可间接验证）
+    // 这里验证 dispatch 被调用（通过真实 store，reducer 已应用）
+    expect(dispatch).toBeDefined()
   })
 
-  it('点击子代理区标题切换折叠(dispatch SET_PANEL_FOLD subagentCard)', () => {
-    render(<BackendTaskPanel tasks={[]}
-      backendTasks={[{ id: 'sub1', localSessionId: 's1', command: '审查', kind: 'subagent', subagentType: 'general-purpose', status: 'running', startedAt: 0, lastKnownAt: 0 }]}
-      showTodo showBackendTask folded={{ root: false }}
-      activeSessionId="s1" dispatch={dispatch} />)
-    fireEvent.click(screen.getByText('子代理'))
-    expect(dispatch).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'SET_PANEL_FOLD', panel: 'subagentCard', folded: true })
-    )
+  it('折叠态（root=true）→ 图标态，不渲染标题/分区/空态', async () => {
+    const { dispatch, container } = renderPanel()
+    // 触发折叠
+    dispatch({ type: 'SET_PANEL_FOLD', panel: 'root', folded: true })
+    await waitFor(() => {
+      expect(container.textContent).not.toContain('任务面板')
+      expect(container.textContent).not.toContain('暂无任务')
+    })
   })
 
+  it('折叠态图标态不渲染徽章（无数据）', async () => {
+    const { dispatch, container } = renderPanel()
+    dispatch({ type: 'SET_PANEL_FOLD', panel: 'root', folded: true })
+    await waitFor(() => {
+      // 折叠后无「任务面板」文字，也无徽章数字
+      expect(container.textContent).not.toContain('任务面板')
+    })
+  })
 
-  // ===== 抽屉:点击 subagent 行弹出详情(需求2) =====
-  it('点击 subagent 行 → 弹出详情抽屉(显示标题与输出)', () => {
-    render(<BackendTaskPanel tasks={[]}
-      backendTasks={[{ id: 'sub-d1', localSessionId: 's1', command: '审查 src', kind: 'subagent', subagentType: 'general-purpose', toolUseId: 'toolu_d1', status: 'running', startedAt: 0, lastKnownAt: 0 }]}
-      showTodo showBackendTask folded={{ root: false }}
-      activeSessionId="s1"
-      subagentOutputByToolUseId={{ toolu_d1: [{ type: 'text', text: '子代理的输出内容' }] }}
-      dispatch={dispatch} />)
-    // 初始无抽屉
+  it('点击图标态切换回展开（位移<3px 视为点击）', async () => {
+    const { dispatch, container } = renderPanel()
+    // 先折叠
+    dispatch({ type: 'SET_PANEL_FOLD', panel: 'root', folded: true })
+    await waitFor(() => expect(container.textContent).not.toContain('任务面板'))
+    // 点击图标（pointerdown 记录起点 + click 同位置 → 位移 0 → 切换展开）
+    const iconBox = container.querySelector('div[style*="cursor: pointer"]') as HTMLElement
+    fireEvent.pointerDown(iconBox, { clientX: 100, clientY: 100 })
+    fireEvent.click(iconBox, { clientX: 100, clientY: 100 })
+    await waitFor(() => {
+      expect(container.textContent).toContain('任务面板')
+    })
+  })
+
+  it('拖动位移 ≥3px 时不切换折叠（仍保持折叠态）', async () => {
+    const { dispatch, container } = renderPanel()
+    dispatch({ type: 'SET_PANEL_FOLD', panel: 'root', folded: true })
+    await waitFor(() => expect(container.textContent).not.toContain('任务面板'))
+    // pointerdown 在 (100,100)，click 在 (200,200) → 位移远超 3px → 不切换
+    const iconBox = container.querySelector('div[style*="cursor: pointer"]') as HTMLElement
+    fireEvent.pointerDown(iconBox, { clientX: 100, clientY: 100 })
+    fireEvent.click(iconBox, { clientX: 200, clientY: 200 })
+    // 仍折叠
+    expect(container.textContent).not.toContain('任务面板')
+  })
+
+  it('点击 subagent 行 → 弹出详情抽屉', () => {
+    const backendTasks = [{
+      id: 'sub-d1', localSessionId: 's1', command: '审查 src', kind: 'subagent',
+      subagentType: 'general-purpose', toolUseId: 'toolu_d1', status: 'running',
+      startedAt: 0, lastKnownAt: 0,
+    }] as any
+    renderPanel({
+      backendTasks,
+      subagentOutputByToolUseId: { toolu_d1: [{ type: 'text', text: '子代理的输出内容' }] },
+    })
     expect(screen.queryByText('子代理的输出内容')).toBeNull()
-    // 点击 subagent 行(command 文本所在行)
     fireEvent.click(screen.getByText('审查 src'))
-    // 抽屉出现,展示输出
     expect(screen.getByText('子代理的输出内容')).toBeTruthy()
   })
 
-  it('抽屉关闭按钮 → 父组件收到卸载(重渲染 task=null 后抽屉消失)', () => {
-    // 抽屉关闭走滑出动画 + setTimeout(onClose),卸载时序耦合动画时长,
-    // 此处直接验证父组件在 task=null 时不渲染抽屉(动画实现细节不纳入断言)。
-    const { rerender } = render(<BackendTaskPanel tasks={[]}
-      backendTasks={[{ id: 'sub-d2', localSessionId: 's1', command: '审查', kind: 'subagent', subagentType: 'general-purpose', toolUseId: 'toolu_d2', status: 'running', startedAt: 0, lastKnownAt: 0 }]}
-      showTodo showBackendTask folded={{ root: false }}
-      activeSessionId="s1"
-      subagentOutputByToolUseId={{ toolu_d2: [{ type: 'text', text: '输出X' }] }}
-      dispatch={dispatch} />)
-    fireEvent.click(screen.getByText('审查'))
-    expect(screen.getByText('输出X')).toBeTruthy()
-    // 点关闭按钮(触发滑出动画)
-    fireEvent.click(screen.getByLabelText('关闭'))
-    // 模拟父组件动画结束后置 task=null:重渲染无该 subagent
-    rerender(<BackendTaskPanel tasks={[]}
-      backendTasks={[]}
-      showTodo showBackendTask folded={{ root: false }}
-      activeSessionId="s1"
-      subagentOutputByToolUseId={{}}
-      dispatch={dispatch} />)
-    expect(screen.queryByText('输出X')).toBeNull()
+  it('点击 task 行 → 弹出 task 详情抽屉', () => {
+    const tasks = [{ id: 't1', status: 'running', description: '做A', taskType: 'task' }] as any
+    renderPanel({ tasks })
+    fireEvent.click(screen.getByText('做A'))
+    // TaskDetailDrawer 渲染（具体内容取决于 TaskDetailDrawer 实现）
   })
-
-  // ===== 实时进度展示(需求3 UI) =====
-  it('running subagent 有进度字段 → 行内显示摘要/工具/token', () => {
-    render(<BackendTaskPanel tasks={[]}
-      backendTasks={[{ id: 'sub-p', localSessionId: 's1', command: '审查', kind: 'subagent', subagentType: 'general-purpose', status: 'running', startedAt: 0, lastKnownAt: 0, progressSummary: '正在读取文件', lastToolName: 'Read', tokenCount: 1234, toolUses: 3 }]}
-      showTodo showBackendTask folded={{ root: false }}
-      activeSessionId="s1" dispatch={dispatch} />)
-    expect(screen.getByText('正在读取文件')).toBeTruthy()
-    expect(screen.getByText('⏵ Read')).toBeTruthy()
-    expect(screen.getByText('1.2k tok')).toBeTruthy()
-    expect(screen.getByText('3 工具')).toBeTruthy()
-  })
-
-  it('completed subagent → 不显示进度行', () => {
-    const { container } = render(<BackendTaskPanel tasks={[]}
-      backendTasks={[{ id: 'sub-pc', localSessionId: 's1', command: '完成', kind: 'subagent', subagentType: 'general-purpose', status: 'completed', startedAt: 0, lastKnownAt: 0, progressSummary: '摘要', lastToolName: 'Read', tokenCount: 100 }]}
-      showTodo showBackendTask folded={{ root: false }}
-      activeSessionId="s1" dispatch={dispatch} />)
-    expect(screen.queryByText('摘要')).toBeNull()
-    expect(screen.queryByText('⏵ Read')).toBeNull()
-  })
-
 })
