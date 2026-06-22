@@ -8,7 +8,8 @@ export function InputDock() {
   const { state } = useStore()
   return (
     <div style={{ position: 'relative' }}>
-      {state.pendingDialog?.dialogKind === 'ask_user_question' && (
+      {state.pendingDialog?.dialogKind === 'ask_user_question'
+        && state.pendingDialog.sessionId === state.activeSessionId && (
         <div style={{ position: 'absolute', bottom: '100%', left: 0, right: 0, padding: '0 0 8px', zIndex: 50 }}>
           <AnswerPanel />
         </div>
