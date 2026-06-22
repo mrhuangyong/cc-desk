@@ -1,5 +1,5 @@
 import { useEffect, type CSSProperties } from 'react'
-import { Settings, Plus, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, ListChecks, Download } from 'lucide-react'
+import { Settings, Plus, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Download } from 'lucide-react'
 import { ThemeSwitcher } from './ThemeSwitcher'
 import { Tooltip } from './Tooltip'
 import { useStore } from '../state/store'
@@ -137,7 +137,6 @@ interface Props {
 export function TitleBar({ projectName, leftCollapsed, rightCollapsed, onToggleLeft, onToggleRight }: Props) {
   const { state, dispatch } = useStore()
   const { t } = useI18n()
-  const taskPanelOpen = !state.panelFold.root
 
   // 折叠态：左栏入口不可见，这里在折叠按钮右侧补「新建会话 / 设置」两个高频入口
   const handleNewSession = () => {
@@ -186,14 +185,6 @@ export function TitleBar({ projectName, leftCollapsed, rightCollapsed, onToggleL
 
       {/* 右侧工具组 */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 2, ...noDrag }}>
-        {/* 悬浮任务面板：与右栏独立，激活(展开)时图标常亮 */}
-        <GhostButton
-          title={taskPanelOpen ? t('title.taskPanelHide') : t('title.taskPanelShow')}
-          ariaLabel={taskPanelOpen ? t('title.taskPanelHide') : t('title.taskPanelShow')}
-          active={taskPanelOpen}
-          onClick={() => dispatch({ type: 'SET_PANEL_FOLD', panel: 'root', folded: !state.panelFold.root })}>
-          <ListChecks size={15} />
-        </GhostButton>
         <ThemeSwitcher />
         <GhostButton title={rightCollapsed ? '展开右栏' : '收起右栏'} onClick={onToggleRight} ariaLabel={rightCollapsed ? '展开右栏' : '收起右栏'}>
           {rightCollapsed ? <PanelRightOpen size={15} /> : <PanelRightClose size={15} />}
