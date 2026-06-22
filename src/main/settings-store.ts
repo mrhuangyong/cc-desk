@@ -100,6 +100,8 @@ export interface AppSettings {
   showThinking: boolean
   showTodo: boolean
   showBackendTask: boolean
+  rememberPanelPosition: boolean    // 是否记住悬浮任务面板的拖动位置
+  panelPosition?: { x: number; y: number }  // 悬浮任务面板的持久化位置
   autoArchive: boolean
   archiveDays: string
   devTools: boolean
@@ -199,6 +201,7 @@ const defaults: AppSettings = {
   showThinking: true,
   showTodo: true,
   showBackendTask: true,
+  rememberPanelPosition: true,
   autoArchive: true,
   archiveDays: '7',
   devTools: false,
@@ -249,7 +252,7 @@ function withDefaults(raw: Partial<AppSettings>): AppSettings {
   })
   // queueMode 旧值兼容：interrupt → guide
   if (merged.queueMode === 'interrupt') merged.queueMode = 'guide'
-  ;(['inheritTerminal', 'taskNotify', 'notifySound', 'notifyOnComplete', 'notifyOnError', 'notifyOnConfirm', 'notifyOnPermission', 'showThinking', 'showTodo', 'showBackendTask', 'autoArchive', 'devTools'] as const).forEach(k => {
+  ;(['inheritTerminal', 'taskNotify', 'notifySound', 'notifyOnComplete', 'notifyOnError', 'notifyOnConfirm', 'notifyOnPermission', 'showThinking', 'showTodo', 'showBackendTask', 'autoArchive', 'devTools', 'rememberPanelPosition'] as const).forEach(k => {
     ;(merged as any)[k] = (raw as any)[k] ?? (defaults as any)[k]
   })
   return merged
