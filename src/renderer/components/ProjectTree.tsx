@@ -40,8 +40,13 @@ export function ProjectTree({ onOpenFiles, expandedProjects, onToggleExpand, tre
           : project.sessions.filter(s => !s.archived)
         if (q && filtered.length === 0) return null
 
+        // 排序键：用户最后一次发送消息的时间（离散事件，不随流式 tick 抖动）。
+        // 旧会话/seed 无 lastUserSentAt 时回退 updatedAt。同值按 id（创建顺序）稳定排列，防 sort 抖。
         const sorted = [...filtered].sort((a, b) => {
-          return (b.updatedAt ?? 0) - (a.updatedAt ?? 0)
+          const ta = b.lastUserSentAt ?? b.updatedAt ?? 0
+          const tb = a.lastUserSentAt ?? a.updatedAt ?? 0
+          if (ta !== tb) return ta - tb
+          return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
         })
 
         const expanded = expandedProjects.has(project.id)

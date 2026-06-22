@@ -379,6 +379,7 @@ export function reducer(state: AppState, action: Action): AppState {
           return {
             ...s,
             messages: [...s.messages, newMessage],
+            lastUserSentAt: Date.now(),
             ...(isFirst && s.title === '新会话' && prompt.trim() ? { title: makeTitle(prompt) } : {}),
           }
         }),
