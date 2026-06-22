@@ -2,8 +2,6 @@
 // 任务卡片：显示当前会话的 Claude task 列表，嵌入 BackendTaskPanel 使用。
 import { CheckCircle2, Loader2, Circle, AlertCircle, XCircle, ListTodo } from 'lucide-react'
 import type { TaskStatus, TaskItem } from '../types'
-import { useCollapsibleHeight } from '../hooks/useCollapsibleHeight'
-import { FoldBadge } from './FoldBadge'
 
 function StatusIcon({ status }: { status: TaskStatus }) {
   const common = { size: 13, style: { flexShrink: 0 } }
@@ -23,64 +21,43 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
 
 interface TaskCardProps {
   tasks: TaskItem[]
-  folded: boolean
-  onToggleFold: () => void
   onClickTask?: (task: TaskItem) => void
 }
 
-export function TaskCard({ tasks, folded, onToggleFold, onClickTask }: TaskCardProps) {
+export function TaskCard({ tasks, onClickTask }: TaskCardProps) {
   if (tasks.length === 0) return null
-  const col = useCollapsibleHeight(!folded)
-
   const running = tasks.filter(t => t.status === 'running').length
   const done = tasks.filter(t => t.status === 'completed').length
 
   return (
-    <div style={{
-      background: 'var(--surface-1)',
-      borderRadius: 10, boxShadow: 'var(--shadow-float)',
-      fontSize: 12, overflow: 'hidden',
-      ...(folded ? { width: 36, height: 36, alignSelf: 'flex-start' } : {}),
-    }}>
-      <button onClick={onToggleFold} aria-label="任务" style={folded ? {
-        width: '100%', height: '100%', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text)', fontWeight: 600, position: 'relative',
-      } : {
-        width: '100%', padding: '8px 12px', display: 'flex', alignItems: 'center',
-        justifyContent: 'space-between', background: 'none', border: 'none',
-        cursor: 'pointer', color: 'var(--text)', fontWeight: 600,
+    <div>
+      {/* 静态标题行：不再可点折叠 */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '6px 10px',
       }}>
-        {folded ? (
-          <>
-            <ListTodo size={15} />
-            {tasks.length > 0 && <FoldBadge count={tasks.length} />}
-          </>
-        ) : (
-          <>
-            <span>任务</span>
-            <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: 11 }}>
-              {running} 进行 · {done} 完成 · 共 {tasks.length}
-            </span>
-          </>
-        )}
-      </button>
-      <div ref={col.ref} style={col.style} onTransitionEnd={col.onTransitionEnd}>
-        <div style={{ padding: 4, borderTop: '1px solid var(--border-hair)' }}>
-          {[...tasks].sort((a, b) => (a.id || '').localeCompare(b.id || '', undefined, { numeric: true })).map(t => (
-            <div
-              key={t.id}
-              onClick={onClickTask ? () => onClickTask(t) : undefined}
-              className="cc-task-row"
-              style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 8px', borderRadius: 6, cursor: onClickTask ? 'pointer' : 'default' }}
-            >
-              <div style={{ marginTop: 1 }}><StatusIcon status={t.status} /></div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.description || '(无描述)'}</div>
-                <div style={{ color: 'var(--text-faint)', fontSize: 10, marginTop: 2 }}>{STATUS_LABEL[t.status]}{t.taskType ? ` · ${t.taskType}` : ''}</div>
-              </div>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--text)', fontWeight: 600 }}>
+          <ListTodo size={13} /> 任务
+        </span>
+        <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: 11 }}>
+          {running} 进行 · {done} 完成 · 共 {tasks.length}
+        </span>
+      </div>
+      <div style={{ padding: 4 }}>
+        {[...tasks].sort((a, b) => (a.id || '').localeCompare(b.id || '', undefined, { numeric: true })).map(t => (
+          <div
+            key={t.id}
+            onClick={onClickTask ? () => onClickTask(t) : undefined}
+            className="cc-task-row"
+            style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 8px', borderRadius: 6, cursor: onClickTask ? 'pointer' : 'default' }}
+          >
+            <div style={{ marginTop: 1 }}><StatusIcon status={t.status} /></div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.description || '(无描述)'}</div>
+              <div style={{ color: 'var(--text-faint)', fontSize: 10, marginTop: 2 }}>{STATUS_LABEL[t.status]}{t.taskType ? ` · ${t.taskType}` : ''}</div>
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
     </div>
   )
