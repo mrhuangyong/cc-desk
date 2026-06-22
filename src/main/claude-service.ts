@@ -33,6 +33,12 @@ export class ClaudeService {
   private dialogResolvers = new Map<string, (r: any) => void>()
   // 每个 session 的 AbortController:创建 query 时传入,interrupt 不生效时 abort() 兜底强制中止。
   private abortControllers = new Map<string, AbortController>()
+  // 每个 session 已处理过的「阻塞式 tool_use」id 集合（AskUserQuestion / ExitPlanMode）。
+  // SDK 在 includePartialMessages / resume 场景会重放同一 assistant 消息，若不按 tool_use.id
+  // 去重，同一个问题会被弹多次、pushMessage 多条答案回 SDK。id 全局唯一故可安全去重。
+  // 不主动清理：localSessionId 为 uuid 不会复用，单会话内阻塞式提问数量极少，
+  // 集合体量可忽略，强清理反而要在会话销毁链路（manager.closeSession）穿针引线、收益不抵风险。
+  private handledBlockingToolUse = new Map<string, Set<string>>()
 
   setManager(m: SessionQueryManager): void { this.manager = m }
   setRegistry(r: BackendTaskRegistry): void { this.registry = r }
@@ -44,6 +50,21 @@ export class ClaudeService {
       this.dialogResolvers.delete(reqId)
       fn(result)
     }
+  }
+
+  /** 该 lsid 的某个阻塞式 tool_use 是否已处理过（防 SDK 重放导致重复弹窗）。 */
+  private isBlockingHandled(lsid: string, toolUseId: string): boolean {
+    return this.handledBlockingToolUse.get(lsid)?.has(toolUseId) ?? false
+  }
+
+  /** 标记该 lsid 的某个阻塞式 tool_use 已处理。 */
+  private markBlockingHandled(lsid: string, toolUseId: string): void {
+    let set = this.handledBlockingToolUse.get(lsid)
+    if (!set) {
+      set = new Set<string>()
+      this.handledBlockingToolUse.set(lsid, set)
+    }
+    set.add(toolUseId)
   }
 
   /**
@@ -451,12 +472,18 @@ export class ClaudeService {
         if (Array.isArray(aContent)) {
           const askBlocks = aContent.filter((ab: any) => ab?.type === 'tool_use' && ab.name === 'AskUserQuestion')
           for (const ab of askBlocks) {
+            // 按 tool_use.id 去重：SDK 在 includePartialMessages / resume 场景会重放同一
+            // assistant 消息，若不查重，同一问题会被弹多次并 pushMessage 多条答案回 SDK。
+            if (typeof ab.id === 'string' && this.isBlockingHandled(lsid, ab.id)) continue
+            if (typeof ab.id === 'string') this.markBlockingHandled(lsid, ab.id)
             await this.handleAskUserQuestion(lsid, ab, webContents)
           }
           // ExitPlanMode：计划模式下模型提交计划。阻塞式——必须等用户在计划卡片上
           // 选择授权模式后才继续，否则 SDK 自动回填 dummy tool_result 后会继续往下走（BUG）。
           const planBlocks = aContent.filter((ab: any) => ab?.type === 'tool_use' && ab.name === 'ExitPlanMode')
           for (const pb of planBlocks) {
+            if (typeof pb.id === 'string' && this.isBlockingHandled(lsid, pb.id)) continue
+            if (typeof pb.id === 'string') this.markBlockingHandled(lsid, pb.id)
             await this.handleExitPlanMode(lsid, pb, webContents)
           }
         }
