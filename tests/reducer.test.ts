@@ -19,8 +19,11 @@ function initialState(): AppState {
     settings: {
       apiKey: '', model: 'model-sonnet', cwd: '', providers: [], models: [], modelRoleMap: {},
       theme: 'codex-light', lang: 'zh-CN', zoom: 'normal', chatWidth: 'wide', proxy: '', inheritTerminal: true,
-      terminalFont: 'MesloLGS NF, monospace', taskNotify: true, notifySound: true, queueMode: 'queue',
-      showThinking: false, showTodo: false, showBackendTask: true, rememberPanelPosition: true, autoArchive: true, archiveDays: '7', dataPath: '',
+      terminalFont: 'MesloLGS NF, monospace', taskNotify: true, notifySound: true,
+      notifyOnComplete: true, notifyOnError: true, notifyOnConfirm: true, notifyOnPermission: true,
+      queueMode: 'queue',
+      showThinking: false, showTodo: false, showBackendTask: true, rememberPanelPosition: true, autoArchive: true, archiveDays: '7',
+      devTools: false,
       codePreview: { lightTheme: 'GitHub Light', darkTheme: 'GitHub Dark', showLineNumbers: true, wordWrap: false, fontSize: 12 },
       skills: [], mcpServers: [], plugins: [], commands: [], hooks: [],
     },

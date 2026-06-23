@@ -2,7 +2,8 @@
 // 覆盖 Conventional Commits 三种级别、混合提交取最高、非法版本号兜底。
 import { describe, it, expect } from 'vitest'
 
-// bump-version.mjs 用 ESM export；vitest 经 vite 处理 .mjs，静态 import 即可
+// bump-version.mjs 是 ESM 脚本（tsconfig 不含 scripts/，无类型）；vitest 经 vite 处理 .mjs，静态 import 即可。
+// @ts-expect-error mjs 无类型声明——运行时由 vite 解析，仅抑制 tsc 的类型查找报错。
 import { determineBumpLevel, bumpVersion } from '../scripts/bump-version.mjs'
 
 describe('determineBumpLevel（Conventional Commits 级别推断）', () => {
