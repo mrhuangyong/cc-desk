@@ -299,7 +299,10 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
   startArchiveTimer()
-  updateManager.startAutoCheck()
+  // dev 模式不自动检测更新：mac 下 checkNow 会 fetch GitHub latest-mac.yml 比对版本，
+  // dev 时无意义且耗费网络请求；win/linux 的 autoUpdater 本就仅打包后可用。
+  // 手动「检查更新」菜单仍可用（checkNow 内部已处理 dev 跳过 autoUpdater 分支）。
+  if (!isDev) updateManager.startAutoCheck()
   // 注册原生应用菜单（mac 补 Edit 菜单避免 Cmd+C 失效；各平台加「检查更新」）
   Menu.setApplicationMenu(buildAppMenu(updateManager))
 })
