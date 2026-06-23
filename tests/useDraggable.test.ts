@@ -66,4 +66,18 @@ describe('useDraggable', () => {
     expect(result.current.position.x).toBe(8)
     expect(result.current.position.y).toBe(8)
   })
+
+  it('size 变化（折叠↔展开）时自动重新 clamp 当前位置，防止溢出视口', () => {
+    // 视口 1024×768。折叠态 size=36×36，拖到右下角贴边
+    const { result, rerender } = renderHook(
+      ({ size }) => useDraggable({ initial: { x: 980, y: 724 }, size, margin: 8 }),
+      { initialProps: { size: { width: 36, height: 36 } } },
+    )
+    // 折叠态贴边位置合法：980 + 36 = 1016 ≤ 1024-8=1016 ✓；724 + 36 = 760 ≤ 768-8=760 ✓
+    expect(result.current.position).toEqual({ x: 980, y: 724 })
+    // 切换为展开态 size=280×400：此时 980 + 280 = 1260 > 1016，应被 clamp 回
+    // 新 maxX = 1024 - 280 - 8 = 736；新 maxY = 768 - 400 - 8 = 360
+    rerender({ size: { width: 280, height: 400 } })
+    expect(result.current.position).toEqual({ x: 736, y: 360 })
+  })
 })
