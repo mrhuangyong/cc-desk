@@ -37,10 +37,3 @@ export type BuiltinAction =
   | { type: 'resume' }
   | { type: 'run-review' }
   | { type: 'insert-text' }
-
-// @ 菜单项（文件/目录）
-export interface FileMenuItem {
-  kind: 'dir' | 'file'
-  name: string      // 条目名（不含路径）
-  absPath: string   // 绝对路径
-}
