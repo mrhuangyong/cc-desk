@@ -128,27 +128,24 @@ export function BackendTaskPanel({
         style={{
           position: 'fixed',
           top: 0, left: 0,
-          // position 是元素右上角（anchor top-right）；translate.x = position.x - 当前宽度，让右上角对齐。
+          // 外层只负责定位（translate）+ 尺寸（供 translate 的 currentWidth 计算）。
+          // 背景/圆角/阴影移到内层动画 div，让折叠退出时背景框随内容一起 scale 缩小，无定格突兀。
           transform: `translate(${position.x - currentWidth}px, ${position.y}px)`,
-          // 注意：translate（拖动定位）在外层 transform；scale 动画挂在内层，避免互相覆盖。
           zIndex: 50,
           // 外层尺寸跟随 displayFolded（退出动画期间保持面板尺寸，结束后才缩成图标）
           ...(displayFolded ? {
-            width: ICON_WIDTH, height: ICON_WIDTH, borderRadius: 10, cursor: 'grab',
-            background: 'var(--surface-1)', boxShadow: 'var(--shadow-float)',
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            color: 'var(--text)',
+            width: ICON_WIDTH, height: ICON_WIDTH, cursor: 'grab',
+            display: 'inline-flex', color: 'var(--text)',
           } : {
-            width: 280, maxHeight: 'calc(100vh - 96px)', borderRadius: 10,
-            background: 'var(--surface-1)', boxShadow: 'var(--shadow-float)',
-            display: 'flex', flexDirection: 'column', overflow: 'hidden',
+            width: 280, maxHeight: 'calc(100vh - 96px)',
+            display: 'flex', flexDirection: 'column',
           }),
         }}
       >
-        {/* 内层动画层：scale 锚定右上角。
-            - 展开（displayFolded=false, 非退出）：panel-expand，scale 0→1，从右上角向左下生长。
-            - 折叠退出（exiting）：panel-exit，scale 1→0，向右上角收缩（"从左下到右上"收回）。
-            - 图标态（displayFolded=true）：panel-collapse，图标从右上角点弹出。
+        {/* 内层动画层：承载背景/圆角/阴影 + 内容，scale 锚定右上角。
+            - 展开：panel-expand scale 0→1，从右上角向左下生长。
+            - 折叠退出：panel-exit scale 1→0，背景框随内容一起向右上角收缩（无定格）。
+            - 图标态：panel-collapse scale 0→1，图标从右上角点弹出。
             与外层 translate 分层，scale 不覆盖拖动定位。 */}
         <div style={{
           transformOrigin: 'top right',
@@ -157,6 +154,8 @@ export function BackendTaskPanel({
             : 'panel-expand .32s cubic-bezier(.22,1,.36,1)',
           width: '100%', height: '100%', minHeight: 0,
           display: 'flex', flexDirection: 'column',
+          borderRadius: 10, background: 'var(--surface-1)', boxShadow: 'var(--shadow-float)',
+          overflow: 'hidden',
         }}>
         {displayFolded ? (
           <div
