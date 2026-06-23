@@ -125,7 +125,6 @@ export interface Session {
   permissionMode?: string          // '变更前确认' | '自动编辑' | '计划模式' | '完全访问'
   thinking?: 'low' | 'medium' | 'high'   // SDK EffortLevel 子集
   extraDirs?: string[]             // /add-dir 追加的可访问目录
-  notices?: SystemNotice[]         // 会话级系统提示（cost/status/compact 等固化通知）
 }
 
 // 项目：包含多个会话
