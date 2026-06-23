@@ -91,12 +91,6 @@ export function HooksSettings() {
   // 合并自定义 + 插件事件 + 全部 27 个事件名（空配置也显示，让用户可选中创建）
   const allEvents = useMemo(() => {
     const map = new Map<string, HookEventView>()
-    // 先填入全部 27 个事件（group 从 GROUP_ORDER/GROUP_LABELS 映射），空 matchers
-    const EVENT_GROUP: Record<string, string> = {}
-    for (const g of GROUP_ORDER) EVENT_GROUP[g] = g
-    // 直接用 data 里已有的 group 信息，或者按命名推断
-    const knownGroups: Record<string, string> = {}
-    for (const ev of [...data.custom, ...data.plugins]) knownGroups[ev.eventName] = ev.group
     // 为全部 27 事件建立占位（空 matchers），让用户可以选中任意事件创建 hook
     for (const { name, group } of HOOK_EVENTS_WITH_GROUP) {
       map.set(name, { eventName: name, group: group as any, matchers: [], source: 'custom', isReadonly: false })

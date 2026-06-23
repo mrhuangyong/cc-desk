@@ -7,6 +7,7 @@ import type { BackendTask, ContentBlock } from '../types'
 import { renderBlocks } from './blocks/BlockRenderer'
 import { MarkdownRenderer } from './markdown/MarkdownRenderer'
 import { formatSessionTime } from '../utils/formatSessionTime'
+import { fmtTokens, fmtDuration } from '../utils/format'
 import { Tooltip } from './Tooltip'
 
 interface Props {
@@ -14,19 +15,6 @@ interface Props {
   // 该 subagent 的累积对话输出(按 toolUseId 索引)
   outputByToolUseId: Record<string, ContentBlock[]>
   onClose: () => void
-}
-
-function fmtDuration(ms?: number): string {
-  if (!ms) return '-'
-  if (ms < 1000) return `${ms}ms`
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
-  return `${(ms / 60000).toFixed(1)}m`
-}
-
-function fmtTokens(n?: number): string {
-  if (!n) return '-'
-  if (n < 1000) return `${n}`
-  return `${(n / 1000).toFixed(1)}k`
 }
 
 export function SubagentDetailDrawer({ task, outputByToolUseId, onClose }: Props) {

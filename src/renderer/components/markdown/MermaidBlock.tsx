@@ -2,15 +2,10 @@ import { useEffect, useState, useRef } from 'react'
 import mermaid from 'mermaid'
 import { useStore } from '../../state/store'
 
-let _initialized = false
+// mermaid.initialize 多次调用会内部合并配置（且首末次行为一致），
+// 故无需 _initialized 单例守卫——每次按当前主题 init 即可（主题切换时重新渲染）。
 function ensureInit(theme: 'default' | 'dark') {
-  if (!_initialized) {
-    mermaid.initialize({ startOnLoad: false, theme, securityLevel: 'loose' })
-    _initialized = true
-  } else {
-    // 主题变化时重新 init（mermaid 内部会合并配置）
-    mermaid.initialize({ startOnLoad: false, theme, securityLevel: 'loose' })
-  }
+  mermaid.initialize({ startOnLoad: false, theme, securityLevel: 'loose' })
 }
 
 // Mermaid 图表渲染：异步 render 成 SVG，错误时回退显示原始代码 + 错误信息。
