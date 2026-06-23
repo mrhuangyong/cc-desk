@@ -134,7 +134,7 @@ interface ClaudeConfigAPI {
   }
   commands: {
     get(): Promise<ClaudeCommand[]>
-    create(name: string, description: string): Promise<{ success: boolean; message: string }>
+    create(name: string, description: string): Promise<{ success: boolean; message: string; command?: ClaudeCommand }>
     getFile(source: string, name: string): Promise<string>
     saveFile(name: string, content: string): Promise<void>
     delete(name: string): Promise<void>
