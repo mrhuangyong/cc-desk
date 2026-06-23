@@ -1,44 +1,6 @@
 // src/renderer/editor/fileNav.ts
-// @ 菜单的目录导航 + 文件过滤纯函数。
-// listDir：在已加载树里按累积前缀取当前层；
-// filterFileItems：当前层条目按 query 过滤 + 截断上限。
-import type { FileNode } from '../types'
-import type { FileMenuItem } from './types'
-
-export interface FilterResult {
-  items: FileMenuItem[]
-  truncatedCount: number   // 被截断的条目数（0 = 未截断）
-}
-
-// 按前缀（如 'components/' 或 '' ）取当前目录层的直接子节点
-export function listDir(tree: FileNode[], prefix: string): FileNode[] {
-  if (!prefix) return tree
-  const segs = prefix.replace(/\/+$/, '').split('/').filter(Boolean)
-  let current: FileNode[] = tree
-  for (const seg of segs) {
-    const found = current.find(n => n.isDir && n.name === seg)
-    if (!found || !found.children) return []
-    current = found.children
-  }
-  return current
-}
-
-// 过滤当前层 + 截断上限；返回菜单项 + 被截断数
-export function filterFileItems(nodes: FileNode[], query: string, limit: number): FilterResult {
-  const q = query.trim().toLowerCase()
-  const matched = q === ''
-    ? nodes
-    : nodes.filter(n => n.name.toLowerCase().includes(q))
-  const truncatedCount = Math.max(0, matched.length - limit)
-  const items: FileMenuItem[] = matched.slice(0, limit).map(n => ({
-    kind: n.isDir ? 'dir' : 'file',
-    name: n.name,
-    absPath: n.path,
-  }))
-  return { items, truncatedCount }
-}
-
-// ===== VSCode 式扁平文件搜索 =====
+// @ 菜单的 VSCode 式扁平文件搜索：对全量文件列表做 fuzzy 过滤 + 排序 + 截断。
+// （旧的树状 listDir/filterFileItems 已随 @ 菜单改为扁平搜索而废弃，连同 FileMenuItem 删除。）
 
 // fuzzy 匹配：query 的字符按顺序作为子序列出现在 path 里即匹配（如 'pt' 匹配 'project-tree.tsx'）。
 // 返回匹配位置数组（用于高亮），null 表示不匹配。偏好连续匹配、匹配靠近末尾（文件名部分）。
