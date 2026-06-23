@@ -8,45 +8,6 @@ import { segBtn, iconBtn } from './styles'
 
 const topIconBtn: React.CSSProperties = { ...iconBtn, fontSize: 14, padding: '4px 8px' }
 
-// ---- 标准 JSON 转换（与后端 buildMcpEntry 同构，用于列表 JSON 视图）----
-function parseEqLines(text: string): Record<string, string> {
-  const obj: Record<string, string> = {}
-  ;(text || '').split('\n').forEach(line => {
-    const i = line.indexOf('=')
-    if (i > 0) obj[line.slice(0, i).trim()] = line.slice(i + 1)
-  })
-  return obj
-}
-function parseColonLines(text: string): Record<string, string> {
-  const obj: Record<string, string> = {}
-  ;(text || '').split('\n').forEach(line => {
-    const i = line.indexOf(':')
-    if (i > 0) obj[line.slice(0, i).trim()] = line.slice(i + 1).trim()
-  })
-  return obj
-}
-// 单条 server → 标准落盘对象
-function serverEntryToStd(s: ClaudeMcpServer): Record<string, any> {
-  if (s.transport === 'http') {
-    const obj: any = { type: 'http', url: s.command }
-    const headers = parseColonLines(s.headers)
-    if (Object.keys(headers).length) obj.headers = headers
-    return obj
-  }
-  const obj: any = { command: s.command }
-  const args = s.args.trim() ? s.args.trim().split(/\s+/) : []
-  if (args.length) obj.args = args
-  const env = parseEqLines(s.env)
-  if (Object.keys(env).length) obj.env = env
-  return obj
-}
-// 全部 servers → 标准 mcpServers JSON 文本
-function buildAllJson(servers: ClaudeMcpServer[]): string {
-  const mcpServers: Record<string, any> = {}
-  for (const s of servers) mcpServers[s.name] = serverEntryToStd(s)
-  return JSON.stringify({ mcpServers }, null, 2)
-}
-
 export function McpSettings() {
   const [servers, setServers] = useState<ClaudeMcpServer[]>([])
   const [q, setQ] = useState('')
@@ -61,19 +22,25 @@ export function McpSettings() {
   // 挂载与刷新：从 ~/.cc-desk/claude/.claude.json 的 mcpServers 读取真实配置
   const reload = () => {
     setLoading(true)
-    window.api?.cc?.mcp.get().then(list => {
-      setServers(list)
-      setJsonText(buildAllJson(list))
+    Promise.all([
+      window.api?.cc?.mcp.get(),
+      window.api?.cc?.mcp.getJson(),
+    ]).then(([list, json]) => {
+      setServers(list ?? [])
+      setJsonText(json ?? '')
       setLoading(false)
     })
   }
   useEffect(() => { reload() }, [])
 
-  // 保存：整体写回 ~/.cc-desk/claude/.claude.json 的 mcpServers（append-only 不动其它 key）
-  const persist = (next: ClaudeMcpServer[]) => {
+  // 保存：整体写回 ~/.cc-desk/claude/.claude.json 的 mcpServers（append-only 不动其它 key）。
+  // async：写盘后用 cc.mcp.getJson 取与磁盘一致的 JSON 预览（与 main 的 buildMcpEntry
+  // 转换同源，避免 renderer 自行转换的偏差）。调用方 fire-and-forget，无需 await。
+  const persist = async (next: ClaudeMcpServer[]) => {
     setServers(next)
-    setJsonText(buildAllJson(next))
-    window.api?.cc?.mcp.save(next)
+    await window.api?.cc?.mcp.save(next)
+    const json = await window.api?.cc?.mcp.getJson()
+    if (json != null) setJsonText(json)
   }
 
   const filtered = servers.filter(s => s.name.toLowerCase().includes(q.toLowerCase()))

@@ -273,6 +273,19 @@ export async function getMcpServers(): Promise<ClaudeMcpServer[]> {
   return [...active, ...stashed]
 }
 
+// MCP JSON 视图：返回 .claude.json 中实际生效的 mcpServers（仅 enabled 的），
+// 用与 saveMcpServers 写盘相同的 buildMcpEntry 转换，确保「所见即所写」。
+// disabled 的 server 不进此视图（它们被 stashed 到 settings，SDK 不加载）。
+// renderer 原本用简化 split 自行转换，与 main 的 normalize 存在偏差，现统一走 main。
+export async function getMcpServersJson(): Promise<string> {
+  const servers = await getMcpServers()
+  const mcpServers: Record<string, any> = {}
+  for (const s of servers) {
+    if (s.enabled) mcpServers[s.name] = buildMcpEntry(s)
+  }
+  return JSON.stringify({ mcpServers }, null, 2)
+}
+
 export async function saveMcpServers(servers: ClaudeMcpServer[]): Promise<void> {
   const map: Record<string, any> = {}
   const disabled: Record<string, any> = {}

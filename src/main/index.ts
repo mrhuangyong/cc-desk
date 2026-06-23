@@ -102,6 +102,7 @@ function registerIpcHandlers(): void {
   // Claude 配置（真实读写 ~/.claude/ 配置文件）
   ipcMain.handle('cc:mcp:get', () => cc.getMcpServers())
   ipcMain.handle('cc:mcp:save', (_e, servers) => cc.saveMcpServers(servers))
+  ipcMain.handle('cc:mcp:get-json', () => cc.getMcpServersJson())
   ipcMain.handle('cc:plugins:get', () => cc.getPlugins())
   ipcMain.handle('cc:plugin:set-enabled', (_e, id, enabled) => cc.setPluginEnabled(id, enabled))
   ipcMain.handle('cc:marketplace:get', () => mkt.getMarketplaces())

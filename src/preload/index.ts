@@ -44,6 +44,7 @@ contextBridge.exposeInMainWorld('api', {
     mcp: {
       get: () => ipcRenderer.invoke('cc:mcp:get'),
       save: (servers: any) => ipcRenderer.invoke('cc:mcp:save', servers),
+      getJson: () => ipcRenderer.invoke('cc:mcp:get-json') as Promise<string>,
     },
     plugins: {
       get: () => ipcRenderer.invoke('cc:plugins:get'),
