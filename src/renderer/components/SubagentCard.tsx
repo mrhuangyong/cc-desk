@@ -3,6 +3,7 @@
 import { Bot, Loader2, Square, X, Trash2, CheckCircle2, AlertCircle } from 'lucide-react'
 import type { BackendTask } from '../types'
 import { formatSessionTime } from '../utils/formatSessionTime'
+import { fmtTokens } from '../utils/format'
 import { Tooltip } from './Tooltip'
 
 const STATUS_LABEL: Record<BackendTask['status'], string> = {
@@ -109,7 +110,7 @@ function SubagentRow({ t, onKill, onRemove, onClick }: {
               {t.lastToolName && (
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, maxWidth: '100%' }}>⏵ {t.lastToolName}</span>
               )}
-              {t.tokenCount != null && <span style={{ whiteSpace: 'nowrap' }}>{t.tokenCount < 1000 ? t.tokenCount : `${(t.tokenCount / 1000).toFixed(1)}k`} tok</span>}
+              {t.tokenCount != null && <span style={{ whiteSpace: 'nowrap' }}>{fmtTokens(t.tokenCount)} tok</span>}
               {t.toolUses != null && t.toolUses > 0 && <span style={{ whiteSpace: 'nowrap' }}>{t.toolUses} 工具</span>}
             </div>
           </div>
