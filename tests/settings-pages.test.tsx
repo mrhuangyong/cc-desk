@@ -273,17 +273,25 @@ describe('HooksSettings', () => {
 describe('McpSettings', () => {
   const mcpGet = vi.fn()
   const mcpSave = vi.fn()
+  const mcpGetJson = vi.fn()
 
   const servers = [
     { id: 'playwright', name: 'playwright', transport: 'stdio', command: 'npx', args: '-y @playwright/mcp', env: 'TOKEN=1', headers: '', enabled: true, scope: '用户' },
     { id: 'reader', name: 'reader', transport: 'http', command: 'https://example.com/mcp', args: '', env: '', headers: '', enabled: true, scope: '用户' },
   ]
+  // 模拟 main buildMcpEntry 的 JSON 输出（与写盘结构一致）
+  const mcpJson = JSON.stringify({ mcpServers: {
+    playwright: { command: 'npx', args: ['-y', '@playwright/mcp'], env: { TOKEN: '1' } },
+    reader: { type: 'http', url: 'https://example.com/mcp' },
+  } }, null, 2)
 
   beforeEach(() => {
     mcpGet.mockClear()
     mcpSave.mockClear()
+    mcpGetJson.mockClear()
     mcpGet.mockResolvedValue(servers)
-    setApi({ cc: { mcp: { get: mcpGet, save: mcpSave } } })
+    mcpGetJson.mockResolvedValue(mcpJson)
+    setApi({ cc: { mcp: { get: mcpGet, save: mcpSave, getJson: mcpGetJson } } })
   })
 
   async function loaded() {

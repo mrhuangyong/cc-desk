@@ -108,6 +108,7 @@ interface ClaudeConfigAPI {
   mcp: {
     get(): Promise<ClaudeMcpServer[]>
     save(servers: ClaudeMcpServer[]): Promise<void>
+    getJson(): Promise<string>
   }
   plugins: {
     get(): Promise<ClaudePlugin[]>
