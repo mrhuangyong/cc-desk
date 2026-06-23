@@ -8,10 +8,17 @@ export interface Position {
 interface Options {
   initial: Position
   onChange?: (pos: Position) => void
-  /** 被拖动元素尺寸，用于 clamp 不超出视口 */
+  /** 被拖动元素尺寸，用于 clamp 不超出视口；size 变化时自动重 clamp（见 anchor） */
   size: { width: number; height: number }
   /** 视口安全边距 */
   margin?: number
+  /**
+   * position 的语义锚点：
+   * - 'top-left'（默认）：position = 元素左上角，translate(position.x, position.y)。
+   * - 'top-right'：position = 元素右上角，translate(position.x - width, position.y)。
+   *   折叠/展开宽度变化时，元素右上角固定、向左下伸缩，clamp 按右上角算边界。
+   */
+  anchor?: 'top-left' | 'top-right'
 }
 
 const DRAG_THRESHOLD = 3
@@ -21,7 +28,7 @@ const DRAG_THRESHOLD = 3
  * pointerup 时同步 React state 并触发 onChange。位移 < 3px 视为点击（不更新位置）。
  * 参考 useResizableWidth 的模式。jsdom 无 PointerEvent 时降级为 MouseEvent。
  */
-export function useDraggable({ initial, onChange, size, margin = 8 }: Options) {
+export function useDraggable({ initial, onChange, size, margin = 8, anchor = 'top-left' }: Options) {
   const ref = useRef<HTMLDivElement>(null)
   const [position, setPositionState] = useState<Position>(initial)
   const [dragging, setDragging] = useState(false)
@@ -34,20 +41,26 @@ export function useDraggable({ initial, onChange, size, margin = 8 }: Options) {
 
   const clamp = useCallback(
     (p: Position): Position => {
-      const maxX = window.innerWidth - size.width - margin
+      // top-right 锚点：p.x 是右边缘，需保证 p.x ≤ innerWidth - margin 且 p.x - width ≥ margin
+      // top-left 锚点：p.x 是左边缘，需保证 p.x ≥ margin 且 p.x + width ≤ innerWidth - margin
+      const maxX = anchor === 'top-right' ? window.innerWidth - margin : window.innerWidth - size.width - margin
+      const minX = anchor === 'top-right' ? size.width + margin : margin
       const maxY = window.innerHeight - size.height - margin
       return {
-        x: Math.min(Math.max(p.x, margin), Math.max(margin, maxX)),
+        x: Math.min(Math.max(p.x, minX), Math.max(minX, maxX)),
         y: Math.min(Math.max(p.y, margin), Math.max(margin, maxY)),
       }
     },
-    [size.width, size.height, margin],
+    [size.width, size.height, margin, anchor],
   )
 
   const applyTransform = useCallback((p: Position) => {
     const el = ref.current
-    if (el) el.style.transform = `translate(${p.x}px, ${p.y}px)`
-  }, [])
+    if (!el) return
+    // top-right 锚点：元素右上角对齐 p.x，故 translate.x = p.x - width
+    const tx = anchor === 'top-right' ? p.x - size.width : p.x
+    el.style.transform = `translate(${tx}px, ${p.y}px)`
+  }, [anchor, size.width])
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent | PointerEvent | { clientX: number; clientY: number }) => {
