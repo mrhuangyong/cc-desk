@@ -4,19 +4,9 @@ import { Toggle } from './Toggle'
 import { McpEditDialog } from './McpEditDialog'
 import { Plus, Plug, Pencil, Trash2 } from 'lucide-react'
 import { Tooltip } from '../Tooltip'
+import { segBtn, iconBtn } from './styles'
 
-const iconBtn: React.CSSProperties = {
-  padding: '4px 6px', fontSize: 13, cursor: 'pointer',
-  background: 'transparent', border: 'none', color: 'var(--text-muted)', lineHeight: 1
-}
 const topIconBtn: React.CSSProperties = { ...iconBtn, fontSize: 14, padding: '4px 8px' }
-const segBtn = (active: boolean): React.CSSProperties => ({
-  padding: '5px 14px', fontSize: 12, cursor: 'pointer',
-  border: '1px solid var(--border)', borderRadius: 'var(--radius)',
-  background: active ? 'var(--accent)' : 'transparent',
-  color: active ? 'var(--accent-text)' : 'var(--text-muted)',
-  marginRight: 4,
-})
 
 // ---- 标准 JSON 转换（与后端 buildMcpEntry 同构，用于列表 JSON 视图）----
 function parseEqLines(text: string): Record<string, string> {

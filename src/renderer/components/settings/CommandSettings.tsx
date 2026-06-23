@@ -6,18 +6,9 @@ import { CreateCommandDialog } from './CreateCommandDialog'
 import { CommandEditModal } from './CommandEditModal'
 import { Plus, Pencil, Trash2, FileText } from 'lucide-react'
 import { Tooltip } from '../Tooltip'
+import { ConfirmDialog } from './ConfirmDialog'
+import { segBtn, iconBtn } from './styles'
 
-const segBtn = (active: boolean): React.CSSProperties => ({
-  padding: '5px 14px', fontSize: 12, cursor: 'pointer',
-  border: '1px solid var(--border)', borderRadius: 'var(--radius)',
-  background: active ? 'var(--accent)' : 'transparent',
-  color: active ? 'var(--accent-text)' : 'var(--text-muted)',
-  marginRight: 4,
-})
-const iconBtn: React.CSSProperties = {
-  padding: '4px 6px', fontSize: 13, cursor: 'pointer',
-  background: 'transparent', border: 'none', color: 'var(--text-muted)', lineHeight: 1,
-}
 const primaryBtn: React.CSSProperties = {
   padding: '6px 14px', fontSize: 12, cursor: 'pointer',
   border: '1px solid var(--border)', borderRadius: 'var(--radius)',
@@ -103,17 +94,12 @@ export function CommandSettings() {
       {editing && <CommandEditModal command={editing} onClose={() => { setEditing(null); reload() }} />}
 
       {confirmDelete && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setConfirmDelete(null)}>
-          <div style={{ width: 400, background: 'var(--bg)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', padding: 20 }} onClick={e => e.stopPropagation()}>
-            <div style={{ color: 'var(--text)', fontSize: 13, marginBottom: 16 }}>
-              确定删除 {confirmDelete}？此操作不可撤销。
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button onClick={() => setConfirmDelete(null)} style={{ padding: '7px 14px', fontSize: 12, cursor: 'pointer', border: 'none', background: 'transparent', color: 'var(--text-muted)' }}>取消</button>
-              <button onClick={handleDelete} style={{ padding: '7px 18px', fontSize: 12, cursor: 'pointer', border: 'none', borderRadius: 'var(--radius)', background: 'var(--danger, #e57373)', color: '#fff' }}>删除</button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title={`确定删除 ${confirmDelete}？此操作不可撤销。`}
+          confirmLabel="删除"
+          onConfirm={handleDelete}
+          onClose={() => setConfirmDelete(null)}
+        />
       )}
     </div>
   )

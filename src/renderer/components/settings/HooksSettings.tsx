@@ -5,14 +5,8 @@ import type { HooksFull, HookEventView, HookMatcher } from '../../../main/claude
 import { HookMatcherList } from './HookMatcherList'
 import { Plus } from 'lucide-react'
 import { Tooltip } from '../Tooltip'
+import { segBtn } from './styles'
 
-const segBtn = (active: boolean): React.CSSProperties => ({
-  padding: '5px 14px', fontSize: 12, cursor: 'pointer',
-  border: '1px solid var(--border)', borderRadius: 'var(--radius)',
-  background: active ? 'var(--accent)' : 'transparent',
-  color: active ? 'var(--accent-text)' : 'var(--text-muted)',
-  marginRight: 4,
-})
 const groupLabelStyle: React.CSSProperties = { color: 'var(--text-muted)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, padding: '8px 10px 4px', fontWeight: 600 }
 const eventRowStyle = (selected: boolean): React.CSSProperties => ({
   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
