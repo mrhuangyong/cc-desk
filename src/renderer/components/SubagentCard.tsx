@@ -1,24 +1,11 @@
 // 子代理卡片：显示当前会话的 subagent（Task 工具 spawn）列表，嵌入 BackendTaskPanel。
 // 复用 BackendTaskCard 的骨架（圆角浮层 + 折叠头 + 列表），但用 Bot 图标与子代理语义区分。
-import { Bot, Loader2, Square, X, Trash2, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Bot, X, Trash2, Square } from 'lucide-react'
 import type { BackendTask } from '../types'
 import { formatSessionTime } from '../utils/formatSessionTime'
 import { fmtTokens } from '../utils/format'
 import { Tooltip } from './Tooltip'
-
-const STATUS_LABEL: Record<BackendTask['status'], string> = {
-  running: '运行中', completed: '已完成', failed: '已退出', stopped: '已终止',
-}
-
-function StatusIcon({ status }: { status: BackendTask['status'] }) {
-  const common = { size: 13, style: { flexShrink: 0, marginTop: 1 } }
-  switch (status) {
-    case 'running': return <Loader2 {...common} className="cc-spin" style={{ ...common.style, color: 'var(--accent)' }} />
-    case 'completed': return <CheckCircle2 {...common} style={{ ...common.style, color: '#34c759' }} />
-    case 'failed': return <AlertCircle {...common} style={{ ...common.style, color: '#ff3b30' }} />
-    case 'stopped': return <Square {...common} style={{ ...common.style, color: 'var(--text-muted)' }} />
-  }
-}
+import { BackendStatusIcon as StatusIcon, BACKEND_STATUS_LABEL as STATUS_LABEL } from './task-status'
 
 interface Props {
   tasks: BackendTask[]

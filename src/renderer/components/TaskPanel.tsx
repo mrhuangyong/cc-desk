@@ -1,23 +1,9 @@
 // src/renderer/components/TaskPanel.tsx
 // 任务卡片：显示当前会话的 Claude task 列表，嵌入 BackendTaskPanel 使用。
-import { CheckCircle2, Loader2, Circle, AlertCircle, XCircle, ListTodo } from 'lucide-react'
-import type { TaskStatus, TaskItem } from '../types'
+import { ListTodo } from 'lucide-react'
+import type { TaskItem } from '../types'
+import { TaskStatusIcon as StatusIcon, TASK_STATUS_LABEL as STATUS_LABEL } from './task-status'
 
-function StatusIcon({ status }: { status: TaskStatus }) {
-  const common = { size: 13, style: { flexShrink: 0 } }
-  switch (status) {
-    case 'running': return <Loader2 {...common} className="cc-spin" style={{ ...common.style, color: 'var(--accent)' }} />
-    case 'completed': return <CheckCircle2 {...common} style={{ ...common.style, color: '#34c759' }} />
-    case 'failed': return <XCircle {...common} style={{ ...common.style, color: '#ff3b30' }} />
-    case 'killed': return <XCircle {...common} style={{ ...common.style, color: 'var(--text-muted)' }} />
-    case 'paused': return <Circle {...common} style={{ ...common.style, color: 'var(--text-muted)' }} />
-    default: return <Circle {...common} style={{ ...common.style, color: 'var(--text-muted)' }} />
-  }
-}
-
-const STATUS_LABEL: Record<TaskStatus, string> = {
-  pending: '待处理', running: '进行中', completed: '已完成', failed: '失败', killed: '已终止', paused: '已暂停',
-}
 
 interface TaskCardProps {
   tasks: TaskItem[]
