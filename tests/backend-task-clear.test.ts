@@ -11,7 +11,7 @@ function makeState(tasks: any[]) {
     claudeSessionMap: {}, pendingDialog: null, dirtyTabIds: {}, lastFileOpenedSeq: 0,
     queueBySession: {}, tasksBySession: {},
     backendTasksBySession: { s1: tasks },
-    panelFold: { root: false, taskCard: false, backendTaskCard: false },
+    panelFold: { root: false }, panelPosition: { x: 0, y: 0 },
   } as any
 }
 

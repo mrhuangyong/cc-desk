@@ -15,14 +15,14 @@ function initialState(): AppState {
       apiKey: '', model: 'model-sonnet', cwd: '', providers: [], models: [], modelRoleMap: {},
       theme: 'codex-light', lang: 'zh-CN', zoom: 'normal', chatWidth: 'wide', proxy: '', inheritTerminal: true,
       terminalFont: 'MesloLGS NF, monospace', taskNotify: true, notifySound: true, notifyOnComplete: true, notifyOnError: true, notifyOnConfirm: true, notifyOnPermission: true, devTools: false, queueMode: 'queue',
-      showThinking: false, showTodo: false, showBackendTask: true, autoArchive: true, archiveDays: '7',
+      showThinking: false, showTodo: false, showBackendTask: true, rememberPanelPosition: true, autoArchive: true, archiveDays: '7',
       codePreview: { lightTheme: 'GitHub Light', darkTheme: 'GitHub Dark', showLineNumbers: true, wordWrap: false, fontSize: 12 },
       skills: [], mcpServers: [], plugins: [], commands: [], hooks: [],
     },
     claudeSessionMap: {}, pendingDialog: null,
     dirtyTabIds: {}, lastFileOpenedSeq: 0,
     queueBySession: {}, tasksBySession: {}, backendTasksBySession: {},
-    panelFold: { root: false, taskCard: false, subagentCard: false, backendTaskCard: false },
+    panelFold: { root: false }, panelPosition: { x: 0, y: 0 },
     subagentOutputBySession: {},
     planBySession: {},
     abortedBySession: {},
@@ -175,10 +175,10 @@ describe('reducer: subagent output & panel fold', () => {
     ])
   })
 
-  it('SET_PANEL_FOLD 支持 subagentCard', () => {
+  it('SET_PANEL_FOLD 设置 root 折叠态', () => {
     const state = reducer(initialState(), {
-      type: 'SET_PANEL_FOLD', panel: 'subagentCard', folded: true,
+      type: 'SET_PANEL_FOLD', panel: 'root', folded: true,
     })
-    expect(state.panelFold.subagentCard).toBe(true)
+    expect(state.panelFold.root).toBe(true)
   })
 })

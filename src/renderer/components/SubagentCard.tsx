@@ -4,8 +4,6 @@ import { Bot, Loader2, Square, X, Trash2, CheckCircle2, AlertCircle } from 'luci
 import type { BackendTask } from '../types'
 import { formatSessionTime } from '../utils/formatSessionTime'
 import { Tooltip } from './Tooltip'
-import { useCollapsibleHeight } from '../hooks/useCollapsibleHeight'
-import { FoldBadge } from './FoldBadge'
 
 const STATUS_LABEL: Record<BackendTask['status'], string> = {
   running: '运行中', completed: '已完成', failed: '已退出', stopped: '已终止',
@@ -23,75 +21,50 @@ function StatusIcon({ status }: { status: BackendTask['status'] }) {
 
 interface Props {
   tasks: BackendTask[]
-  folded: boolean
-  onToggleFold: () => void
   onKill: (taskId: string) => void
   onRemove: (taskId: string) => void
   onClearFinished: () => void
   onClickTask?: (task: BackendTask) => void
 }
 
-export function SubagentCard({ tasks, folded, onToggleFold, onKill, onRemove, onClearFinished, onClickTask }: Props) {
-  const col = useCollapsibleHeight(!folded)
+export function SubagentCard({ tasks, onKill, onRemove, onClearFinished, onClickTask }: Props) {
   if (tasks.length === 0) return null
   const runningTasks = tasks.filter(t => t.status === 'running')
   const finishedTasks = tasks.filter(t => t.status !== 'running')
   const doneCount = finishedTasks.filter(t => t.status === 'completed').length
 
   return (
-    <div style={{
-      background: 'var(--surface-1)',
-      borderRadius: 10, boxShadow: 'var(--shadow-float)', fontSize: 12, overflow: 'hidden',
-      ...(folded ? { width: 36, height: 36, alignSelf: 'flex-start' } : {}),
-    }}>
-      <button onClick={onToggleFold} aria-label="子代理" style={folded ? {
-        width: '100%', height: '100%', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text)', fontWeight: 600, position: 'relative',
-      } : {
-        width: '100%', padding: '8px 12px', display: 'flex', alignItems: 'center',
-        justifyContent: 'space-between', background: 'none', border: 'none',
-        cursor: 'pointer', color: 'var(--text)', fontWeight: 600,
-      }}>
-        {folded ? (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px' }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--text)', fontWeight: 600 }}>
+          <Bot size={13} /> 子代理
+        </span>
+        <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: 11 }}>
+          {runningTasks.length} 运行 · {doneCount} 完成 · 共 {tasks.length}
+        </span>
+      </div>
+      <div style={{ padding: 4 }}>
+        {runningTasks.map(t => (
+          <SubagentRow key={t.id} t={t} onKill={onKill} onRemove={onRemove} onClick={onClickTask} />
+        ))}
+        {finishedTasks.length > 0 && (
           <>
-            <Bot size={15} />
-            {tasks.length > 0 && <FoldBadge count={tasks.length} />}
-          </>
-        ) : (
-          <>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <Bot size={13} /> 子代理
-            </span>
-            <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: 11 }}>
-              {runningTasks.length} 运行 · {doneCount} 完成 · 共 {tasks.length}
-            </span>
+            {runningTasks.length > 0 && <div style={{ height: 1, background: 'var(--border-hair)', margin: '4px 8px' }} />}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 8px' }}>
+              <span style={{ color: 'var(--text-faint)', fontSize: 10 }}>已结束 · {finishedTasks.length}</span>
+              <button onClick={onClearFinished} title="清除已结束" style={{
+                display: 'inline-flex', alignItems: 'center', gap: 3,
+                padding: '2px 6px', color: 'var(--text-muted)', background: 'none',
+                border: 'none', cursor: 'pointer', fontSize: 10,
+              }}>
+                <Trash2 size={11} /> 清除
+              </button>
+            </div>
+            {finishedTasks.map(t => (
+              <SubagentRow key={t.id} t={t} onKill={onKill} onRemove={onRemove} onClick={onClickTask} />
+            ))}
           </>
         )}
-      </button>
-      <div ref={col.ref} style={col.style} onTransitionEnd={col.onTransitionEnd}>
-        <div style={{ padding: 4, borderTop: '1px solid var(--border-hair)' }}>
-          {runningTasks.map(t => (
-            <SubagentRow key={t.id} t={t} onKill={onKill} onRemove={onRemove} onClick={onClickTask} />
-          ))}
-          {finishedTasks.length > 0 && (
-            <>
-              {runningTasks.length > 0 && <div style={{ height: 1, background: 'var(--border-hair)', margin: '4px 8px' }} />}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 8px' }}>
-                <span style={{ color: 'var(--text-faint)', fontSize: 10 }}>已结束 · {finishedTasks.length}</span>
-                <button onClick={onClearFinished} title="清除已结束" style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 3,
-                  padding: '2px 6px', color: 'var(--text-muted)', background: 'none',
-                  border: 'none', cursor: 'pointer', fontSize: 10,
-                }}>
-                  <Trash2 size={11} /> 清除
-                </button>
-              </div>
-              {finishedTasks.map(t => (
-                <SubagentRow key={t.id} t={t} onKill={onKill} onRemove={onRemove} onClick={onClickTask} />
-              ))}
-            </>
-          )}
-        </div>
       </div>
     </div>
   )

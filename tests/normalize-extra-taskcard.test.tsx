@@ -1,5 +1,5 @@
 // claude-normalize 边界补充 + TaskCard 渲染测试。
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { normalizeBetaBlocks, extractToolResults, extractBackgroundTaskId } from '../src/main/claude-normalize'
 import { render } from '@testing-library/react'
 import { TaskCard } from '../src/renderer/components/TaskPanel'
@@ -101,7 +101,7 @@ describe('extractBackgroundTaskId 补充边界', () => {
 
 describe('TaskCard 渲染', () => {
   it('空任务列表 → 不渲染', () => {
-    const { container } = render(<TaskCard tasks={[]} folded={false} onToggleFold={() => {}} />)
+    const { container } = render(<TaskCard tasks={[]} />)
     expect(container.firstChild).toBeNull()
   })
 
@@ -112,7 +112,7 @@ describe('TaskCard 渲染', () => {
       { id: 't3', description: '测试', taskType: '', status: 'completed' },
       { id: 't4', description: '部署', taskType: '', status: 'failed' },
     ]
-    const { container } = render(<TaskCard tasks={tasks} folded={false} onToggleFold={() => {}} />)
+    const { container } = render(<TaskCard tasks={tasks} />)
     expect(container.textContent).toContain('2 进行')
     expect(container.textContent).toContain('1 完成')
     expect(container.textContent).toContain('共 4')
@@ -123,20 +123,12 @@ describe('TaskCard 渲染', () => {
       { id: 't1', description: '任务A', taskType: 'agent', status: 'completed' },
       { id: 't2', description: '', taskType: '', status: 'paused' },
     ]
-    const { container } = render(<TaskCard tasks={tasks} folded={false} onToggleFold={() => {}} />)
+    const { container } = render(<TaskCard tasks={tasks} />)
     expect(container.textContent).toContain('任务A')
     expect(container.textContent).toContain('已完成')   // STATUS_LABEL[completed]
     expect(container.textContent).toContain('已暂停')   // STATUS_LABEL[paused]
     expect(container.textContent).toContain('agent')   // taskType
     // 空描述 → 占位
     expect(container.textContent).toContain('(无描述)')
-  })
-
-  it('onToggleFold 回调可触发', () => {
-    const onToggle = vi.fn()
-    const { container } = render(<TaskCard tasks={[{ id: 't1', description: 'x', taskType: '', status: 'running' }]} folded={false} onToggleFold={onToggle} />)
-    const btn = container.querySelector('button')!
-    btn.click()
-    expect(onToggle).toHaveBeenCalledTimes(1)
   })
 })

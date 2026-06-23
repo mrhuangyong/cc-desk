@@ -1,123 +1,258 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
+import { ListChecks, ChevronRight } from 'lucide-react'
 import { SubagentDetailDrawer } from './SubagentDetailDrawer'
 import { TaskDetailDrawer } from './TaskDetailDrawer'
 import { TaskCard } from './TaskPanel'
 import { BackendTaskCard } from './BackendTaskCard'
 import { SubagentCard } from './SubagentCard'
+import { FoldBadge } from './FoldBadge'
+import { useDraggable, type Position } from '../hooks/useDraggable'
+import { useStore } from '../state/store'
 import type { TaskItem, BackendTask, ContentBlock } from '../types'
-
-interface FoldState { root: boolean; taskCard: boolean; subagentCard: boolean; backendTaskCard: boolean }
 
 interface Props {
   tasks: TaskItem[]
   backendTasks: BackendTask[]
   showTodo: boolean
   showBackendTask: boolean
-  folded: FoldState
   activeSessionId: string
   // 当前会话的子代理对话输出（按触发它的 Task tool_use id 索引），用于面板→对话流联动
   subagentOutputByToolUseId?: Record<string, ContentBlock[]>
-  dispatch: (action: any) => void
+}
+
+// 面板/图标尺寸常量。position 语义 = 元素【右上角】坐标（useDraggable anchor='top-right'），
+// 折叠/展开都以右上角对齐同一坐标，向左下伸缩——故拖动无跳变，图标落在面板右上角。
+const PANEL_WIDTH = 280
+const ICON_WIDTH = 36
+// 默认位置（挂载时若未开启记忆或无持久化位置时用）：右上角贴视口右上角。
+function defaultPosition(): Position {
+  const top = 48 // TitleBar 高度 + 间距
+  const right = 24
+  return { x: window.innerWidth - right, y: top }
 }
 
 export function BackendTaskPanel({
-  tasks, backendTasks, showTodo, showBackendTask, folded, activeSessionId, subagentOutputByToolUseId, dispatch,
+  tasks, backendTasks, showTodo, showBackendTask, activeSessionId, subagentOutputByToolUseId,
 }: Props) {
+  const { state, dispatch } = useStore()
   const [activeSubagent, setActiveSubagent] = useState<BackendTask | null>(null)
   const [activeTask, setActiveTask] = useState<TaskItem | null>(null)
+  // 实际渲染的折叠态：延迟跟随 state.panelFold.root，让"退出"动画先播完再切换 DOM。
+  // folded（目标态）切到 true（折叠）时：面板先播退出动画（向右上收缩），结束后 displayFolded 才变 true 显示图标。
+  // 展开则立即响应（图标无需退出动画）。
+  const targetFolded = state.panelFold.root
+  const [displayFolded, setDisplayFolded] = useState(targetFolded)
+  const [exiting, setExiting] = useState(false)   // 面板正在播退出动画
+  useEffect(() => {
+    if (targetFolded === displayFolded) return
+    if (targetFolded) {
+      // 折叠：先播退出动画，260ms 后再切到图标
+      setExiting(true)
+      const t = setTimeout(() => { setExiting(false); setDisplayFolded(true) }, 260)
+      return () => clearTimeout(t)
+    } else {
+      // 展开：立即显示面板（播进入动画）
+      setDisplayFolded(false)
+    }
+  }, [targetFolded])
   const subagents = backendTasks.filter(t => t.kind === 'subagent')
   const backends = backendTasks.filter(t => t.kind !== 'subagent')
 
-  // 自动展开：三分区任一出现「未见过的新任务 id」时，把该分区展开。
-  // 策略：只展开、不折叠——即便用户手动折叠过，新内容到来仍会撑开（符合「有新内容就展开」预期）。
-  // seenIds 跨会话复用（SDK task_id 全局唯一），切换会话回到旧任务不会重复展开。
-  const seenIds = useRef<{ task: Set<string>; subagent: Set<string>; backend: Set<string> }>({
-    task: new Set(), subagent: new Set(), backend: new Set(),
+  const folded = state.panelFold.root
+  const settings = state.settings
+
+  // 初始位置：开启记忆且有持久化坐标 → 用之；否则默认右上角。
+  // 注意 initialPos 仅在首次挂载被 useDraggable 的 useState 采用；后续 settings.panelPosition
+  // 变化不会移动面板（位置由用户拖动驱动）。这是有意的——避免设置页改动导致面板跳动。
+  const initialPos: Position = (settings.rememberPanelPosition && settings.panelPosition)
+    ? settings.panelPosition
+    : defaultPosition()
+
+  // 当前实际宽度：退出动画期间保持面板宽，结束后用图标宽。
+  // position 语义 = 元素右上角（anchor top-right），折叠/展开都以其右上角对齐同一坐标，
+  // 故拖动时无跳变，clamp 按当前宽度算右边界（展开太靠右会自动回拉）。
+  const currentWidth = (displayFolded && !exiting) ? ICON_WIDTH : PANEL_WIDTH
+  const { ref, position, onPointerDown } = useDraggable({
+    initial: initialPos,
+    anchor: 'top-right',
+    size: { width: currentWidth, height: 400 },
+    onChange: (pos) => {
+      dispatch({ type: 'SET_PANEL_POSITION', position: pos })
+      if (settings.rememberPanelPosition) {
+        dispatch({ type: 'SET_SETTINGS', settings: { panelPosition: pos } })
+        window.api?.settings?.save({ panelPosition: pos })
+      }
+    },
   })
+
+  // 记忆开启但当前无 panelPosition 时，首次挂载写入
   useEffect(() => {
-    const panels: Array<[keyof typeof seenIds.current, 'taskCard' | 'subagentCard' | 'backendTaskCard', { id: string }[]]> = [
-      ['task', 'taskCard', tasks],
-      ['subagent', 'subagentCard', subagents],
-      ['backend', 'backendTaskCard', backends],
-    ]
-    for (const [key, panel, list] of panels) {
-      const seen = seenIds.current[key]
-      let hasNew = false
-      for (const it of list) {
-        if (!seen.has(it.id)) { seen.add(it.id); hasNew = true }
-      }
-      if (hasNew && folded[panel]) {
-        dispatch({ type: 'SET_PANEL_FOLD', panel, folded: false })
-      }
+    if (settings.rememberPanelPosition && !settings.panelPosition) {
+      dispatch({ type: 'SET_SETTINGS', settings: { panelPosition: position } })
+      window.api?.settings?.save({ panelPosition: position })
     }
-  }, [tasks, subagents, backends, folded, dispatch])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const taskVisible = showTodo && tasks.length > 0
   const subagentVisible = showBackendTask && subagents.length > 0
   const bgVisible = showBackendTask && backends.length > 0
-  if (!taskVisible && !subagentVisible && !bgVisible) return null
+  const totalCount = tasks.length + subagents.length + backends.length
 
-  // 根级折叠：入口已移至 TitleBar，折叠时面板整体不渲染
-  if (folded.root) return null
+  // 拖动/点击判定：pointerdown 记录起点，click 时位移 < 3px 才视为点击切换折叠。
+  // 拖动后 click 仍会触发，但位移大则忽略。
+  const downPos = useRef<Position | null>(null)
+  const handlePointerDown = (e: React.PointerEvent) => {
+    downPos.current = { x: e.clientX, y: e.clientY }
+    onPointerDown(e)
+  }
+  const handleClick = (e: React.MouseEvent) => {
+    if (!downPos.current) {
+      dispatch({ type: 'SET_PANEL_FOLD', panel: 'root', folded: !folded })
+      return
+    }
+    const dist = Math.hypot(e.clientX - downPos.current.x, e.clientY - downPos.current.y)
+    if (dist < 3) dispatch({ type: 'SET_PANEL_FOLD', panel: 'root', folded: !folded })
+  }
+
+  const onKill = (taskId: string) => { void window.api.backendTask.kill(activeSessionId, taskId) }
+  const onRemove = (taskId: string) => {
+    void window.api?.backendTask?.remove?.(activeSessionId, taskId)
+    dispatch({ type: 'REMOVE_BACKEND_TASK', sessionId: activeSessionId, taskId })
+  }
 
   return (
-    <div style={{
-      position: 'absolute', top: 12, right: 16, zIndex: 50,
-      width: 280, maxHeight: 'calc(100vh - 96px)',
-      display: 'flex', flexDirection: 'column',
-    }}>
-      {/* 内层滚动容器:padding 让卡片 boxShadow 不被裁,内容溢出时仅此处滚动。
-          maxHeight 跟随视口,内容少时贴合内容,多时触发滚动;panel-scroll 让滚动条可见(全局默认隐藏)。 */}
-      <div className="panel-scroll" style={{
-        flex: 1, minHeight: 0, overflowY: 'auto',
-        paddingRight: 6, paddingLeft: 6, paddingBottom: 6,
-        display: 'flex', flexDirection: 'column', gap: 8,
-      }}>
-        {taskVisible && (
-          <TaskCard tasks={tasks} folded={folded.taskCard}
-            onToggleFold={() => dispatch({ type: 'SET_PANEL_FOLD', panel: 'taskCard', folded: !folded.taskCard })}
-            onClickTask={(task) => setActiveTask(task)} />
+    <>
+      <div
+        ref={ref}
+        style={{
+          position: 'fixed',
+          top: 0, left: 0,
+          // 外层只负责定位（translate）+ 尺寸（供 translate 的 currentWidth 计算）。
+          // 背景/圆角/阴影移到内层动画 div，让折叠退出时背景框随内容一起 scale 缩小，无定格突兀。
+          transform: `translate(${position.x - currentWidth}px, ${position.y}px)`,
+          zIndex: 50,
+          // 外层尺寸跟随 displayFolded（退出动画期间保持面板尺寸，结束后才缩成图标）
+          ...(displayFolded ? {
+            width: ICON_WIDTH, height: ICON_WIDTH, cursor: 'grab',
+            display: 'inline-flex', color: 'var(--text)',
+          } : {
+            width: 280, maxHeight: 'calc(100vh - 96px)',
+            display: 'flex', flexDirection: 'column',
+          }),
+        }}
+      >
+        {/* 内层动画层：承载背景/圆角/阴影 + 内容，scale 锚定右上角。
+            - 展开：panel-expand scale 0→1，从右上角向左下生长。
+            - 折叠退出：panel-exit scale 1→0，背景框随内容一起向右上角收缩（无定格）。
+            - 图标态：panel-collapse scale 0→1，图标从右上角点弹出。
+            与外层 translate 分层，scale 不覆盖拖动定位。 */}
+        <div style={{
+          transformOrigin: 'top right',
+          animation: exiting ? 'panel-exit .26s cubic-bezier(.4,0,.2,1) forwards'
+            : displayFolded ? 'panel-collapse .26s cubic-bezier(.22,1,.36,1)'
+            : 'panel-expand .32s cubic-bezier(.22,1,.36,1)',
+          width: '100%', height: '100%', minHeight: 0,
+          display: 'flex', flexDirection: 'column',
+          borderRadius: 10, background: 'var(--surface-1)', boxShadow: 'var(--shadow-float)',
+          overflow: 'hidden',
+        }}>
+        {displayFolded ? (
+          <div
+            data-testid="panel-icon"
+            onPointerDown={handlePointerDown}
+            onClick={handleClick}
+            style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', cursor: 'pointer' }}
+          >
+            <ListChecks size={16} />
+            {totalCount > 0 && <FoldBadge count={totalCount} />}
+          </div>
+        ) : (
+          <>
+            {/* 标题条：拖把手 + 点击折叠。点击（位移<3px）触发折叠，拖动则移动面板。 */}
+            <div
+              onPointerDown={handlePointerDown}
+              onClick={handleClick}
+              title="点击收起"
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '6px 10px', cursor: 'grab', borderBottom: '1px solid var(--border-hair)',
+                fontWeight: 600, color: 'var(--text)', fontSize: 12,
+              }}
+            >
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <ListChecks size={13} /> 任务面板
+              </span>
+              <button
+                onClick={(e) => { e.stopPropagation(); dispatch({ type: 'SET_PANEL_FOLD', panel: 'root', folded: true }) }}
+                onPointerDown={(e) => e.stopPropagation()}
+                title="收起"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'inline-flex', padding: 2 }}
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
+            <div className="panel-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '6px 6px' }}>
+              {taskVisible && (
+                <TaskCard tasks={tasks} onClickTask={(task) => setActiveTask(task)} />
+              )}
+              {subagentVisible && (
+                <SubagentCard
+                  tasks={subagents}
+                  onKill={onKill}
+                  onRemove={onRemove}
+                  onClearFinished={() => {
+                    const ids = subagents.filter(t => t.status !== 'running').map(t => t.id)
+                    if (ids.length) void window.api?.backendTask?.remove?.(activeSessionId, ids)
+                    dispatch({ type: 'CLEAR_FINISHED_BACKEND_TASKS', sessionId: activeSessionId })
+                  }}
+                  onClickTask={(task) => setActiveSubagent(task)}
+                />
+              )}
+              {bgVisible && (
+                <BackendTaskCard
+                  tasks={backends}
+                  onKill={onKill}
+                  onRemove={onRemove}
+                  onClearFinished={() => {
+                    const ids = backends.filter(t => t.status !== 'running').map(t => t.id)
+                    if (ids.length) void window.api?.backendTask?.remove?.(activeSessionId, ids)
+                    dispatch({ type: 'CLEAR_FINISHED_BACKEND_TASKS', sessionId: activeSessionId })
+                  }}
+                />
+              )}
+              {!taskVisible && !subagentVisible && !bgVisible && (
+                <div style={{ padding: '20px 10px', color: 'var(--text-muted)', fontSize: 12, textAlign: 'center' }}>暂无任务</div>
+              )}
+            </div>
+          </>
         )}
-        {subagentVisible && (
-          <SubagentCard
-            tasks={subagents}
-            folded={folded.subagentCard}
-            onToggleFold={() => dispatch({ type: 'SET_PANEL_FOLD', panel: 'subagentCard', folded: !folded.subagentCard })}
-            onKill={(taskId) => { void window.api.backendTask.kill(activeSessionId, taskId) }}
-            onRemove={(taskId) => { void window.api?.backendTask?.remove?.(activeSessionId, taskId); dispatch({ type: 'REMOVE_BACKEND_TASK', sessionId: activeSessionId, taskId }) }}
-            onClearFinished={() => {
-              const ids = subagents.filter(t => t.status !== 'running').map(t => t.id)
-              if (ids.length) void window.api?.backendTask?.remove?.(activeSessionId, ids)
-              dispatch({ type: 'CLEAR_FINISHED_BACKEND_TASKS', sessionId: activeSessionId })
-            }}
-            onClickTask={(task) => setActiveSubagent(task)}
-          />
-        )}
-        {bgVisible && (
-          <BackendTaskCard
-            tasks={backends}
-            folded={folded.backendTaskCard}
-            onToggleFold={() => dispatch({ type: 'SET_PANEL_FOLD', panel: 'backendTaskCard', folded: !folded.backendTaskCard })}
-            onKill={(taskId) => { void window.api.backendTask.kill(activeSessionId, taskId) }}
-            onRemove={(taskId) => { void window.api?.backendTask?.remove?.(activeSessionId, taskId); dispatch({ type: 'REMOVE_BACKEND_TASK', sessionId: activeSessionId, taskId }) }}
-            onClearFinished={() => {
-              const ids = backends.filter(t => t.status !== 'running').map(t => t.id)
-              if (ids.length) void window.api?.backendTask?.remove?.(activeSessionId, ids)
-              dispatch({ type: 'CLEAR_FINISHED_BACKEND_TASKS', sessionId: activeSessionId })
-            }}
-          />
-        )}
+        </div>
       </div>
-      {/* 子代理详情抽屉:点击面板 subagent 行弹出;fixed 定位,独立于滚动容器 */}
+      {/* 折叠/展开方向性动画：锚点统一右上角（transform-origin: top right）。
+          - panel-expand（展开）：scale 0→1，内容从右上角向左下方生长（"右上到左下"）。
+          - panel-exit（折叠退出）：scale 1→0，内容向右上角收缩（"左下到右上"收回）。
+          - panel-collapse（图标态）：scale 0→1，图标从右上角点弹出，承接面板收回的余韵。 */}
+      <style>{`
+        @keyframes panel-expand {
+          from { transform: scale(.1); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
+        }
+        @keyframes panel-exit {
+          from { transform: scale(1); opacity: 1; }
+          to { transform: scale(.1); opacity: 0; }
+        }
+        @keyframes panel-collapse {
+          from { transform: scale(.1); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
+        }
+      `}</style>
       <SubagentDetailDrawer
         task={activeSubagent}
         outputByToolUseId={subagentOutputByToolUseId ?? {}}
         onClose={() => setActiveSubagent(null)}
       />
-      <TaskDetailDrawer
-        task={activeTask}
-        onClose={() => setActiveTask(null)}
-      />
-    </div>
+      <TaskDetailDrawer task={activeTask} onClose={() => setActiveTask(null)} />
+    </>
   )
 }
