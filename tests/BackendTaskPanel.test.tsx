@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, fireEvent, screen, waitFor } from '@testing-library/react'
 import { BackendTaskPanel } from '../src/renderer/components/BackendTaskPanel'
 import { AppProvider, useStore } from '../src/renderer/state/store'
@@ -177,5 +177,40 @@ describe('BackendTaskPanel', () => {
     renderPanel({ tasks })
     fireEvent.click(screen.getByText('做A'))
     // TaskDetailDrawer 渲染（具体内容取决于 TaskDetailDrawer 实现）
+  })
+
+  describe('rememberPanelPosition:false 负向断言', () => {
+    afterEach(() => {
+      delete (window as any).api
+    })
+
+    it('rememberPanelPosition:false 时，拖动不落盘 panelPosition', async () => {
+      const saveMock = vi.fn()
+      ;(window as any).api = {
+        settings: { save: saveMock },
+        backendTask: { kill: vi.fn(), remove: vi.fn() },
+      }
+      const { dispatch } = renderPanel()
+      // 关闭面板位置记忆，并折叠成图标态（图标态有 onPointerDown 拖把手）
+      dispatch({ type: 'SET_SETTINGS', settings: { rememberPanelPosition: false } })
+      dispatch({ type: 'SET_PANEL_FOLD', panel: 'root', folded: true })
+      await waitFor(() => expect(screen.queryByText('任务面板')).toBeNull())
+      // 清空挂载/切换阶段累积的调用，只观察「拖动」这一动作
+      saveMock.mockClear()
+
+      const iconBox = screen.getByTestId('panel-icon')
+      // 真实拖动序列：pointerdown → pointermove(位移 ≥3px) → pointerup。
+      // useDraggable 在 pointerdown 时 setDragging(true) 并在 window 上注册
+      // pointermove/pointerup 监听，故 move/up 需 dispatch 到 window。
+      fireEvent.pointerDown(iconBox, { clientX: 100, clientY: 100 })
+      window.dispatchEvent(new MouseEvent('pointermove', { clientX: 150, clientY: 100, buttons: 1 }))
+      window.dispatchEvent(new MouseEvent('pointerup', { clientX: 150, clientY: 100 }))
+
+      // 关键负向断言：rememberPanelPosition:false 下，拖动不应触发以 panelPosition 为 key 的 save
+      const calledWithPanelPosition = saveMock.mock.calls.some(
+        ([arg]) => arg && typeof arg === 'object' && 'panelPosition' in arg,
+      )
+      expect(calledWithPanelPosition).toBe(false)
+    })
   })
 })

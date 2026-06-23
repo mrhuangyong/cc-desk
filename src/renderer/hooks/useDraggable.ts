@@ -123,6 +123,15 @@ export function useDraggable({ initial, onChange, size, margin = 8 }: Options) {
     applyTransform(position)
   }, [position, applyTransform])
 
+  // size 变化时（如折叠↔展开）重新 clamp 当前位置，防止尺寸变大后溢出视口。
+  // clamp 是 useCallback 依赖 [size.width, size.height, margin]，size 变 → clamp
+  // 引用变 → 此 effect 跑。用函数式更新读最新 position，clamp 后若值变了会触发上面的
+  // transform 同步 effect。
+  useEffect(() => {
+    setPositionState(prev => clamp(prev))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clamp])
+
   const setPosition = useCallback((p: Position) => {
     setPositionState(p)
   }, [])
