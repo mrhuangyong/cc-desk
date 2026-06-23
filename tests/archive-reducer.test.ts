@@ -24,7 +24,7 @@ function makeState(): AppState {
     },
     claudeSessionMap: {},
     pendingDialog: null,
-    dirtyTabIds: {}, lastFileOpenedSeq: 0, queueBySession: {}, tasksBySession: {}, backendTasksBySession: {}, panelFold: { root: false, taskCard: false, subagentCard: false, backendTaskCard: false },
+    dirtyTabIds: {}, lastFileOpenedSeq: 0, queueBySession: {}, tasksBySession: {}, backendTasksBySession: {}, panelFold: { root: false }, panelPosition: { x: 0, y: 0 },
   }
 }
 

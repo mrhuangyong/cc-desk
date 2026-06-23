@@ -29,7 +29,7 @@ function makeState(): AppState {
     queueBySession: {},
     tasksBySession: {},
     backendTasksBySession: {},
-    panelFold: { root: false, taskCard: false, subagentCard: false, backendTaskCard: false },
+    panelFold: { root: false }, panelPosition: { x: 0, y: 0 },
     subagentOutputBySession: {},
     planBySession: {},
     abortedBySession: {}, editingMessageId: null, editingQueueId: null,

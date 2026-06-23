@@ -13,7 +13,7 @@ describe('TaskCard 点击查看详情', () => {
   it('点击行触发 onClickTask 回调', () => {
     const onClick = vi.fn()
     const { getByText } = render(
-      <TaskCard tasks={[task]} folded={false} onToggleFold={() => {}} onClickTask={onClick} />
+      <TaskCard tasks={[task]} onClickTask={onClick} />
     )
     fireEvent.click(getByText('实现登录页'))
     expect(onClick).toHaveBeenCalledWith(task)
@@ -21,7 +21,7 @@ describe('TaskCard 点击查看详情', () => {
 
   it('未传 onClickTask 时行不可点击（不报错）', () => {
     const { container } = render(
-      <TaskCard tasks={[task]} folded={false} onToggleFold={() => {}} />
+      <TaskCard tasks={[task]} />
     )
     const row = container.querySelector('[class*="cc-task-row"]')
     expect(row).toBeTruthy()
