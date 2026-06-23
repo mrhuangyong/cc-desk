@@ -132,29 +132,29 @@ describe('BackendTaskPanel', () => {
   })
 
   it('点击图标态切换回展开（位移<3px 视为点击）', async () => {
-    const { dispatch, container } = renderPanel()
+    const { dispatch } = renderPanel()
     // 先折叠
     dispatch({ type: 'SET_PANEL_FOLD', panel: 'root', folded: true })
-    await waitFor(() => expect(container.textContent).not.toContain('任务面板'))
+    await waitFor(() => expect(screen.queryByText('任务面板')).toBeNull())
     // 点击图标（pointerdown 记录起点 + click 同位置 → 位移 0 → 切换展开）
-    const iconBox = container.querySelector('div[style*="cursor: pointer"]') as HTMLElement
+    const iconBox = screen.getByTestId('panel-icon')
     fireEvent.pointerDown(iconBox, { clientX: 100, clientY: 100 })
     fireEvent.click(iconBox, { clientX: 100, clientY: 100 })
     await waitFor(() => {
-      expect(container.textContent).toContain('任务面板')
+      expect(screen.getByText('任务面板')).toBeTruthy()
     })
   })
 
   it('拖动位移 ≥3px 时不切换折叠（仍保持折叠态）', async () => {
-    const { dispatch, container } = renderPanel()
+    const { dispatch } = renderPanel()
     dispatch({ type: 'SET_PANEL_FOLD', panel: 'root', folded: true })
-    await waitFor(() => expect(container.textContent).not.toContain('任务面板'))
+    await waitFor(() => expect(screen.queryByText('任务面板')).toBeNull())
     // pointerdown 在 (100,100)，click 在 (200,200) → 位移远超 3px → 不切换
-    const iconBox = container.querySelector('div[style*="cursor: pointer"]') as HTMLElement
+    const iconBox = screen.getByTestId('panel-icon')
     fireEvent.pointerDown(iconBox, { clientX: 100, clientY: 100 })
     fireEvent.click(iconBox, { clientX: 200, clientY: 200 })
     // 仍折叠
-    expect(container.textContent).not.toContain('任务面板')
+    expect(screen.queryByText('任务面板')).toBeNull()
   })
 
   it('点击 subagent 行 → 弹出详情抽屉', () => {

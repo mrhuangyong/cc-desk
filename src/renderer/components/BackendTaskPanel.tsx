@@ -115,6 +115,7 @@ export function BackendTaskPanel({
       >
         {folded ? (
           <div
+            data-testid="panel-icon"
             onPointerDown={handlePointerDown}
             onClick={handleClick}
             style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', cursor: 'pointer' }}
