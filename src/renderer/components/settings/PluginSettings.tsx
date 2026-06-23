@@ -9,20 +9,11 @@ import { AddMarketplaceDialog } from './AddMarketplaceDialog'
 import { PluginDetailDialog } from './PluginDetailDialog'
 import { RefreshCw, Plug, Trash2, Plus, FileText, Download, ChevronRight, ChevronDown } from 'lucide-react'
 import { Tooltip } from '../Tooltip'
+import { ConfirmDialog } from './ConfirmDialog'
+import { segBtn, iconBtn } from './styles'
 
 // ---- 样式常量 ----
-const iconBtn: React.CSSProperties = {
-  padding: '4px 6px', fontSize: 13, cursor: 'pointer',
-  background: 'transparent', border: 'none', color: 'var(--text-muted)', lineHeight: 1,
-}
 const topIconBtn: React.CSSProperties = { ...iconBtn, fontSize: 14, padding: '4px 8px' }
-const segBtn = (active: boolean): React.CSSProperties => ({
-  padding: '5px 14px', fontSize: 12, cursor: 'pointer',
-  border: '1px solid var(--border)', borderRadius: 'var(--radius)',
-  background: active ? 'var(--accent)' : 'transparent',
-  color: active ? 'var(--accent-text)' : 'var(--text-muted)',
-  marginRight: 4,
-})
 const primaryBtn: React.CSSProperties = {
   padding: '6px 14px', fontSize: 12, cursor: 'pointer',
   border: '1px solid var(--border)', borderRadius: 'var(--radius)',
@@ -119,17 +110,12 @@ function InstalledTab() {
 
       {/* 卸载确认框 */}
       {confirmUninstall && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setConfirmUninstall(null)}>
-          <div style={{ width: 400, background: 'var(--bg)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', padding: 20 }} onClick={e => e.stopPropagation()}>
-            <div style={{ color: 'var(--text)', fontSize: 13, marginBottom: 16 }}>
-              确定卸载「{confirmUninstall.split('@')[0]}」？将删除插件文件并移除配置。
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button onClick={() => setConfirmUninstall(null)} style={{ padding: '7px 14px', fontSize: 12, cursor: 'pointer', border: 'none', background: 'transparent', color: 'var(--text-muted)' }}>取消</button>
-              <button onClick={handleUninstall} style={{ padding: '7px 18px', fontSize: 12, cursor: 'pointer', border: 'none', borderRadius: 'var(--radius)', background: 'var(--danger, #e57373)', color: '#fff' }}>卸载</button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title={`确定卸载「${confirmUninstall.split('@')[0]}」？将删除插件文件并移除配置。`}
+          confirmLabel="卸载"
+          onConfirm={handleUninstall}
+          onClose={() => setConfirmUninstall(null)}
+        />
       )}
     </div>
   )
@@ -276,27 +262,25 @@ function MarketplacesTab() {
 
       {/* 删除仓库确认框 */}
       {confirmRemove && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setConfirmRemove(null)}>
-          <div style={{ width: 420, background: 'var(--bg)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', padding: 20, maxHeight: '80vh', overflow: 'auto' }} onClick={e => e.stopPropagation()}>
-            <div style={{ color: 'var(--text)', fontSize: 13, marginBottom: 12 }}>
-              确定删除仓库「{confirmRemove.name}」？
+        <ConfirmDialog
+          title={`确定删除仓库「${confirmRemove.name}」？`}
+          confirmLabel="删除"
+          onConfirm={handleRemove}
+          onClose={() => setConfirmRemove(null)}
+          width={420}
+          scrollable
+        >
+          {confirmRemove.cascaded.length > 0 ? (
+            <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 12 }}>
+              将同时卸载从此仓库安装的 {confirmRemove.cascaded.length} 个插件：
+              {confirmRemove.cascaded.map(p => <div key={p} style={{ paddingLeft: 12 }}>• {p}</div>)}
             </div>
-            {confirmRemove.cascaded.length > 0 ? (
-              <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 12 }}>
-                将同时卸载从此仓库安装的 {confirmRemove.cascaded.length} 个插件：
-                {confirmRemove.cascaded.map(p => <div key={p} style={{ paddingLeft: 12 }}>• {p}</div>)}
-              </div>
-            ) : (
-              <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 12 }}>
-                未发现从此仓库安装的插件。
-              </div>
-            )}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button onClick={() => setConfirmRemove(null)} style={{ padding: '7px 14px', fontSize: 12, cursor: 'pointer', border: 'none', background: 'transparent', color: 'var(--text-muted)' }}>取消</button>
-              <button onClick={handleRemove} style={{ padding: '7px 18px', fontSize: 12, cursor: 'pointer', border: 'none', borderRadius: 'var(--radius)', background: 'var(--danger, #e57373)', color: '#fff' }}>删除</button>
+          ) : (
+            <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 12 }}>
+              未发现从此仓库安装的插件。
             </div>
-          </div>
-        </div>
+          )}
+        </ConfirmDialog>
       )}
     </div>
   )
