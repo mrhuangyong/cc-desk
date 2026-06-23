@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDown, Copy, Check, Sparkles, Pencil } from 'lucide-react'
 import { useStore } from '../state/store'
 import { useI18n } from '../i18n/useI18n'
@@ -62,14 +62,29 @@ export function ChatArea() {
   const { state, dispatch } = useStore()
   const { t } = useI18n()
 
-  // 找当前会话及其所属项目
-  const session = state.projects
-    .flatMap(p => p.sessions)
-    .find(s => s.id === state.activeSessionId)
+  // 找当前会话及其所属项目：单次遍历拿到两者（避免 flatMap 分配中间数组，
+  // 也让 handleEditResend 能复用 project，无需二次 find）。
+  const active = state.projects.find(p => p.sessions.some(s => s.id === state.activeSessionId))
+  const session = active?.sessions.find(s => s.id === state.activeSessionId)
 
   // 当前会话的流式状态（增量拼接的 blocks/notices）
   const streaming = state.streamingBySession[state.activeSessionId]
   const isStreaming = !!streaming
+
+  // 子代理渲染所需的派生数据，每轮渲染算一次（而非每条消息行 ×3 次）：
+  //   - subagentToolUseIds：当前会话所有 subagent 任务的 toolUseId 集合，供 renderBlocks
+  //     判断某 tool_use 是否归属某 subagent（决定渲染为子代理卡片还是普通工具卡）。
+  //   - subagentOutputByToolUseId：当前会话子代理的累积输出。
+  // ChatArea 在每个 STREAM_DELTA 重渲染，若内联到 renderBlocks 调用点，N 条消息会构造 N×3 个 Set。
+  const sid = state.activeSessionId
+  const subagentOutputByToolUseId = useMemo(
+    () => state.subagentOutputBySession?.[sid] ?? {},
+    [state.subagentOutputBySession, sid]
+  )
+  const subagentToolUseIds = useMemo(
+    () => new Set((state.backendTasksBySession?.[sid] ?? []).filter(t => t.kind === 'subagent' && t.toolUseId).map(t => t.toolUseId!)),
+    [state.backendTasksBySession, sid]
+  )
 
   // 最后一条用户消息（编辑重发仅作用于它）
   const lastUserMessage = (() => {
@@ -92,8 +107,7 @@ export function ChatArea() {
     setEditDoc(null)
     // 截断后用新文本发送
     const claudeSessionId = state.claudeSessionMap?.[state.activeSessionId]
-    const project = state.projects.find(p => p.sessions.some(s => s.id === state.activeSessionId))
-    const cwd = project?.path || state.settings?.cwd || undefined
+    const cwd = active?.path || state.settings?.cwd || undefined
     dispatch({ type: 'STREAM_START', sessionId: state.activeSessionId })
     window.api?.claude?.send({
       prompt: newPrompt,
@@ -158,6 +172,19 @@ export function ChatArea() {
   useEffect(() => {
     const api = window.api?.claude
     if (!api) return
+
+    // 桌面通知统一出口：10s 内同一 body 文本去重 + 构造 Notification + 点击聚焦窗口。
+    // 三种通知场景（任务完成/出错、权限请求、需人工确认）共用，避免三处复制去重+构造逻辑。
+    // 调用方各自先判断自己的开关（taskNotify/notifyOnPermission/notifyOnConfirm）。
+    const dedupNotify = (title: string, body: string) => {
+      if (!('Notification' in window)) return
+      const s = settingsRef.current
+      const now = Date.now()
+      if (lastNotifRef.current && lastNotifRef.current.text === body && now - lastNotifRef.current.ts < 10000) return
+      lastNotifRef.current = { text: body, ts: now }
+      const n = new Notification(title, { body, silent: !s.notifySound })
+      n.onclick = () => window.focus()
+    }
 
     // 捕获 Claude 返回的真实 sessionId，建立 localSessionId → claudeSessionId 映射，供后续消息 resume 续接
     api.onSystem((data: any) => {
@@ -262,16 +289,11 @@ export function ChatArea() {
         turns: data.turns,
         isError: data.isError,
       })
-      // 任务通知：按场景分流（主开关短路 + 子开关控制 + 10s 防抖去重）
+      // 任务通知：按场景分流（主开关短路 + 子开关控制 + 10s 防抖去重走 dedupNotify）
       const s = settingsRef.current
       const fireNotify = (title: string, body: string) => {
         if (!s.taskNotify) return
-        if (!('Notification' in window)) return
-        const now = Date.now()
-        if (lastNotifRef.current && lastNotifRef.current.text === body && now - lastNotifRef.current.ts < 10000) return
-        lastNotifRef.current = { text: body, ts: now }
-        const n = new Notification(title, { body, silent: !s.notifySound })
-        n.onclick = () => window.focus()
+        dedupNotify(title, body)
       }
       if (data.isError) {
         if (s.notifyOnError) fireNotify(t('chat.taskError'), t('chat.taskErrorBody'))
@@ -298,14 +320,9 @@ export function ChatArea() {
       dispatch({ type: 'SHOW_DIALOG', reqId: data.reqId, sessionId: data.localSessionId, dialogKind: data.dialogKind, payload: data.payload, toolUseId: data.toolUseId })
       // 权限请求通知：工具需要用户确认权限时发桌面通知
       const s = settingsRef.current
-      if (s.notifyOnPermission && s.taskNotify && 'Notification' in window) {
+      if (s.notifyOnPermission && s.taskNotify) {
         const body = (data?.payload?.toolName || data?.payload?.tool_name) || t('chat.permissionRequest')
-        const now = Date.now()
-        if (!lastNotifRef.current || lastNotifRef.current.text !== body || now - lastNotifRef.current.ts >= 10000) {
-          lastNotifRef.current = { text: body, ts: now }
-          const n = new Notification(t('chat.permissionRequest'), { body, silent: !s.notifySound })
-          n.onclick = () => window.focus()
-        }
+        dedupNotify(t('chat.permissionRequest'), body)
       }
     })
 
@@ -313,13 +330,8 @@ export function ChatArea() {
     api.onNotification((data: any) => {
       const s = settingsRef.current
       if (!s.notifyOnConfirm || !s.taskNotify) return
-      if (!('Notification' in window)) return
       const body = data?.text || t('chat.needsAttention')
-      const now = Date.now()
-      if (lastNotifRef.current && lastNotifRef.current.text === body && now - lastNotifRef.current.ts < 10000) return
-      lastNotifRef.current = { text: body, ts: now }
-      const n = new Notification(t('chat.needsAttention'), { body, silent: !s.notifySound })
-      n.onclick = () => window.focus()
+      dedupNotify(t('chat.needsAttention'), body)
     })
 
     return () => {
@@ -373,7 +385,7 @@ export function ChatArea() {
             }}>
               {m.attachment && <AttachmentChip attachment={{ type: 'pickedElement', el: m.attachment }} />}
               <Notices notices={m.notices ?? []} />
-              {renderBlocks(m.content, false, state.subagentOutputBySession[state.activeSessionId] ?? {}, new Set((state.backendTasksBySession[state.activeSessionId] ?? []).filter(t => t.kind === 'subagent' && t.toolUseId).map(t => t.toolUseId!)))}
+              {renderBlocks(m.content, false, subagentOutputByToolUseId, subagentToolUseIds)}
               {/* 底部行：cost 元数据 + 复制钮，mono 小字 */}
               <div className="msg-foot" style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
                 {(m.costUSD != null || m.durationMs != null) && (
@@ -437,7 +449,7 @@ export function ChatArea() {
               ) : (
                 <>
                   {m.attachment && <AttachmentChip attachment={{ type: 'pickedElement', el: m.attachment }} />}
-                  {renderBlocks(m.content, true, state.subagentOutputBySession[state.activeSessionId] ?? {}, new Set((state.backendTasksBySession[state.activeSessionId] ?? []).filter(t => t.kind === 'subagent' && t.toolUseId).map(t => t.toolUseId!)))}
+                  {renderBlocks(m.content, true, subagentOutputByToolUseId, subagentToolUseIds)}
                   <CopyButton text={extractText(m.content)} />
                 </>
               )}
@@ -448,7 +460,7 @@ export function ChatArea() {
         {streaming && (
           <div style={{ color: 'var(--text)', fontSize: 14, lineHeight: 1.6, padding: '0 28px', display: 'flex', flexDirection: 'column', gap: 8, userSelect: 'text' }}>
             <Notices notices={streaming.notices ?? []} />
-            {renderBlocks(streaming.blocks, false, state.subagentOutputBySession[state.activeSessionId] ?? {}, new Set((state.backendTasksBySession[state.activeSessionId] ?? []).filter(t => t.kind === 'subagent' && t.toolUseId).map(t => t.toolUseId!)))}
+            {renderBlocks(streaming.blocks, false, subagentOutputByToolUseId, subagentToolUseIds)}
             {streaming.error && <div style={{ color: '#ef4444', fontSize: 13 }}>❌ {streaming.error}</div>}
             {/* 思考中指示器:Sparkles 图标 + 文字,呼吸式脉冲动画(参考 codex app) */}
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontSize: 13 }}>
