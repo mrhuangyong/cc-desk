@@ -9,6 +9,7 @@ import { join, dirname, resolve, isAbsolute } from 'path'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { CLAUDE_CONFIG_DIR } from './paths'
+import { readJson, writeJson } from './json-utils'
 
 const execFileAsync = promisify(execFile)
 
@@ -63,18 +64,7 @@ export interface SearchResult {
 
 // ---- 工具函数 ----
 
-async function readJson<T = any>(path: string, fallback: T): Promise<T> {
-  try {
-    if (!existsSync(path)) return fallback
-    const raw = await readFile(path, 'utf-8')
-    return JSON.parse(raw) as T
-  } catch { return fallback }
-}
-
-async function writeJson(path: string, data: unknown): Promise<void> {
-  await mkdir(dirname(path), { recursive: true })
-  await writeFile(path, JSON.stringify(data, null, 2) + '\n', 'utf-8')
-}
+// readJson/writeJson 见 ./json-utils（与 claude-config 共享）。
 
 // ---- parseSource：智能识别输入字符串的仓库来源类型 ----
 

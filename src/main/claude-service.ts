@@ -222,12 +222,12 @@ export class ClaudeService {
 
     const settings = getSettings()
     // 从 cc-desk 自有配置（~/.cc-desk/config.json）取激活的供应商+模型。
-    const cfg = getModelProvidersConfig()
-    const resolved = resolveActiveProviderModel(cfg)
-    if (!resolved) {
+    const active = this.resolveActiveModel()
+    if (!active) {
       webContents.send('claude:error', { localSessionId: lsid, error: '请先在「设置 → 模型设置」中添加并启用供应商与模型' })
       return
     }
+    const { sdkEnv, executable: claudeCodeExecutable, modelId } = active
     // 代理环境变量（来自 cc-desk 自有常规设置 ~/.cc-desk/settings.json）。
     // 不再读 ~/.claude/settings.json：CLAUDE_CONFIG_DIR 已隔离到 ~/.cc-desk/claude。
     const proxyEnv: Record<string, string> = settings.proxy
@@ -245,7 +245,6 @@ export class ClaudeService {
     const onError = (err: unknown) => {
       webContents.send('claude:error', { localSessionId: lsid, error: String(err) })
     }
-    const claudeCodeExecutable = resolveClaudeCodeExecutable()
 
     // ensureSession 复用已有持久 query（同 localSessionId），否则用 buildQuery 新建。
     // prompt 作为新的 user turn 通过 pushMessage 注入 controller.iterable。
@@ -279,8 +278,8 @@ export class ClaudeService {
           pathToClaudeCodeExecutable: claudeCodeExecutable,
           // env REPLACES process.env，故先铺底再覆盖。注入激活供应商的 apiKey/baseUrl
           // 与各角色模型映射（来自 ~/.cc-desk/config.json）。
-          env: { ...process.env, ...proxyEnv, ...buildSdkEnv(resolved, cfg.modelRoleMap, cfg.models) },
-          model: resolved.model.sdkModelId,
+          env: { ...process.env, ...proxyEnv, ...sdkEnv },
+          model: modelId,
           cwd: cwd || settings.cwd || process.cwd(),
           resume: sessionId,
           permissionMode: getPermissionMode(permission),   // 中文标签 → SDK permissionMode（未知回退 'default'）
@@ -975,17 +974,40 @@ export class ClaudeService {
     webContents.send('claude:builtin-result', { localSessionId, op: 'add-dir', dir })
   }
 
-  /** 旁路 query：跑一次性摘要/生成，不复用会话 manager。 */
-  private async runSideQuery(prompt: string, cwd?: string): Promise<string> {
+  /**
+   * 解析激活的供应商+模型，构造 SDK query 共用的基础选项（executable / env base / model id）。
+   * send() 与 runSideQuery() 都走这里，避免两处分别 fetch cfg + resolve + buildSdkEnv 导致漂移
+   * （改一处忘改另一处时，/compact /init 会用与主会话不同的供应商/模型）。
+   * 返回 null 表示未配置可用供应商；调用方各自给本地化错误提示。
+   */
+  private resolveActiveModel(): {
+    resolved: NonNullable<ReturnType<typeof resolveActiveProviderModel>>
+    sdkEnv: Record<string, string>
+    executable: string | undefined
+    modelId: string
+  } | null {
     const cfg = getModelProvidersConfig()
     const resolved = resolveActiveProviderModel(cfg)
-    if (!resolved) throw new Error('请先在「设置 → 模型设置」中添加并启用供应商与模型')
+    if (!resolved) return null
+    return {
+      resolved,
+      sdkEnv: buildSdkEnv(resolved, cfg.modelRoleMap, cfg.models),
+      executable: resolveClaudeCodeExecutable(),
+      modelId: resolved.model.sdkModelId,
+    }
+  }
+
+  /** 旁路 query：跑一次性摘要/生成，不复用会话 manager。 */
+  private async runSideQuery(prompt: string, cwd?: string): Promise<string> {
+    const active = this.resolveActiveModel()
+    if (!active) throw new Error('请先在「设置 → 模型设置」中添加并启用供应商与模型')
+    const { sdkEnv, executable, modelId } = active
     const result = query({
       prompt,
       options: {
-        pathToClaudeCodeExecutable: resolveClaudeCodeExecutable(),
-        env: { ...process.env, ...buildSdkEnv(resolved, cfg.modelRoleMap, cfg.models) },
-        model: resolved?.model.sdkModelId,
+        pathToClaudeCodeExecutable: executable,
+        env: { ...process.env, ...sdkEnv },
+        model: modelId,
         cwd,
         maxTurns: cwd ? 8 : 1,
         permissionMode: 'bypassPermissions',

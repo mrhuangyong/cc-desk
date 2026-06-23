@@ -18,6 +18,7 @@ import { existsSync } from 'fs'
 import { join, dirname } from 'path'
 import { BUILTIN_COMMANDS } from './builtin-commands'
 import { CLAUDE_CONFIG_DIR } from './paths'
+import { readJson, writeJson } from './json-utils'
 
 // 所有配置文件均落在 CLAUDE_CONFIG_DIR（~/.cc-desk/claude），与 SDK 运行时一致。
 const CLAUDE_DIR = CLAUDE_CONFIG_DIR
@@ -25,22 +26,6 @@ const SETTINGS_PATH = join(CLAUDE_DIR, 'settings.json')
 const GLOBAL_PATH = join(CLAUDE_DIR, '.claude.json')
 const INSTALLED_PLUGINS_PATH = join(CLAUDE_DIR, 'plugins', 'installed_plugins.json')
 const PLUGINS_CACHE_DIR = join(CLAUDE_DIR, 'plugins', 'cache')
-
-async function readJson<T = any>(path: string, fallback: T): Promise<T> {
-  try {
-    if (!existsSync(path)) return fallback
-    const raw = await readFile(path, 'utf-8')
-    return JSON.parse(raw) as T
-  } catch {
-    return fallback
-  }
-}
-
-// 写入前确保父目录存在（隔离目录的 plugins/ 等子目录首次写入时缺失）。
-async function writeJson(path: string, data: unknown): Promise<void> {
-  await mkdir(dirname(path), { recursive: true })
-  await writeFile(path, JSON.stringify(data, null, 2) + '\n', 'utf-8')
-}
 
 // ---- 类型定义（与渲染端 types.ts 的子集对应，独立声明避免循环依赖）----
 
