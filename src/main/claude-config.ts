@@ -786,7 +786,7 @@ export async function uninstallPlugin(pluginId: string): Promise<{ success: bool
 // 命令名称合法校验：仅小写字母、数字、连字符
 const COMMAND_NAME_RE = /^[a-z0-9-]+$/
 
-export async function createCommand(name: string, description: string): Promise<{ success: boolean; message: string }> {
+export async function createCommand(name: string, description: string): Promise<{ success: boolean; message: string; command?: ClaudeCommand }> {
   const cleanName = name.trim().replace(/^\//, '')
   if (!COMMAND_NAME_RE.test(cleanName)) {
     return { success: false, message: '命令名称格式无效：仅允许小写字母、数字、连字符（如 my-command）' }
@@ -799,7 +799,12 @@ export async function createCommand(name: string, description: string): Promise<
   await mkdir(dir, { recursive: true })
   const content = `---\ndescription: ${description}\n---\n\n`
   await writeFile(filePath, content, 'utf-8')
-  return { success: true, message: `命令 /${cleanName} 创建成功` }
+  // 返回新建命令对象，供 renderer 直接打开编辑器（免去 reload + 二次 get 找新命令的竞态）
+  return {
+    success: true,
+    message: `命令 /${cleanName} 创建成功`,
+    command: { id: `user:${cleanName}`, name: `/${cleanName}`, desc: description, enabled: true, source: 'user' },
+  }
 }
 
 export async function getCommandFile(source: string, name: string): Promise<string> {

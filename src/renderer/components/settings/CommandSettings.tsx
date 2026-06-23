@@ -51,14 +51,12 @@ export function CommandSettings() {
     reload()
   }
 
-  const handleCreated = (name: string) => {
+  // 新建命令后：直接用 createCommand 返回的对象打开编辑器（无需 reload + setTimeout
+  // 二次 get 找新命令——后者是慢盘会漏、快盘浪费的竞态 bandaid）。
+  // reload 仍调一次让列表显示新命令，但 setEditing 立即用返回值，不依赖 reload 时序。
+  const handleCreated = (command: ClaudeCommand) => {
     reload()
-    setTimeout(() => {
-      window.api?.cc?.commands.get().then(list => {
-        const created = list.find(c => c.name === `/${name}`)
-        if (created) setEditing(created)
-      })
-    }, 100)
+    setEditing(command)
   }
 
   const currentList = tab === 'custom' ? custom : tab === 'plugin' ? plugin : builtin

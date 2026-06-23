@@ -1,7 +1,8 @@
 import { useState } from 'react'
+import type { ClaudeCommand } from '../../../main/claude-config'
 
 interface Props {
-  onCreated: (name: string) => void
+  onCreated: (command: ClaudeCommand) => void
   onClose: () => void
 }
 
@@ -38,8 +39,8 @@ export function CreateCommandDialog({ onCreated, onClose }: Props) {
     setError(null)
     try {
       const result = await window.api?.cc.commands.create(name.trim(), desc.trim())
-      if (result?.success) {
-        onCreated(name.trim())
+      if (result?.success && result.command) {
+        onCreated(result.command)
         onClose()
       } else {
         setError(result?.message || '创建失败')
