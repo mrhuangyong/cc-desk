@@ -102,6 +102,7 @@ export function BackendTaskPanel({
           position: 'fixed',
           top: 0, left: 0,
           transform: `translate(${position.x}px, ${position.y}px)`,
+          // 注意：translate（拖动定位）在外层 transform；scale 动画挂在内层，避免互相覆盖。
           zIndex: 50,
           ...(folded ? {
             width: 36, height: 36, borderRadius: 10, cursor: 'grab',
@@ -115,6 +116,15 @@ export function BackendTaskPanel({
           }),
         }}
       >
+        {/* 内层动画层：scale 锚定右上角，展开时内容从右上向左下生长，折叠时收回。
+            与外层 translate 分层，scale 不覆盖拖动定位。
+            height:100% + minHeight:0 让展开态内层 flex 链不断，滚动区 flex:1 正确生效。 */}
+        <div style={{
+          transformOrigin: 'top right',
+          animation: folded ? 'panel-collapse .18s ease-out' : 'panel-expand .22s cubic-bezier(.22,1,.36,1)',
+          width: '100%', height: '100%', minHeight: 0,
+          display: 'flex', flexDirection: 'column',
+        }}>
         {folded ? (
           <div
             data-testid="panel-icon"
@@ -183,7 +193,22 @@ export function BackendTaskPanel({
             </div>
           </>
         )}
+        </div>
       </div>
+      {/* 折叠/展开方向性动画：锚点右上角。
+          panel-expand：展开时面板从右上角小尺寸向左下生长到完整（scale .6→1 + 淡入）。
+          panel-collapse：折叠时图标从右上角轻微弹出（scale .4→1 + 淡入），呼应"收回右上"。
+          折叠/展开是不同 DOM 切换（mount/unmount），故只做 enter 动画；exit 用下一态的 enter 视觉衔接。 */}
+      <style>{`
+        @keyframes panel-expand {
+          from { transform: scale(.6); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
+        }
+        @keyframes panel-collapse {
+          from { transform: scale(.4); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
+        }
+      `}</style>
       <SubagentDetailDrawer
         task={activeSubagent}
         outputByToolUseId={subagentOutputByToolUseId ?? {}}
