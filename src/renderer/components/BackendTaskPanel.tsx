@@ -33,6 +33,24 @@ export function BackendTaskPanel({
   const { state, dispatch } = useStore()
   const [activeSubagent, setActiveSubagent] = useState<BackendTask | null>(null)
   const [activeTask, setActiveTask] = useState<TaskItem | null>(null)
+  // 实际渲染的折叠态：延迟跟随 state.panelFold.root，让"退出"动画先播完再切换 DOM。
+  // folded（目标态）切到 true（折叠）时：面板先播退出动画（向右上收缩），结束后 displayFolded 才变 true 显示图标。
+  // 展开则立即响应（图标无需退出动画）。
+  const targetFolded = state.panelFold.root
+  const [displayFolded, setDisplayFolded] = useState(targetFolded)
+  const [exiting, setExiting] = useState(false)   // 面板正在播退出动画
+  useEffect(() => {
+    if (targetFolded === displayFolded) return
+    if (targetFolded) {
+      // 折叠：先播退出动画，260ms 后再切到图标
+      setExiting(true)
+      const t = setTimeout(() => { setExiting(false); setDisplayFolded(true) }, 260)
+      return () => clearTimeout(t)
+    } else {
+      // 展开：立即显示面板（播进入动画）
+      setDisplayFolded(false)
+    }
+  }, [targetFolded])
   const subagents = backendTasks.filter(t => t.kind === 'subagent')
   const backends = backendTasks.filter(t => t.kind !== 'subagent')
 
@@ -48,7 +66,7 @@ export function BackendTaskPanel({
 
   const { ref, position, onPointerDown } = useDraggable({
     initial: initialPos,
-    size: folded ? { width: 36, height: 36 } : { width: 280, height: 400 },
+    size: displayFolded ? { width: 36, height: 36 } : { width: 280, height: 400 },
     onChange: (pos) => {
       dispatch({ type: 'SET_PANEL_POSITION', position: pos })
       if (settings.rememberPanelPosition) {
@@ -104,7 +122,8 @@ export function BackendTaskPanel({
           transform: `translate(${position.x}px, ${position.y}px)`,
           // 注意：translate（拖动定位）在外层 transform；scale 动画挂在内层，避免互相覆盖。
           zIndex: 50,
-          ...(folded ? {
+          // 外层尺寸跟随 displayFolded（退出动画期间保持面板尺寸，结束后才缩成图标）
+          ...(displayFolded ? {
             width: 36, height: 36, borderRadius: 10, cursor: 'grab',
             background: 'var(--surface-1)', boxShadow: 'var(--shadow-float)',
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -116,16 +135,20 @@ export function BackendTaskPanel({
           }),
         }}
       >
-        {/* 内层动画层：scale 锚定右上角，展开时内容从右上向左下生长，折叠时收回。
-            与外层 translate 分层，scale 不覆盖拖动定位。
-            height:100% + minHeight:0 让展开态内层 flex 链不断，滚动区 flex:1 正确生效。 */}
+        {/* 内层动画层：scale 锚定右上角。
+            - 展开（displayFolded=false, 非退出）：panel-expand，scale 0→1，从右上角向左下生长。
+            - 折叠退出（exiting）：panel-exit，scale 1→0，向右上角收缩（"从左下到右上"收回）。
+            - 图标态（displayFolded=true）：panel-collapse，图标从右上角点弹出。
+            与外层 translate 分层，scale 不覆盖拖动定位。 */}
         <div style={{
           transformOrigin: 'top right',
-          animation: folded ? 'panel-collapse .18s ease-out' : 'panel-expand .22s cubic-bezier(.22,1,.36,1)',
+          animation: exiting ? 'panel-exit .26s cubic-bezier(.4,0,.2,1) forwards'
+            : displayFolded ? 'panel-collapse .26s cubic-bezier(.22,1,.36,1)'
+            : 'panel-expand .32s cubic-bezier(.22,1,.36,1)',
           width: '100%', height: '100%', minHeight: 0,
           display: 'flex', flexDirection: 'column',
         }}>
-        {folded ? (
+        {displayFolded ? (
           <div
             data-testid="panel-icon"
             onPointerDown={handlePointerDown}
@@ -137,9 +160,11 @@ export function BackendTaskPanel({
           </div>
         ) : (
           <>
-            {/* 标题条：拖把手 + 收起 */}
+            {/* 标题条：拖把手 + 点击折叠。点击（位移<3px）触发折叠，拖动则移动面板。 */}
             <div
               onPointerDown={handlePointerDown}
+              onClick={handleClick}
+              title="点击收起"
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 padding: '6px 10px', cursor: 'grab', borderBottom: '1px solid var(--border-hair)',
@@ -150,7 +175,7 @@ export function BackendTaskPanel({
                 <ListChecks size={13} /> 任务面板
               </span>
               <button
-                onClick={() => dispatch({ type: 'SET_PANEL_FOLD', panel: 'root', folded: true })}
+                onClick={(e) => { e.stopPropagation(); dispatch({ type: 'SET_PANEL_FOLD', panel: 'root', folded: true }) }}
                 onPointerDown={(e) => e.stopPropagation()}
                 title="收起"
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'inline-flex', padding: 2 }}
@@ -195,17 +220,21 @@ export function BackendTaskPanel({
         )}
         </div>
       </div>
-      {/* 折叠/展开方向性动画：锚点右上角。
-          panel-expand：展开时面板从右上角小尺寸向左下生长到完整（scale .6→1 + 淡入）。
-          panel-collapse：折叠时图标从右上角轻微弹出（scale .4→1 + 淡入），呼应"收回右上"。
-          折叠/展开是不同 DOM 切换（mount/unmount），故只做 enter 动画；exit 用下一态的 enter 视觉衔接。 */}
+      {/* 折叠/展开方向性动画：锚点统一右上角（transform-origin: top right）。
+          - panel-expand（展开）：scale 0→1，内容从右上角向左下方生长（"右上到左下"）。
+          - panel-exit（折叠退出）：scale 1→0，内容向右上角收缩（"左下到右上"收回）。
+          - panel-collapse（图标态）：scale 0→1，图标从右上角点弹出，承接面板收回的余韵。 */}
       <style>{`
         @keyframes panel-expand {
-          from { transform: scale(.6); opacity: 0; }
+          from { transform: scale(.1); opacity: 0; }
           to { transform: scale(1); opacity: 1; }
         }
+        @keyframes panel-exit {
+          from { transform: scale(1); opacity: 1; }
+          to { transform: scale(.1); opacity: 0; }
+        }
         @keyframes panel-collapse {
-          from { transform: scale(.4); opacity: 0; }
+          from { transform: scale(.1); opacity: 0; }
           to { transform: scale(1); opacity: 1; }
         }
       `}</style>
