@@ -113,7 +113,6 @@ describe('ChatArea IPC 监听 → dispatch 链路', () => {
         onAborted: (cb: any) => { handlers.onAborted = cb },
         onDialogRequest: (cb: any) => { handlers.onDialogRequest = cb },
         onNotification: (cb: any) => { handlers.onNotification = cb },
-        onPlan: (cb: any) => { handlers.onPlan = cb },
         onSubagentOutput: (cb: any) => { handlers.onSubagentOutput = cb },
         removeAllListeners: vi.fn(),
       },
@@ -219,7 +218,7 @@ describe('ChatArea 渲染', () => {
     ;(window as any).api = {
       claude: {
         onSystem() {}, onDelta() {}, onBlocks() {}, onNotice() {}, onTask() {}, onSubagentOutput() {},
-        onResult() {}, onError() {}, onAborted() {}, onDialogRequest() {}, onNotification() {}, onPlan() {},
+        onResult() {}, onError() {}, onAborted() {}, onDialogRequest() {}, onNotification() {},
         removeAllListeners() {},
       },
       backendTask: { onEvent: () => () => {} },

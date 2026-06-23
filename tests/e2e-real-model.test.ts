@@ -115,21 +115,19 @@ describe.skipIf(!RUN)('真机 e2e：真实模型 + SDK 事件识别', () => {
     expect(uncategorized.length).toBe(0)
   })
 
-  it('若真实模型在 plan 模式调用 ExitPlanMode，则被识别为 claude:plan（真实触发验证）', () => {
+  it('ExitPlanMode 计划走 claude:dialog-request(plan_proposed)，不再走 claude:plan（旧通道已废弃）', () => {
+    // claude:plan 是历史遗留通道，主进程已不再发送（计划改随 claude:dialog-request /
+    // dialogKind='plan_proposed' 传递，见 forwardEvent-identity 测试）。这里保留扫描仅作
+    // 善后验证：claude:plan 应恒为空，且 ExitPlanMode 不应作为普通工具卡片泄漏到 assistant_blocks。
     const plans = ipcCalls.filter(c => c.channel === 'claude:plan')
     const blocks = ipcCalls.filter(c => c.channel === 'claude:blocks' && c.data?.op === 'assistant_blocks')
     const leakedExitPlan = blocks
       .flatMap(b => (b.data?.blocks ?? []).filter((x: any) => x?.type === 'tool_use' && x?.name === 'ExitPlanMode'))
-    // 诚实断言：两种自洽状态之一
-    // (A) 模型调用了 ExitPlanMode → 必须产生 claude:plan，且不泄漏为普通工具卡片
-    // (B) 模型未调用 ExitPlanMode（第三方代理可能不支持）→ 两者都为空，测试如实记录
-    if (plans.length === 0) {
-      expect(leakedExitPlan.length).toBe(0)  // 未触发则不应有泄漏
-      console.log('[e2e] glm-5.2 未在本次调用 ExitPlanMode（第三方代理可能不暴露该工具）')
-    } else {
-      expect(leakedExitPlan.length).toBe(0)  // 触发则必须过滤干净
-      expect(plans[0].data.op).toBe('plan_proposed')
-      console.log('[e2e] ExitPlanMode 真实触发，已识别为 claude:plan')
+    // 诚实断言：claude:plan 恒空（主进程不发送）；ExitPlanMode 若被模型调用，应走 dialog-request 而非泄漏为普通工具卡。
+    expect(plans.length).toBe(0)
+    expect(leakedExitPlan.length).toBe(0)
+    if (leakedExitPlan.length === 0) {
+      console.log('[e2e] ExitPlanMode 未泄漏为普通工具卡片（glm-5.2 可能未调用，或已正确路由到 dialog-request）')
     }
   })
 

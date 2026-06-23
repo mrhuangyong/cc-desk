@@ -27,7 +27,6 @@ interface ClaudeAPI {
   onDialogRequest(cb: (data: any) => void): void
   onNotification(cb: (data: { localSessionId: string; text: string; priority: string }) => void): void
   onBuiltinResult(cb: (data: any) => void): void
-  onPlan(cb: (data: any) => void): void
   onSubagentOutput(cb: (data: any) => void): void
   dialogResponse(payload: { reqId: string; result: any }): Promise<void>
   setPermissionMode(opts: { localSessionId: string; permission: string }): Promise<void>
