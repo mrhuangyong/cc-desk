@@ -20,11 +20,14 @@ interface Props {
   subagentOutputByToolUseId?: Record<string, ContentBlock[]>
 }
 
-// 默认右上角坐标（挂载时若未开启记忆或无持久化位置时用）
+// 默认位置（挂载时若未开启记忆或无持久化位置时用）：让展开态面板的右上角贴视口右上角。
+// 注意 position 表示展开态面板的【左上角】（宽 280），故 x = 视口宽 - 面板宽 - 右边距。
+// 折叠态图标会自动补偿到面板右上角（见 renderX），与退出动画方向一致。
+const PANEL_WIDTH = 280
 function defaultPosition(): Position {
   const top = 48 // TitleBar 高度 + 间距
   const right = 24
-  return { x: window.innerWidth - 36 - right, y: top }
+  return { x: window.innerWidth - PANEL_WIDTH - right, y: top }
 }
 
 export function BackendTaskPanel({
@@ -66,7 +69,9 @@ export function BackendTaskPanel({
 
   const { ref, position, onPointerDown } = useDraggable({
     initial: initialPos,
-    size: displayFolded ? { width: 36, height: 36 } : { width: 280, height: 400 },
+    // position 表示展开态面板（宽 280）的左上角；clamp 始终按面板宽度算边界，
+    // 保证折叠态图标（在 position + (280-36) 处）也在视口内，不溢出右侧。
+    size: { width: PANEL_WIDTH, height: 400 },
     onChange: (pos) => {
       dispatch({ type: 'SET_PANEL_POSITION', position: pos })
       if (settings.rememberPanelPosition) {
@@ -112,6 +117,12 @@ export function BackendTaskPanel({
     dispatch({ type: 'REMOVE_BACKEND_TASK', sessionId: activeSessionId, taskId })
   }
 
+  // 折叠态（图标）与展开态（面板）共用 position，但 position 是展开态面板的左上角坐标。
+  // 要让折叠后图标落在原面板的【右上角】（与退出动画收缩方向一致），
+  // 需在纯图标态把 translate.x 补偿 PANEL_WIDTH - ICON_WIDTH。退出动画期间仍按面板宽度渲染，不补偿。
+  const ICON_WIDTH = 36
+  const renderX = (displayFolded && !exiting) ? position.x + (PANEL_WIDTH - ICON_WIDTH) : position.x
+
   return (
     <>
       <div
@@ -119,7 +130,7 @@ export function BackendTaskPanel({
         style={{
           position: 'fixed',
           top: 0, left: 0,
-          transform: `translate(${position.x}px, ${position.y}px)`,
+          transform: `translate(${renderX}px, ${position.y}px)`,
           // 注意：translate（拖动定位）在外层 transform；scale 动画挂在内层，避免互相覆盖。
           zIndex: 50,
           // 外层尺寸跟随 displayFolded（退出动画期间保持面板尺寸，结束后才缩成图标）
