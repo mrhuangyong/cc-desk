@@ -162,10 +162,9 @@ export function BackendTaskPanel({
             data-testid="panel-icon"
             onPointerDown={handlePointerDown}
             onClick={handleClick}
-            style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', cursor: 'pointer' }}
+            style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
           >
             <ListChecks size={16} />
-            {totalCount > 0 && <FoldBadge count={totalCount} />}
           </div>
         ) : (
           <>
@@ -228,6 +227,9 @@ export function BackendTaskPanel({
           </>
         )}
         </div>
+        {/* 角标渲染在内层动画 div 之外（外层 fixed div 内），避免被内层 overflow:hidden 裁切。
+            折叠态图标右上角溢出的徽章可见；仅折叠且非退出动画期间显示。 */}
+        {displayFolded && !exiting && totalCount > 0 && <FoldBadge count={totalCount} />}
       </div>
       {/* 折叠/展开方向性动画：锚点统一右上角（transform-origin: top right）。
           - panel-expand（展开）：scale 0→1，内容从右上角向左下方生长（"右上到左下"）。
