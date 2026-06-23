@@ -14,6 +14,7 @@ import {
 import type { ContentBlock } from '../../types'
 import { MarkdownRenderer } from '../markdown/MarkdownRenderer'
 import { PlanDrawer } from '../PlanDrawer'
+import { STATUS_COLOR, PULSE_KEYFRAMES, deriveToolStatus, runningGlow } from './tool-status'
 
 // 元信息：每种元工具的图标 / 中文名 / 摘要提取
 const META: Record<string, { icon: LucideIcon; label: string; summarize: (input: any) => string; statusKey?: (input: any) => string | undefined }> = {
@@ -43,11 +44,6 @@ const META: Record<string, { icon: LucideIcon; label: string; summarize: (input:
 }
 
 type Status = 'running' | 'error' | 'done'
-const STATUS_COLOR: Record<Status, string> = {
-  running: 'var(--status-warn, #d97706)',
-  error: 'var(--danger)',
-  done: 'var(--status-ok, #16a34a)',
-}
 
 interface Props {
   block: Extract<ContentBlock, { type: 'tool_use' }>
@@ -62,7 +58,7 @@ export function MetaToolCard({ block }: Props) {
 
   if (!meta) return null
   const Icon = meta.icon
-  const status: Status = block.status === 'running' ? 'running' : block.status === 'error' ? 'error' : 'done'
+  const status: Status = deriveToolStatus(block.status)
   const color = STATUS_COLOR[status]
   const summary = meta.summarize(block.input)
   const isPlan = block.name === 'ExitPlanMode'
@@ -86,7 +82,7 @@ export function MetaToolCard({ block }: Props) {
       <summary style={{ ...headerStyle, listStyle: 'none' }}>
         <span aria-hidden style={{
           width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: color,
-          boxShadow: status === 'running' ? `0 0 0 3px ${hexToRgba(color, 0.18)}` : 'none',
+          boxShadow: status === 'running' ? runningGlow(color) : 'none',
           animation: status === 'running' ? 'pulse 1.4s ease-in-out infinite' : 'none',
         }} />
         <Icon size={13} />
@@ -148,7 +144,7 @@ export function MetaToolCard({ block }: Props) {
         </div>
       )}
 
-      <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }`}</style>
+      <style>{PULSE_KEYFRAMES}</style>
     </details>
     {/* PlanDrawer 必须在 <details> 外：details 折叠时会隐藏内部所有非 summary 子元素，
         fixed 定位的抽屉也会被吞掉，导致折叠状态下点击「查看计划」打不开。 */}
@@ -224,12 +220,4 @@ function PlanDoc({ plan, allowedPrompts }: { plan: string; allowedPrompts?: any[
       )}
     </div>
   )
-}
-
-function hexToRgba(hex: string, alpha: number): string {
-  const m = /^#([0-9a-fa-f]{6})$/.exec(hex)
-  if (!m) return hex
-  const n = parseInt(m[1], 16)
-  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255
-  return `rgba(${r},${g},${b},${alpha})`
 }

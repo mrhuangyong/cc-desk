@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import type { ContentBlock } from '../../types'
 import { ToolUseCard } from './ToolUseCard'
+import { STATUS_COLOR, PULSE_KEYFRAMES, runningGlow, type ToolStatus } from './tool-status'
 
 // 连续工具调用分组：把相邻的 tool_use block 聚成一个整体可折叠的组。
 // 组级 header 显示工具数量 + 整体状态（进行中/有错误/全部完成），
@@ -12,23 +13,16 @@ import { ToolUseCard } from './ToolUseCard'
 
 type ToolBlock = Extract<ContentBlock, { type: 'tool_use' }>
 
-type GroupStatus = 'running' | 'error' | 'done'
-
 export function ToolGroup({ tools }: { tools: ToolBlock[] }) {
   const [open, setOpen] = useState(false)
 
   // 整体状态：任一 running → running；任一 error 且无 running → error；否则 done
-  const groupStatus: GroupStatus = tools.some(t => t.status === 'running')
+  const groupStatus: ToolStatus = tools.some(t => t.status === 'running')
     ? 'running'
     : tools.some(t => t.status === 'error')
       ? 'error'
       : 'done'
 
-  const STATUS_COLOR: Record<GroupStatus, string> = {
-    running: 'var(--status-warn, #d97706)',
-    error: 'var(--danger)',
-    done: 'var(--status-ok, #16a34a)',
-  }
   const color = STATUS_COLOR[groupStatus]
 
   return (
@@ -51,7 +45,7 @@ export function ToolGroup({ tools }: { tools: ToolBlock[] }) {
           aria-hidden
           style={{
             width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: color,
-            boxShadow: groupStatus === 'running' ? `0 0 0 3px ${hexToRgba(color, 0.18)}` : 'none',
+            boxShadow: groupStatus === 'running' ? runningGlow(color) : 'none',
             animation: groupStatus === 'running' ? 'pulse 1.4s ease-in-out infinite' : 'none',
           }}
         />
@@ -68,16 +62,7 @@ export function ToolGroup({ tools }: { tools: ToolBlock[] }) {
         </div>
       )}
 
-      <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }`}</style>
+      <style>{PULSE_KEYFRAMES}</style>
     </div>
   )
-}
-
-// 把 #rrggbb 转成 rgba（用于 running 态光晕）。非 # 格式原样返回。
-function hexToRgba(hex: string, alpha: number): string {
-  const m = /^#([0-9a-fa-f]{6})$/.exec(hex)
-  if (!m) return hex
-  const n = parseInt(m[1], 16)
-  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255
-  return `rgba(${r},${g},${b},${alpha})`
 }
