@@ -506,11 +506,12 @@ describe('builtin-cmd reducer actions', () => {
     expect(r2.projects.flatMap(p => p.sessions).find(x => x.id === 's1')!.extraDirs).toEqual(['/tmp/x', '/tmp/y'])
   })
 
-  it('SHOW_COST text 非空时直接插入 notice', () => {
+  it('SHOW_COST text 非空时直接插入 notice（附着到最近助手消息）', () => {
     const s = initialState()
     const r = reducer(s, { type: 'SHOW_COST', sessionId: 's1', text: '总费用 $0.5' })
     const sess = r.projects.flatMap(p => p.sessions).find(x => x.id === 's1')!
-    expect(sess.notices?.some(n => n.kind === 'status' && n.text.includes('0.5'))).toBe(true)
+    const lastAssistant = [...sess.messages].reverse().find(m => m.role === 'assistant')!
+    expect(lastAssistant.notices?.some(n => n.kind === 'status' && n.text.includes('0.5'))).toBe(true)
   })
 
   it('SHOW_COST text 空时聚合会话 costUSD', () => {
@@ -522,26 +523,31 @@ describe('builtin-cmd reducer actions', () => {
     })
     const r = reducer(withMsg, { type: 'SHOW_COST', sessionId: 's1', text: '' })
     const sess = r.projects.flatMap(p => p.sessions).find(x => x.id === 's1')!
-    expect(sess.notices?.some(n => n.kind === 'status' && n.text.includes('0.1234'))).toBe(true)
+    const lastAssistant = [...sess.messages].reverse().find(m => m.role === 'assistant')!
+    expect(lastAssistant.notices?.some(n => n.kind === 'status' && n.text.includes('0.1234'))).toBe(true)
   })
 
   it('SHOW_COST 无费用数据时显示暂无统计', () => {
     const s = initialState()
     const r = reducer(s, { type: 'SHOW_COST', sessionId: 's1', text: '' })
     const sess = r.projects.flatMap(p => p.sessions).find(x => x.id === 's1')!
-    expect(sess.notices?.some(n => n.text.includes('暂无费用统计'))).toBe(true)
+    const lastAssistant = [...sess.messages].reverse().find(m => m.role === 'assistant')!
+    expect(lastAssistant.notices?.some(n => n.text.includes('暂无费用统计'))).toBe(true)
   })
 
-  it('COMPACT_DONE 用摘要替换历史保留最近 N 条', () => {
+  it('COMPACT_DONE 用摘要替换历史保留最近 N 条，摘要 notice 附着到最近助手消息', () => {
     const s = initialState()
     let cur = s
     for (let i = 0; i < 10; i++) {
       cur = reducer(cur, { type: 'ADD_MESSAGE', sessionId: 's1', message: { id: `m${i}`, role: 'user', content: [{ type: 'text', text: `msg${i}` }] } })
     }
+    // 加一条助手消息，COMPACT_DONE 的摘要 notice 应附着到它（/compact 摘要走 message notices 通道）
+    cur = reducer(cur, { type: 'ADD_MESSAGE', sessionId: 's1', message: { id: 'ma', role: 'assistant', content: [{ type: 'text', text: '回复' }] } })
     const r = reducer(cur, { type: 'COMPACT_DONE', sessionId: 's1', summary: '已压缩', keepRecent: 6 })
     const sess = r.projects.flatMap(p => p.sessions).find(x => x.id === 's1')!
     expect(sess.messages.length).toBeLessThanOrEqual(6)
-    expect(sess.notices?.some(n => n.kind === 'compact')).toBe(true)
+    const lastAssistant = [...sess.messages].reverse().find(m => m.role === 'assistant')
+    expect(lastAssistant?.notices?.some(n => n.kind === 'compact')).toBe(true)
   })
 })
 

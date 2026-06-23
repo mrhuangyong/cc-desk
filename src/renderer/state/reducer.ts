@@ -95,6 +95,35 @@ function updateSession(state: AppState, sessionId: string, fn: (s: Session) => S
   return changed ? { ...state, projects } : state
 }
 
+// 把系统 notice 附着到会话「当前可见的渲染点」：优先最近一条助手消息的 m.notices
+// （Notices 组件渲染处）；若没有助手消息（如刚发起、尚无回复），退回到 streaming.notices
+// （流式中的 Notices 渲染处）。两处都用已有的 <Notices> 渲染通道，无需新增渲染点。
+// SHOW_COST(/cost /status /resume) 与 COMPACT_DONE(/compact) 走此通道——原先它们写
+// session.notices，但该字段从不渲染，用户看不到反馈。
+function attachNotice(state: AppState, sessionId: string, notice: SystemNotice): AppState {
+  // 从后往前找最近一条助手消息
+  let attached = false
+  const next = updateSession(state, sessionId, s => {
+    for (let i = s.messages.length - 1; i >= 0; i--) {
+      if (s.messages[i].role === 'assistant') {
+        const msgs = [...s.messages]
+        msgs[i] = { ...msgs[i], notices: [...(msgs[i].notices ?? []), notice] }
+        attached = true
+        return { ...s, messages: msgs }
+      }
+    }
+    return s
+  })
+  if (attached) return next
+  // 无助手消息：退回到 streaming.notices（若有进行中的流）
+  const stream = state.streamingBySession[sessionId]
+  if (stream) {
+    return { ...state, streamingBySession: { ...state.streamingBySession, [sessionId]: { ...stream, notices: [...stream.notices, notice] } } }
+  }
+  // 既无助手消息也无流：丢弃（极端竞态，无处可附）
+  return state
+}
+
 // 按 sessionId 在 projects 树里浅 patch 单个会话字段（permission/thinking/messages 整体替换 等共用）。
 // 需基于旧值计算的（如 messages 追加、extraDirs 追加、notices 追加）请直接用 updateSession。
 function patchSession<S extends Session>(state: AppState, sessionId: string, patch: Partial<S>): AppState {
@@ -864,26 +893,25 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, projects }
     }
     case 'SHOW_COST': {
-      const projects = updateSession(state, action.sessionId, s => {
-        let text = action.text
-        if (!text) {
-          const total = s.messages.reduce((sum, m) => sum + (m.costUSD ?? 0), 0)
-          const turns = s.messages.reduce((sum, m) => sum + (m.turns ?? 0), 0)
-          text = total > 0 ? `本会话累计：$${total.toFixed(4)} / ${turns} turns` : '暂无费用统计'
-        }
-        const notice: SystemNotice = { id: `n${Date.now()}`, kind: 'status', text, level: 'info' }
-        return { ...s, notices: [...(s.notices ?? []), notice] }
-      }).projects
-      return { ...state, projects }
+      // text 空 → 聚合本会话 costUSD/turns；非空（/status /resume 的模型/cwd/提示）直接用
+      let text = action.text
+      const session = state.projects.find(p => p.sessions.some(s => s.id === action.sessionId))?.sessions.find(s => s.id === action.sessionId)
+      if (!text && session) {
+        const total = session.messages.reduce((sum, m) => sum + (m.costUSD ?? 0), 0)
+        const turns = session.messages.reduce((sum, m) => sum + (m.turns ?? 0), 0)
+        text = total > 0 ? `本会话累计：$${total.toFixed(4)} / ${turns} turns` : '暂无费用统计'
+      }
+      const notice: SystemNotice = { id: `n${Date.now()}`, kind: 'status', text: text || '暂无费用统计', level: 'info' }
+      return attachNotice(state, action.sessionId, notice)
     }
     case 'COMPACT_DONE': {
       const notice: SystemNotice = { id: `n${Date.now()}`, kind: 'compact', text: action.summary, level: 'info' }
-      const projects = updateSession(state, action.sessionId, s => ({
+      // 先截断消息，再把 compact 摘要 notice 附着到（截断后）最近一条助手消息
+      const truncated = updateSession(state, action.sessionId, s => ({
         ...s,
         messages: s.messages.slice(-action.keepRecent),
-        notices: [...(s.notices ?? []), notice],
-      })).projects
-      return { ...state, projects }
+      }))
+      return attachNotice(truncated, action.sessionId, notice)
     }
     case 'UPDATE_STATUS': {
       return { ...state, updateStatus: action.status }
