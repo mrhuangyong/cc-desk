@@ -85,7 +85,7 @@ export function CommandSettings() {
         mode={tab === 'custom' ? 'editable' : 'readonly'}
         showSource={tab === 'plugin'}
         onEdit={c => setEditing(c)}
-        onDelete={c => setConfirmDelete(c.name)}
+        onDelete={setConfirmDelete}
       />
 
       {showCreate && <CreateCommandDialog onCreated={handleCreated} onClose={() => setShowCreate(false)} />}
