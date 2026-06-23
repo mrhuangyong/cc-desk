@@ -39,7 +39,9 @@ export function BackendTaskPanel({
   const folded = state.panelFold.root
   const settings = state.settings
 
-  // 初始位置：开启记忆且有持久化坐标 → 用之；否则默认右上角
+  // 初始位置：开启记忆且有持久化坐标 → 用之；否则默认右上角。
+  // 注意 initialPos 仅在首次挂载被 useDraggable 的 useState 采用；后续 settings.panelPosition
+  // 变化不会移动面板（位置由用户拖动驱动）。这是有意的——避免设置页改动导致面板跳动。
   const initialPos: Position = (settings.rememberPanelPosition && settings.panelPosition)
     ? settings.panelPosition
     : defaultPosition()
