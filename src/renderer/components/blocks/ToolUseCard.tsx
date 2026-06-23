@@ -1,18 +1,11 @@
 import { useState } from 'react'
 import { MarkdownRenderer } from '../markdown/MarkdownRenderer'
 import type { CSSProperties } from 'react'
+import { STATUS_COLOR, PULSE_KEYFRAMES, deriveToolStatus, runningGlow } from './tool-status'
 
 // 工具调用卡片：Codex 桌面端风格的紧凑横向行。
 // 左侧状态色点 + 工具名（mono）+ 参数摘要，点击展开输入/结果。
 // 状态色：running 琥珀脉冲、error 红、success 绿。不用 emoji。
-
-type Status = 'running' | 'error' | 'done'
-
-const STATUS_COLOR: Record<Status, string> = {
-  running: 'var(--status-warn, #d97706)',
-  error: 'var(--danger)',
-  done: 'var(--status-ok, #16a34a)',
-}
 
 interface Props {
   block: {
@@ -34,7 +27,7 @@ export function ToolUseCard({ block, inGroup }: Props) {
   const [open, setOpen] = useState(false)
   const [full, setFull] = useState(false)
 
-  const status: Status = block.status === 'running' ? 'running' : block.status === 'error' ? 'error' : 'done'
+  const status = deriveToolStatus(block.status)
   const color = STATUS_COLOR[status]
 
   const resultText = block.result?.content ?? ''
@@ -86,7 +79,7 @@ export function ToolUseCard({ block, inGroup }: Props) {
           style={{
             width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
             background: color,
-            boxShadow: status === 'running' ? `0 0 0 3px ${hexToRgba(color, 0.18)}` : 'none',
+            boxShadow: status === 'running' ? runningGlow(color) : 'none',
             animation: status === 'running' ? 'pulse 1.4s ease-in-out infinite' : 'none',
           }}
         />
@@ -141,16 +134,7 @@ export function ToolUseCard({ block, inGroup }: Props) {
         </div>
       )}
 
-      <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }`}</style>
+      <style>{PULSE_KEYFRAMES}</style>
     </details>
   )
-}
-
-// 把 #rrggbb 转成 rgba（用于 running 态光晕）。非 # 格式原样返回。
-function hexToRgba(hex: string, alpha: number): string {
-  const m = /^#([0-9a-f]{6})$/i.exec(hex)
-  if (!m) return hex
-  const n = parseInt(m[1], 16)
-  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255
-  return `rgba(${r},${g},${b},${alpha})`
 }
