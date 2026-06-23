@@ -295,7 +295,7 @@ export async function removeMarketplace(name: string): Promise<{ cascadedPlugins
   }
 
   // 级联：移除 installed_plugins.json 里 @name 后缀的条目
-  const { readInstalledPlugins, writeInstalledPlugins } = await import('./claude-config')
+  const { readInstalledPlugins, writeInstalledPlugins, invalidateAllPluginScan } = await import('./claude-config')
   const installed = await readInstalledPlugins()
   const suffix = `@${name}`
   let installedChanged = false
@@ -306,6 +306,9 @@ export async function removeMarketplace(name: string): Promise<{ cascadedPlugins
     }
   }
   if (installedChanged) await writeInstalledPlugins(installed)
+  // enabledPlugins 是直接写 settings.json（不走 setter），即使 installed_plugins 未变也需失效扫描缓存。
+  // writeInstalledPlugins 内部已失效，这里兜底 installedChanged=false 但 enabledPlugins 变了的情况。
+  invalidateAllPluginScan()
 
   return { cascadedPlugins }
 }
