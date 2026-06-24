@@ -38,7 +38,7 @@ export function LeftPanel({ collapsed, onOpenSearch }: Props) {
     })
   }, [state.projects, collapsedByUser])
 
-  const { width, dragging, onMouseDown, registerApply } = useResizableWidth({
+  const { width, dragging, onPointerDown, registerApply } = useResizableWidth({
     initial: 240,
     min: 180,
     max: Math.round(window.innerWidth * 0.5),
@@ -138,7 +138,7 @@ export function LeftPanel({ collapsed, onOpenSearch }: Props) {
         {/* 拖拽手柄：右边缘竖条（动画期间禁用） */}
         {!collapsed && (
           <div
-            onMouseDown={onMouseDown}
+            onPointerDown={onPointerDown}
             title="拖动调节宽度"
             style={{
               position: 'absolute', right: -3, top: 0, bottom: 0, width: 6,

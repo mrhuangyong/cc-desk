@@ -64,10 +64,10 @@ describe('useResizableWidth', () => {
     expect(result.current.width).toBe(300)
   })
 
-  it('onMouseDown 进入 dragging 态', () => {
+  it('onPointerDown 进入 dragging 态', () => {
     const { result } = renderHook(() => useResizableWidth({ initial: 300, min: 100, max: 500, side: 'left' }))
     act(() => {
-      result.current.onMouseDown({ preventDefault: () => {}, clientX: 100 } as any)
+      result.current.onPointerDown({ preventDefault: () => {}, button: 0, pointerId: 1, clientX: 100, currentTarget: { setPointerCapture: () => {} } } as any)
     })
     expect(result.current.dragging).toBe(true)
   })
@@ -77,17 +77,17 @@ describe('useResizableWidth', () => {
     const { result } = renderHook(() => useResizableWidth({ initial: 300, min: 100, max: 500, side: 'left' }))
     act(() => {
       result.current.registerApply(applySpy)
-      result.current.onMouseDown({ preventDefault: () => {}, clientX: 100 } as any)
+      result.current.onPointerDown({ preventDefault: () => {}, button: 0, pointerId: 1, clientX: 100, currentTarget: { setPointerCapture: () => {} } } as any)
     })
     // 鼠标右移 50（clientX 100→150），side=left：next = startWidth - delta = 300 - 50 = 250
     await act(async () => {
-      window.dispatchEvent(new MouseEvent('mousemove', { clientX: 150, buttons: 1 }))
+      window.dispatchEvent(new PointerEvent('pointermove', { clientX: 150, buttons: 1 }))
       await new Promise(r => setTimeout(r, 10))
     })
     expect(applySpy).toHaveBeenCalledWith(250)
     // 松手
     await act(async () => {
-      window.dispatchEvent(new MouseEvent('mouseup'))
+      window.dispatchEvent(new PointerEvent('pointerup'))
     })
     expect(result.current.width).toBe(250)
   })
@@ -97,10 +97,10 @@ describe('useResizableWidth', () => {
     const { result } = renderHook(() => useResizableWidth({ initial: 300, min: 100, max: 500, side: 'right' }))
     act(() => {
       result.current.registerApply(applySpy)
-      result.current.onMouseDown({ preventDefault: () => {}, clientX: 100 } as any)
+      result.current.onPointerDown({ preventDefault: () => {}, button: 0, pointerId: 1, clientX: 100, currentTarget: { setPointerCapture: () => {} } } as any)
     })
     await act(async () => {
-      window.dispatchEvent(new MouseEvent('mousemove', { clientX: 150, buttons: 1 }))
+      window.dispatchEvent(new PointerEvent('pointermove', { clientX: 150, buttons: 1 }))
       await new Promise(r => setTimeout(r, 10))
     })
     expect(applySpy).toHaveBeenCalledWith(350)  // 300 + 50
@@ -111,10 +111,10 @@ describe('useResizableWidth', () => {
     const { result } = renderHook(() => useResizableWidth({ initial: 480, min: 100, max: 500, side: 'right' }))
     act(() => {
       result.current.registerApply(applySpy)
-      result.current.onMouseDown({ preventDefault: () => {}, clientX: 100 } as any)
+      result.current.onPointerDown({ preventDefault: () => {}, button: 0, pointerId: 1, clientX: 100, currentTarget: { setPointerCapture: () => {} } } as any)
     })
     await act(async () => {
-      window.dispatchEvent(new MouseEvent('mousemove', { clientX: 500, buttons: 1 }))  // delta=400 → 880 → clamp 500
+      window.dispatchEvent(new PointerEvent('pointermove', { clientX: 500, buttons: 1 }))  // delta=400 → 880 → clamp 500
       await new Promise(r => setTimeout(r, 10))
     })
     expect(applySpy).toHaveBeenCalledWith(500)
@@ -123,14 +123,26 @@ describe('useResizableWidth', () => {
   it('松手后宽度持久化到 localStorage（有 storageKey）', async () => {
     const { result } = renderHook(() => useResizableWidth({ initial: 300, min: 100, max: 500, side: 'left', storageKey: 'pw' }))
     act(() => {
-      result.current.onMouseDown({ preventDefault: () => {}, clientX: 100 } as any)
+      result.current.onPointerDown({ preventDefault: () => {}, button: 0, pointerId: 1, clientX: 100, currentTarget: { setPointerCapture: () => {} } } as any)
     })
     await act(async () => {
-      window.dispatchEvent(new MouseEvent('mousemove', { clientX: 150, buttons: 1 }))
+      window.dispatchEvent(new PointerEvent('pointermove', { clientX: 150, buttons: 1 }))
       await new Promise(r => setTimeout(r, 10))
-      window.dispatchEvent(new MouseEvent('mouseup'))
+      window.dispatchEvent(new PointerEvent('pointerup'))
     })
     expect(localStorage.getItem('pw')).toBe('250')
+  })
+
+  it('pointerup 后 dragging 必为 false（pointer capture 保证松手可靠结束，不卡残留态）', async () => {
+    const { result } = renderHook(() => useResizableWidth({ initial: 300, min: 100, max: 500, side: 'left' }))
+    act(() => {
+      result.current.onPointerDown({ preventDefault: () => {}, button: 0, pointerId: 1, clientX: 100, currentTarget: { setPointerCapture: () => {} } } as any)
+    })
+    expect(result.current.dragging).toBe(true)
+    await act(async () => {
+      window.dispatchEvent(new PointerEvent('pointerup'))
+    })
+    expect(result.current.dragging).toBe(false)
   })
 })
 

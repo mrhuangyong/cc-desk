@@ -8,7 +8,7 @@ interface Props {
 }
 
 export function RightPanel({ collapsed }: Props) {
-  const { width, dragging, onMouseDown, registerApply } = useResizableWidth({
+  const { width, dragging, onPointerDown, registerApply } = useResizableWidth({
     initial: 420,
     min: 320,
     max: 1200,
@@ -53,7 +53,7 @@ export function RightPanel({ collapsed }: Props) {
       {/* 拖拽手柄：左边缘竖条（动画期间禁用） */}
       {!collapsed && (
         <div
-          onMouseDown={onMouseDown}
+          onPointerDown={onPointerDown}
           title="拖动调节宽度"
           style={{
             position: 'absolute', left: -3, top: 0, bottom: 0, width: 6,

@@ -18,8 +18,15 @@ interface Options {
 }
 
 /**
- * 拖拽调节宽度。返回当前宽度、是否正在拖拽、手柄的 onMouseDown。
+ * 拖拽调节宽度。返回当前宽度、是否正在拖拽、手柄的 onPointerDown。
  * 拖拽期间用 ref + rAF 直接更新 DOM，松手时才同步 React state，避免重渲染延迟导致不跟手。
+ *
+ * 事件模型：Pointer Events + setPointerCapture。pointerdown 时捕获指针，
+ * 后续 pointermove/pointerup 都【可靠派发】到手柄元素——即使鼠标快速移动或
+ * 移出窗口也不丢事件。旧版用 mousemove + window 监听 + buttons===0/mouseleave
+ * 兜底，在 Electron 快速拖动 / 鼠标甩出窗口边缘时 mouseup 仍会丢失，导致
+ * dragging 卡在 true、window mousemove 残留，表现为「不按键移到边框也进入
+ * 拖动、只能动一点点」。setPointerCapture 从根本上消除事件丢失。
  */
 export function useResizableWidth({ initial, min, max, storageKey, side }: Options) {
   const [width, setWidth] = useState<number>(() => {
@@ -39,8 +46,14 @@ export function useResizableWidth({ initial, min, max, storageKey, side }: Optio
   // 暴露给外部的回调，由 effect 注册到 DOM 元素上
   const applyWidthRef = useRef<((w: number) => void) | null>(null)
 
-  const onMouseDown = useCallback((e: React.MouseEvent) => {
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
+    // 仅响应主键（左键），忽略右键/中键
+    if (e.button !== 0) return
     e.preventDefault()
+    // 捕获指针：把后续 pointer 事件锁定到当前元素，快速移动/移出窗口也不丢。
+    // setPointerCapture 后，pointerup 即使在窗口外也会派发到本元素 → onUp 必然触发。
+    const el = e.currentTarget as HTMLElement
+    try { el.setPointerCapture(e.pointerId) } catch { /* 部分环境无此 API，降级到 window 监听（见 effect） */ }
     startXRef.current = e.clientX
     startWidthRef.current = widthRef.current
     setDragging(true)
@@ -54,9 +67,8 @@ export function useResizableWidth({ initial, min, max, storageKey, side }: Optio
   useEffect(() => {
     if (!dragging) return
 
-    const onMove = (e: MouseEvent) => {
-      // 鼠标快速划出窗口 / 切到其他应用时 mouseup 可能漏掉，
-      // 此时 buttons===0（无按键）。主动结束拖动，避免卡在 dragging 态跟着鼠标跑、停不掉。
+    const onMove = (e: PointerEvent) => {
+      // 防御：buttons===0 表示已无按键（某些边缘场景 pointerup 漏掉时的兜底），主动结束。
       if (e.buttons === 0) {
         onUp()
         return
@@ -84,19 +96,18 @@ export function useResizableWidth({ initial, min, max, storageKey, side }: Optio
       if (storageKey) localStorage.setItem(storageKey, String(final))
     }
 
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-    // 鼠标划出整个窗口后 mousemove/mouseup 都不再触发，拖动会卡死。
-    // 离开文档时主动结束。
-    const onLeave = () => onUp()
-    document.addEventListener('mouseleave', onLeave)
+    // pointer capture 下 pointermove/pointerup 直接到手柄元素；
+    // 同时在 window 上兜底监听，确保任何路径下都能结束拖动。
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
     return () => {
       cancelAnimationFrame(rafRef.current)
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-      document.removeEventListener('mouseleave', onLeave)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
     }
@@ -105,5 +116,5 @@ export function useResizableWidth({ initial, min, max, storageKey, side }: Optio
   // state 变化时同步 ref
   useEffect(() => { widthRef.current = width }, [width])
 
-  return { width, dragging, onMouseDown, registerApply }
+  return { width, dragging, onPointerDown, registerApply }
 }
