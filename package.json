@@ -1,6 +1,6 @@
 {
   "name": "cc-desk",
-  "version": "1.15.6",
+  "version": "1.15.7",
   "description": "",
   "main": "out/main/index.js",
   "scripts": {
