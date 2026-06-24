@@ -99,6 +99,18 @@ export function BackendTaskPanel({
   const bgVisible = showBackendTask && backends.length > 0
   const totalCount = tasks.length + subagents.length + backends.length
 
+  // 默认折叠 + 首次内容自动展开：仅当任务总数从 0 变 >0 时展开一次。
+  // 用户手动折叠后，只要任务没全部清空再新增（prevCount≠0），就不再强制展开，避免打断。
+  // ref 初始为 0：挂载时若已有任务（如 hydrate 恢复），也视为 0→>0 展开一次。
+  const prevCountRef = useRef(0)
+  useEffect(() => {
+    const prev = prevCountRef.current
+    prevCountRef.current = totalCount
+    if (prev === 0 && totalCount > 0 && state.panelFold.root) {
+      dispatch({ type: 'SET_PANEL_FOLD', panel: 'root', folded: false })
+    }
+  }, [totalCount, state.panelFold.root, dispatch])
+
   // 拖动/点击判定：pointerdown 记录起点，click 时位移 < 3px 才视为点击切换折叠。
   // 拖动后 click 仍会触发，但位移大则忽略。
   const downPos = useRef<Position | null>(null)

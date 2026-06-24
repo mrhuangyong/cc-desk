@@ -31,7 +31,7 @@ function makeInitialState(seedProjects?: Project[]): AppState {
     queueBySession: {},
     tasksBySession: {},
     backendTasksBySession: {},
-    panelFold: { root: false },
+    panelFold: { root: true },
     panelPosition: { x: 0, y: 0 },
     subagentOutputBySession: {},
     planBySession: {},

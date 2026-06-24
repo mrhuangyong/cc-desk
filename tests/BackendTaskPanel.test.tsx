@@ -12,6 +12,8 @@ interface PanelOverrides {
   showBackendTask?: boolean
   activeSessionId?: string
   subagentOutputByToolUseId?: Record<string, ContentBlock[]>
+  /** 渲染前强制展开面板（默认折叠后，多数断言展开态内容的用例需要）。 */
+  expanded?: boolean
 }
 
 /**
@@ -39,76 +41,92 @@ function renderPanel(overrides: PanelOverrides = {}) {
       />
     </AppProvider>
   )
+  // 默认折叠（panelFold.root=true）；需要展开态的用例设 expanded:true，在 render 后 dispatch。
+  // dispatch 触发的状态更新异步刷新，故这些用例的断言需用 waitFor 等待展开。
+  if (overrides.expanded) {
+    dispatchRef.current?.({ type: 'SET_PANEL_FOLD', panel: 'root', folded: false })
+  }
   return { ...utils, dispatch: (a: any) => dispatchRef.current?.(a) }
 }
 
 describe('BackendTaskPanel', () => {
-  it('展开态显示标题条「任务面板」', () => {
-    // 默认 panelFold.root=false（展开）
-    renderPanel()
-    expect(screen.getByText('任务面板')).toBeTruthy()
+  it('展开态显示标题条「任务面板」', async () => {
+    // 默认 panelFold.root=true（折叠）；此处主动展开验证内容
+    renderPanel({ expanded: true })
+    await waitFor(() => expect(screen.getByText('任务面板')).toBeTruthy())
   })
 
-  it('全空时展开态显示「暂无任务」', () => {
-    renderPanel()
-    expect(screen.getByText('暂无任务')).toBeTruthy()
+  it('全空时展开态显示「暂无任务」', async () => {
+    renderPanel({ expanded: true })
+    await waitFor(() => expect(screen.getByText('暂无任务')).toBeTruthy())
   })
 
-  it('有 TaskItem 数据才显示「任务」分区', () => {
+  it('有 TaskItem 数据才显示「任务」分区', async () => {
     const tasks = [{ id: 't1', status: 'running', description: '做A', taskType: 'task' }] as any
-    renderPanel({ tasks })
-    expect(screen.getByText('任务')).toBeTruthy()
+    renderPanel({ tasks, expanded: true })
+    await waitFor(() => expect(screen.getByText('任务')).toBeTruthy())
     expect(screen.queryByText('暂无任务')).toBeNull()
   })
 
-  it('无 TaskItem 时不显示「任务」分区', () => {
-    renderPanel({ tasks: [] })
-    expect(screen.queryByText('任务')).toBeNull()
+  it('无 TaskItem 时不显示「任务」分区', async () => {
+    renderPanel({ tasks: [], expanded: true })
+    await waitFor(() => expect(screen.queryByText('任务')).toBeNull())
   })
 
-  it('有 subagent 数据才显示「子代理」分区', () => {
+  it('有 subagent 数据才显示「子代理」分区', async () => {
     const backendTasks = [{
       id: 'sub1', localSessionId: 's1', command: '审查 src', kind: 'subagent',
       subagentType: 'general-purpose', status: 'running', startedAt: 0, lastKnownAt: 0,
     }] as any
-    renderPanel({ backendTasks })
-    expect(screen.getByText('子代理')).toBeTruthy()
+    renderPanel({ backendTasks, expanded: true })
+    await waitFor(() => expect(screen.getByText('子代理')).toBeTruthy())
     expect(screen.getByText('审查 src')).toBeTruthy()
   })
 
-  it('有 workflow 后台任务才显示「后台任务」分区', () => {
+  it('有 workflow 后台任务才显示「后台任务」分区', async () => {
     const backendTasks = [{
       id: 'b1', localSessionId: 's1', command: 'pnpm dev', kind: 'workflow',
       status: 'running', startedAt: 0, lastKnownAt: 0,
     }] as any
-    renderPanel({ backendTasks })
-    expect(screen.getByText('后台任务')).toBeTruthy()
+    renderPanel({ backendTasks, expanded: true })
+    await waitFor(() => expect(screen.getByText('后台任务')).toBeTruthy())
     expect(screen.getByText('pnpm dev')).toBeTruthy()
   })
 
-  it('showTodo=false 时不显示任务分区（即便有数据）', () => {
+  it('showTodo=false 时不显示任务分区（即便有数据）', async () => {
     const tasks = [{ id: 't1', status: 'running', description: '做A', taskType: 'task' }] as any
-    renderPanel({ tasks, showTodo: false })
-    expect(screen.queryByText('任务')).toBeNull()
+    renderPanel({ tasks, showTodo: false, expanded: true })
+    await waitFor(() => expect(screen.queryByText('任务')).toBeNull())
     expect(screen.getByText('暂无任务')).toBeTruthy()
   })
 
-  it('showBackendTask=false 时不显示后台/子代理分区（即便有数据）', () => {
+  it('showBackendTask=false 时不显示后台/子代理分区（即便有数据）', async () => {
     const backendTasks = [
       { id: 'b1', localSessionId: 's1', command: 'dev', kind: 'workflow', status: 'running', startedAt: 0, lastKnownAt: 0 },
       { id: 'sub1', localSessionId: 's1', command: '审查', kind: 'subagent', subagentType: 'general-purpose', status: 'running', startedAt: 0, lastKnownAt: 0 },
     ] as any
-    renderPanel({ backendTasks, showBackendTask: false })
-    expect(screen.queryByText('后台任务')).toBeNull()
+    renderPanel({ backendTasks, showBackendTask: false, expanded: true })
+    await waitFor(() => expect(screen.queryByText('后台任务')).toBeNull())
     expect(screen.queryByText('子代理')).toBeNull()
   })
 
-  it('点收起按钮 → dispatch SET_PANEL_FOLD root=true', () => {
-    const { dispatch } = renderPanel()
-    const collapseBtn = screen.getByTitle('收起')
+  it('默认折叠（root=true），不渲染展开态内容', () => {
+    renderPanel()
+    expect(screen.queryByText('任务面板')).toBeNull()
+    expect(screen.getByTestId('panel-icon')).toBeTruthy()
+  })
+
+  it('首次有内容时自动展开（totalCount 0→>0）', async () => {
+    // 默认折叠；传入任务后，totalCount 从 0 变 >0 应触发自动展开
+    const tasks = [{ id: 't1', status: 'running', description: '做A', taskType: 'task' }] as any
+    renderPanel({ tasks })
+    await waitFor(() => expect(screen.getByText('任务面板')).toBeTruthy())
+  })
+
+  it('点收起按钮 → dispatch SET_PANEL_FOLD root=true', async () => {
+    const { dispatch } = renderPanel({ expanded: true })
+    const collapseBtn = await waitFor(() => screen.getByTitle('收起'))
     fireEvent.click(collapseBtn)
-    // 真实 reducer 处理后折叠：标题条消失，图标态出现 ListChecks（通过 svg role 可间接验证）
-    // 这里验证 dispatch 被调用（通过真实 store，reducer 已应用）
     expect(dispatch).toBeDefined()
   })
 
@@ -157,7 +175,7 @@ describe('BackendTaskPanel', () => {
     expect(screen.queryByText('任务面板')).toBeNull()
   })
 
-  it('点击 subagent 行 → 弹出详情抽屉', () => {
+  it('点击 subagent 行 → 弹出详情抽屉', async () => {
     const backendTasks = [{
       id: 'sub-d1', localSessionId: 's1', command: '审查 src', kind: 'subagent',
       subagentType: 'general-purpose', toolUseId: 'toolu_d1', status: 'running',
@@ -166,16 +184,18 @@ describe('BackendTaskPanel', () => {
     renderPanel({
       backendTasks,
       subagentOutputByToolUseId: { toolu_d1: [{ type: 'text', text: '子代理的输出内容' }] },
+      expanded: true,
     })
-    expect(screen.queryByText('子代理的输出内容')).toBeNull()
+    await waitFor(() => expect(screen.queryByText('子代理的输出内容')).toBeNull())
     fireEvent.click(screen.getByText('审查 src'))
     expect(screen.getByText('子代理的输出内容')).toBeTruthy()
   })
 
-  it('点击 task 行 → 弹出 task 详情抽屉', () => {
+  it('点击 task 行 → 弹出 task 详情抽屉', async () => {
     const tasks = [{ id: 't1', status: 'running', description: '做A', taskType: 'task' }] as any
-    renderPanel({ tasks })
-    fireEvent.click(screen.getByText('做A'))
+    renderPanel({ tasks, expanded: true })
+    const taskRow = await waitFor(() => screen.getByText('做A'))
+    fireEvent.click(taskRow)
     // TaskDetailDrawer 渲染（具体内容取决于 TaskDetailDrawer 实现）
   })
 

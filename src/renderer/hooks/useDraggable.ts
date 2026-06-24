@@ -45,7 +45,11 @@ export function useDraggable({ initial, onChange, size, margin = 8, anchor = 'to
       // top-left 锚点：p.x 是左边缘，需保证 p.x ≥ margin 且 p.x + width ≤ innerWidth - margin
       const maxX = anchor === 'top-right' ? window.innerWidth - margin : window.innerWidth - size.width - margin
       const minX = anchor === 'top-right' ? size.width + margin : margin
-      const maxY = window.innerHeight - size.height - margin
+      // 下边界用元素【真实渲染高度】而非传入的 size.height：悬浮面板内容可变，
+      // size.height 硬编码会导致内容少时按虚拟大高度算 maxY，面板被限制在视口上半部、
+      // 拖不到下方。读 offsetHeight 拿真实高度，内容少即可拖到更下方，内容多也不溢出。
+      const realHeight = ref.current?.offsetHeight ?? size.height
+      const maxY = window.innerHeight - realHeight - margin
       return {
         x: Math.min(Math.max(p.x, minX), Math.max(minX, maxX)),
         y: Math.min(Math.max(p.y, margin), Math.max(margin, maxY)),
