@@ -1002,20 +1002,14 @@ export class ClaudeService {
     }
   }
 
-  /** /init：在 cwd 生成 CLAUDE.md，已存在问覆盖。 */
+  /** /init：在 cwd 生成 CLAUDE.md，已存在则直接覆盖重新生成（不弹确认）。 */
   async initProject(cwd: string, webContents: WebContents): Promise<void> {
     const target = join(cwd, 'CLAUDE.md')
-    if (existsSync(target)) {
-      const ok = await showOverwriteDialog(target)
-      if (!ok) {
-        webContents.send('claude:notice', { ...mkNotice('info', '已取消，未改动', 'info'), localSessionId: '' })
-        return
-      }
-    }
+    const existed = existsSync(target)
     try {
       const content = await this.runSideQuery('分析当前项目并生成 CLAUDE.md：包含项目概述、技术栈、常用命令、代码结构。直接输出 markdown 内容，不要用代码块包裹。', cwd)
       await writeFile(target, content || '', 'utf-8')
-      webContents.send('claude:notice', { ...mkNotice('info', `已生成 ${target}`, 'info'), localSessionId: '' })
+      webContents.send('claude:notice', { ...mkNotice('info', existed ? `已覆盖重新生成 ${target}` : `已生成 ${target}`, 'info'), localSessionId: '' })
     } catch (err) {
       webContents.send('claude:notice', { ...mkNotice('error', `生成失败：${String(err)}`, 'error'), localSessionId: '' })
     }
@@ -1103,12 +1097,6 @@ function findSession(projects: any[], localSessionId: string): any | null {
     if (s) return s
   }
   return null
-}
-
-async function showOverwriteDialog(target: string): Promise<boolean> {
-  const { dialog } = await import('electron')
-  const r = await dialog.showMessageBox({ type: 'question', buttons: ['覆盖', '取消'], defaultId: 1, message: `${target} 已存在，是否覆盖？` })
-  return r.response === 0
 }
 
 async function showSaveDialog(defaultName: string, content: string): Promise<string | null> {

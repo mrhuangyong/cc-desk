@@ -12,6 +12,14 @@ import type { SlashMenuItem } from './types'
 // 否则 ProseMirror 报 "Adding different instances of a keyed plugin (suggestion$)"。
 const slashPluginKey = new PluginKey('slashSuggestion')
 
+// 「引用型」内置命令：选中后插入 /name 文本到输入框，发送时才执行（doSend 识别）。
+// 其余内置命令（打开设置/菜单、清空会话、费用/状态、压缩、resume）是即时 UI 操作，
+// 选中即执行（onBuiltinRun），引用无意义。
+const REFERABLE_BUILTIN_ACTIONS = new Set(['init-project', 'export-session', 'add-dir'])
+function isReferableBuiltin(item: SlashMenuItem): boolean {
+  return item.kind === 'builtin' && !!item.builtinAction && REFERABLE_BUILTIN_ACTIONS.has(item.builtinAction.type)
+}
+
 export function buildSlashExtension(getItems: () => SlashMenuItem[], onBuiltinRun?: (item: SlashMenuItem) => void): Extension {
   return Extension.create({
     name: 'slashSuggestion',
@@ -29,9 +37,14 @@ export function buildSlashExtension(getItems: () => SlashMenuItem[], onBuiltinRu
             // 单次 chain：删触发符 + 插内容，避免两次 run() 间光标/placeholder 状态异常
             const chain = editor.chain().focus().deleteRange(range)
             if (props.kind === 'builtin') {
-              // 内置命令：删触发符，不插内容；副作用交给渲染端 handler
-              chain.run()
-              onBuiltinRun?.(props)
+              if (isReferableBuiltin(props)) {
+                // 引用型（/init /export /add-dir）：插 /name 文本，发送时才执行
+                chain.insertContent(props.name + ' ').run()
+              } else {
+                // 即时 UI 型：删触发符，立即执行（副作用交给渲染端 handler）
+                chain.run()
+                onBuiltinRun?.(props)
+              }
               return
             }
             if (props.kind === 'command') {
@@ -58,17 +71,10 @@ export function buildSlashExtension(getItems: () => SlashMenuItem[], onBuiltinRu
             emptyHint: '无可用命令/技能',
             groupKey: (item) => item.kind,
             groupLabel: (key) => key === 'builtin' ? '内置' : key === 'command' ? '命令' : '技能',
-            // Tab = 补全命令名到输入框（纯文本），三种 kind 一视同仁：
-            // 不执行 builtinAction、不插 skillChip，仅把名字（含 /）写进去并留个空格，
-            // 用户可继续编辑或按发送键。Enter/点击才执行（builtin）或插入（command/skill）。
-            onTabComplete: (item, view, range) => {
-              const tr = view.state.tr
-                .deleteRange(range.from, range.to)
-                .insertText(item.name + ' ', range.from)
-              view.dispatch(tr)
-              view.focus()
-              return true
-            },
+            // 不传 onTabComplete：Tab 与 Enter/点击走同一条 command 路径（skill 插 skillChip、
+            // command 插纯文本、builtin 执行），保证 Tab 也能富填充 chip（而非丢 / 的纯文本）。
+            // suggestionController 在无 onTabComplete 时 fallback 到 command(items[sel]) 并 return true，
+            // 拦截 Tab 不冒泡到 handleKeyDown 触发发送。
           }),
         },
       }

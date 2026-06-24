@@ -166,6 +166,23 @@ export function InputBar() {
   const doSend = () => {
     const prompt = serializeForPrompt(state.draft.doc)
     if (!prompt.trim() && state.draft.attachments.length === 0) return
+    // 引用型内置命令（/init /export /add-dir）：选中时插入 /name 文本，发送时识别并执行，
+    // 不发给模型。精确匹配 /name（这些命令无文本参数）。
+    const trimmed = prompt.trim()
+    const referableBuiltin = allSlashItems.find(
+      it => it.kind === 'builtin' && it.builtinAction
+        && ['init-project', 'export-session', 'add-dir'].includes(it.builtinAction.type)
+        && trimmed === it.name,
+    )
+    if (referableBuiltin) {
+      runBuiltin(referableBuiltin, {
+        dispatch, sessionId: state.activeSessionId, cwd: getCwd(), modelName,
+        claudeSessionId: state.claudeSessionMap?.[state.activeSessionId],
+        toggleMenu, editor: editorRef,
+      })
+      dispatch({ type: 'SEND_MESSAGE' })
+      return
+    }
     // 取当前本地会话映射到的 Claude 真实 sessionId；存在则 resume 续接，否则新建会话
     const claudeSessionId = state.claudeSessionMap?.[state.activeSessionId]
     // 工作目录优先取当前激活会话所属项目的 path，回退到全局设置 cwd。
