@@ -40,6 +40,15 @@ export class ClaudeService {
   // 集合体量可忽略，强清理反而要在会话销毁链路（manager.closeSession）穿针引线、收益不抵风险。
   private handledBlockingToolUse = new Map<string, Set<string>>()
 
+  // 等待 AskUserQuestion 用户作答期间的 per-session 计数（>0 即门控开启）。
+  // 经第三方代理时 AskUserQuestion 未注册为 SDK 工具，SDK 会自填 dummy tool_result 并立即
+  // 续跑下一轮（无法阻止——SDK 子进程不等 cc-desk 消费 iterable）。门控开启期间，
+  // forwardEvent 入口丢弃 SDK 吐出的全部续跑事件（续跑文本/工具、dummy result、result 终态），
+  // 直到用户答完把答案 pushMessage 回 SDK（在 finally 内计数-1，归 0 放行）。
+  // 用计数而非布尔：一条 assistant 可能含多个 AskUserQuestion block，串行 await 时
+  // 每个进入 +1、退出 -1，全部答完才真正放行，避免中途过早清位漏丢续跑。
+  private askGateCount = new Map<string, number>()
+
   setManager(m: SessionQueryManager): void { this.manager = m }
   setRegistry(r: BackendTaskRegistry): void { this.registry = r }
 
@@ -65,6 +74,23 @@ export class ClaudeService {
       this.handledBlockingToolUse.set(lsid, set)
     }
     set.add(toolUseId)
+  }
+
+  /** 该 lsid 是否处于 AskUserQuestion 作答门控期（需丢弃 SDK 续跑）。 */
+  private isAskGated(lsid: string): boolean {
+    return (this.askGateCount.get(lsid) ?? 0) > 0
+  }
+
+  /** 进入一次 AskUserQuestion 作答等待，计数+1。 */
+  private enterAskGate(lsid: string): void {
+    this.askGateCount.set(lsid, (this.askGateCount.get(lsid) ?? 0) + 1)
+  }
+
+  /** 退出一次 AskUserQuestion 作答等待，计数-1，归 0 删除。 */
+  private exitAskGate(lsid: string): void {
+    const next = (this.askGateCount.get(lsid) ?? 0) - 1
+    if (next <= 0) this.askGateCount.delete(lsid)
+    else this.askGateCount.set(lsid, next)
   }
 
   /**
@@ -133,11 +159,16 @@ export class ClaudeService {
     const input = toolUse.input || {}
     const questions: any[] = Array.isArray(input.questions) ? input.questions : []
     if (questions.length === 0) return
+    // 开门控：在等待用户作答期间，丢弃 SDK 基于 dummy tool_result 的全部续跑。
+    this.enterAskGate(localSessionId)
     let result: any
     try {
       result = await this.askUserViaPanel(webContents, 'ask_user_question', input, toolUse.id, undefined, localSessionId)
     } catch {
       result = { behavior: 'cancelled' }
+    } finally {
+      // 关门控（无论答完/取消/异常）：之后 pushMessage 推答案，SDK 新一轮才放行。
+      this.exitAskGate(localSessionId)
     }
     if (!this.manager) return
     // 取消 / 未完成：仍推一条提示，避免模型卡住
@@ -337,6 +368,12 @@ export class ClaudeService {
   // SDK message → IPC 转发。逻辑与原 claude-service 的 for-await case 一致。
   private async forwardEvent(message: any, lsid: string, webContents: WebContents): Promise<void> {
     const mtype: string = message.type
+    // 门控：等待 AskUserQuestion 作答期间，SDK 会基于自填 dummy tool_result 续跑下一轮
+    // （无法阻止），这些续跑事件一律丢弃——否则用户还没答完，对话就基于 dummy 答案
+    // 自顾自跑下去了。置位发生在 handleAskUserQuestion（由本条 assistant 消息触发），
+    // 而 await handleAskUserQuestion 在本条 forwardEvent 内执行，故置位时本条已处理完，
+    // 后续 SDK 消息进这里才会被吞掉，不会误吞 AskUserQuestion 那条本身。
+    if (this.isAskGated(lsid)) return
     switch (mtype) {
       case 'system': {
         const sys = message
@@ -869,6 +906,8 @@ export class ClaudeService {
   /** 关闭会话：关闭 controller + query.return()，删除 session。委托 manager.closeSession。 */
   closeSession(localSessionId: string): Promise<void> {
     this.abortControllers.delete(localSessionId)
+    // 清门控计数，防异常残留导致该会话后续消息被永久丢弃。
+    this.askGateCount.delete(localSessionId)
     return this.manager?.closeSession(localSessionId) ?? Promise.resolve()
   }
 
