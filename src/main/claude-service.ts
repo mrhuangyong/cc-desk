@@ -49,6 +49,12 @@ export class ClaudeService {
   // 每个进入 +1、退出 -1，全部答完才真正放行，避免中途过早清位漏丢续跑。
   private askGateCount = new Map<string, number>()
 
+  // 记录每个 session 拦截到的 AskUserQuestion tool_use id（仅 AskUserQuestion，不含 ExitPlanMode）。
+  // 用于 user 分支识别 SDK 自填的 dummy tool_result 并丢弃：经第三方代理时 AskUserQuestion
+  // 未注册为工具，SDK 回填字面 "Answer questions?" 给模型，此结果无意义，不渲染假卡片。
+  // ExitPlanMode 的 tool_result 有用（提取 planFilePath），故不与此集合共用。
+  private askToolUseIds = new Map<string, Set<string>>()
+
   setManager(m: SessionQueryManager): void { this.manager = m }
   setRegistry(r: BackendTaskRegistry): void { this.registry = r }
 
@@ -91,6 +97,21 @@ export class ClaudeService {
     const next = (this.askGateCount.get(lsid) ?? 0) - 1
     if (next <= 0) this.askGateCount.delete(lsid)
     else this.askGateCount.set(lsid, next)
+  }
+
+  /** 该 lsid 的某个 tool_use id 是否是拦截过的 AskUserQuestion（用于识别 dummy result）。 */
+  private isAskToolUse(lsid: string, toolUseId: string): boolean {
+    return this.askToolUseIds.get(lsid)?.has(toolUseId) ?? false
+  }
+
+  /** 记录该 lsid 拦截到一个 AskUserQuestion tool_use id。 */
+  private markAskToolUse(lsid: string, toolUseId: string): void {
+    let set = this.askToolUseIds.get(lsid)
+    if (!set) {
+      set = new Set<string>()
+      this.askToolUseIds.set(lsid, set)
+    }
+    set.add(toolUseId)
   }
 
   /**
@@ -161,6 +182,9 @@ export class ClaudeService {
     if (questions.length === 0) return
     // 开门控：在等待用户作答期间，丢弃 SDK 基于 dummy tool_result 的全部续跑。
     this.enterAskGate(localSessionId)
+    // 记录此 AskUserQuestion 的 tool_use id：后续 user 分支据此识别并丢弃 SDK 自填的
+    // dummy tool_result（"Answer questions?"），不渲染假卡片。
+    if (typeof toolUse.id === 'string') this.markAskToolUse(localSessionId, toolUse.id)
     let result: any
     try {
       result = await this.askUserViaPanel(webContents, 'ask_user_question', input, toolUse.id, undefined, localSessionId)
@@ -194,7 +218,8 @@ export class ClaudeService {
         lines.push(`${label}：${text}`)
       }
     })
-    this.manager.pushMessage(localSessionId, `用户回答：\n${lines.join('\n')}`)
+    this.manager.pushMessage(localSessionId,
+      `【用户已正式回答你的 AskUserQuestion，以下是用户的真实选择，请以此为准，忽略此前的任何占位/工具返回（如 "Answer questions?"）】\n${lines.join('\n')}`)
   }
 
   /**
@@ -528,6 +553,15 @@ export class ClaudeService {
       case 'user': {
         const results = extractToolResults(message.message?.content || [])
         for (const r of results) {
+          // AskUserQuestion 经第三方代理未注册为工具，SDK 会自填 dummy tool_result
+          // （字面 "Answer questions?"）回给模型。此结果无意义且会污染上下文，
+          // 不推主流 tool_result（不渲染假卡片）。模型侧的误导由 handleAskUserQuestion
+          // pushMessage 的强化答案文本盖过（见 verdict 后的答案格式化）。
+          // 注意：只识别 AskUserQuestion，ExitPlanMode 的 tool_result 有用（提取 planFilePath），
+          // 故用专用集合 askToolUseIds 而非共用的 handledBlockingToolUse。
+          if (typeof r.toolUseId === 'string' && this.isAskToolUse(lsid, r.toolUseId)) {
+            continue
+          }
           // subagent 内部工具的结果：回填进对应 subagent 的输出（抽屉可见），
           // 不推主流 tool_result（subagent 工具不在主流 blocks，推了也找不到归属）。
           const subParent = this.subagentToolUseParent.get(r.toolUseId)
@@ -908,6 +942,7 @@ export class ClaudeService {
     this.abortControllers.delete(localSessionId)
     // 清门控计数，防异常残留导致该会话后续消息被永久丢弃。
     this.askGateCount.delete(localSessionId)
+    this.askToolUseIds.delete(localSessionId)
     return this.manager?.closeSession(localSessionId) ?? Promise.resolve()
   }
 
