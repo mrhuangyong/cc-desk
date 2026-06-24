@@ -205,11 +205,11 @@ export function BrowserTab({ initialUrl }: { initialUrl?: string }) {
         </Tooltip>
       </div>
       {url ? (
-        <div ref={webviewWrapRef} style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex' }}>
+        <div ref={webviewWrapRef} style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
           <webview
             ref={setWebviewRef}
             src={url}
-            style={{ display: 'block', flex: 1, minWidth: 0, minHeight: 0, border: 'none', background: '#fff' }}
+            style={{ display: 'block', width: '100%', height: '100%', border: 'none', background: '#fff' }}
           />
         </div>
       ) : (
