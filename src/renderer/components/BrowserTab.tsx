@@ -78,6 +78,7 @@ type WebviewEl = HTMLDivElement & {
 export function BrowserTab({ initialUrl }: { initialUrl?: string }) {
   const { state, dispatch } = useStore()
   const webviewRef = useRef<WebviewEl | null>(null)
+  const webviewWrapRef = useRef<HTMLDivElement | null>(null)
   const [url, setUrl] = useState(initialUrl ?? '')
   const [input, setInput] = useState(initialUrl ?? '')
   const [history, setHistory] = useState<string[]>(initialUrl ? [initialUrl] : [])
@@ -135,6 +136,28 @@ export function BrowserTab({ initialUrl }: { initialUrl?: string }) {
     }
   }, [])
 
+  // webview 是独立 Chromium 渲染进程，容器（右栏）拖动改变宽度时，CSS flex
+  // 尺寸变化不总能触发 guest 页面 viewport 重排——导致右栏缩放时浏览器内容
+  // 不跟着变。用 ResizeObserver 监听包装容器，回调里把容器尺寸显式写到
+  // webview 的 style，强制其内部重新布局（与 TerminalTab 的 ResizeObserver
+  // + fit 模式同理：主动通知而非依赖被动 stretch）。
+  useEffect(() => {
+    const wrap = webviewWrapRef.current
+    const wv = webviewRef.current
+    if (!wrap || !wv) return
+    const apply = () => {
+      const w = wrap.clientWidth
+      const h = wrap.clientHeight
+      if (w === 0 || h === 0) return
+      wv.style.width = `${w}px`
+      wv.style.height = `${h}px`
+    }
+    apply()
+    const ro = new ResizeObserver(apply)
+    ro.observe(wrap)
+    return () => ro.disconnect()
+  }, [url])
+
   const togglePick = () => {
     const wv = webviewRef.current
     if (picking) {
@@ -182,11 +205,13 @@ export function BrowserTab({ initialUrl }: { initialUrl?: string }) {
         </Tooltip>
       </div>
       {url ? (
-        <webview
-          ref={setWebviewRef}
-          src={url}
-          style={{ flex: 1, border: 'none', background: '#fff' }}
-        />
+        <div ref={webviewWrapRef} style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex' }}>
+          <webview
+            ref={setWebviewRef}
+            src={url}
+            style={{ display: 'block', flex: 1, minWidth: 0, minHeight: 0, border: 'none', background: '#fff' }}
+          />
+        </div>
       ) : (
         <div style={{ flex: 1, display: 'grid', placeItems: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
           在地址栏输入网址开始浏览
