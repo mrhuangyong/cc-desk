@@ -113,8 +113,17 @@ export async function startRelayServer(opts: {
     else socket.destroy()
   })
 
-  pairWss.on('connection', (ws) => {
+  // C1：从 upgrade 请求拿客户端 IP，用于 pair.consume 的 IP 维度限频。
+  //   只用 req.socket.remoteAddress，不信 x-forwarded-for：
+  //   只有确定前面挂了可信反代（剥掉客户端伪造的 xff）才能信 xff，否则攻击者可伪造头绕过限频。
+  //   直连/裸中继场景 remoteAddress 即真实客户端 IP。
+  function clientIpOf(req: any): string {
+    return (req?.socket?.remoteAddress as string) || 'unknown'
+  }
+
+  pairWss.on('connection', (ws, req) => {
     stats.pairConnections++
+    const ip = clientIpOf(req)
     ws.on('message', (raw) => {
       let msg: any
       try { msg = JSON.parse(raw.toString()) } catch { return }
@@ -123,8 +132,11 @@ export async function startRelayServer(opts: {
         keyRegistry.register(msg.deviceId, msg.deviceKey) // 首次登记桌面密钥（已存在不覆盖）
         ws.send(JSON.stringify({ type: 'pair.code', payload: { code, expiresAt } }))
       } else if (msg.type === 'pair.consume' && msg.deviceId && msg.code) {
-        const r = pairing.consume(msg.code, msg.deviceId)
-        if (r) {
+        // C1：consume 走 IP 维度限频 + 失败锁定（consumeAttempt）。
+        //   限频/锁定命中时也统一回 bad_pair_code：不向攻击者泄露「码错了」还是「被限频了」，
+        //   减少信息侧信道（攻击者无法据响应区分限频状态）。
+        const r = pairing.consumeAttempt(ip, msg.code, msg.deviceId)
+        if (r.ok) {
           // 配对成功是手机端的信任确认点：登记手机密钥（首次，不覆盖）。
           keyRegistry.register(msg.deviceId, msg.deviceKey)
           const desktopKey = keyRegistry.get(r.desktopId)
@@ -133,6 +145,7 @@ export async function startRelayServer(opts: {
             payload: { desktopId: r.desktopId, deviceKey: desktopKey }, // 下发桌面密钥给手机（全程 TLS）
           }))
         } else {
+          // bad_code / rate_limited / locked 均对外表现为 bad_pair_code（不泄露限频细节）
           ws.send(JSON.stringify({ type: 'error', payload: { code: 'bad_pair_code' } }))
         }
       }

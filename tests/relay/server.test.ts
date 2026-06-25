@@ -246,4 +246,46 @@ describe('relay server 集成', () => {
     await rm(dataDir, { recursive: true, force: true })
     await rm(staticDir, { recursive: true, force: true })
   })
+
+  it('C1 配对码暴力枚举防护：同 IP 连续 consume 错误码超过上限被拒（rate_limited/locked）', async () => {
+    // 攻击模型：攻击者扫到二维码 URL，但不知码值，对 /pair 端点 pair.consume 暴力枚举。
+    // 防护：pair.consume 按客户端 IP 限频（consumeAttempt），同 IP 超限 → error。
+    // 本测试所有 ws 连接来自 127.0.0.1（同一 IP），故共享配额。
+    const dataDir = join(tmpdir(), `relay-${Math.random().toString(36).slice(2)}`)
+    const s = await startRelayServer({ port: 0, dataDir })
+    servers.push(s)
+    const port = s.port!
+
+    // 先让桌面登记自己（pair.code 登记桌面密钥），制造一个「真实码」存在的环境，
+    // 但攻击者并不使用它，而是枚举别的码。这里不必拿真码。
+    const wsD = await connect(port, '/pair')
+    wsD.send(JSON.stringify({ type: 'pair.code', deviceId: 'D', deviceKey: 'a2V5LWQ=' }))
+    await nextMsg(wsD) // 拿到真码（不用）
+
+    // 默认 maxConsumePerIp=10。发起 10 次错误码 consume（全部失败但耗尽配额）。
+    const seenCodes: string[] = []
+    for (let i = 0; i < 10; i++) {
+      const ws = await connect(port, '/pair')
+      ws.send(JSON.stringify({
+        type: 'pair.consume', deviceId: 'attacker-' + i, deviceKey: 'YXRr', code: '999999',
+      }))
+      const msg: any = await nextMsg(ws)
+      seenCodes.push(msg.type === 'error' ? msg.payload?.code : 'ok')
+      ws.close()
+    }
+    // 前 10 次均为 bad_pair_code（码不存在）
+    expect(seenCodes.every(c => c === 'bad_pair_code')).toBe(true)
+
+    // 第 11 次：同 IP 配额耗尽 → error（rate_limited 或因失败达阈值 locked）
+    const wsOver = await connect(port, '/pair')
+    wsOver.send(JSON.stringify({
+      type: 'pair.consume', deviceId: 'attacker-overflow', deviceKey: 'YXRr', code: '888888',
+    }))
+    const overMsg: any = await nextMsg(wsOver)
+    expect(overMsg.type).toBe('error')
+    expect(overMsg.payload?.code).toBe('bad_pair_code') // 限频/锁定也统一以 bad_pair_code 回应（不泄露限频细节给攻击者）
+
+    wsD.close(); wsOver.close()
+    await rm(dataDir, { recursive: true, force: true })
+  })
 })
