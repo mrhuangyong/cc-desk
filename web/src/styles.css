@@ -51,3 +51,76 @@ body {
 .pair-tip.ok { color: #5ed98a; }
 .pair-tip.err { color: #d98a8a; }
 .pair-hint { color: #6a6a78; font-size: 12px; line-height: 1.6; margin-top: 24px; }
+
+/* SessionListPage 会话列表 */
+.session-list-page { display: flex; flex-direction: column; min-height: 100%; position: relative; }
+.session-list-body { flex: 1; padding: 8px 0 80px; }
+.session-list { list-style: none; margin: 0; padding: 0; }
+.session-list li { margin: 0; }
+.session-item {
+  width: 100%; display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 12px; background: transparent; border: 0; border-bottom: 1px solid #1f1f2a;
+  color: #e6e6e6; cursor: pointer; text-align: left;
+}
+.session-item:active { background: #16161e; }
+.session-title { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.session-status { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: #1f1f2a; color: #9a9aa3; margin-left: 8px; }
+.session-status.running { background: #16351f; color: #5ed98a; }
+.fab {
+  position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom));
+  padding: 12px 18px; font-size: 14px; font-weight: 600;
+  background: #4a6cf7; color: #fff; border: 0; border-radius: 999px; cursor: pointer;
+  box-shadow: 0 4px 16px rgba(74,108,247,.4);
+}
+.fab:disabled { background: #2a2a38; color: #6a6a78; cursor: not-allowed; box-shadow: none; }
+
+/* ChatPage 对话页 */
+.chat-page { display: flex; flex-direction: column; min-height: 100%; }
+.chat-title { font-size: 16px; margin: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.icon-btn {
+  background: transparent; border: 0; color: #e6e6e6; font-size: 16px; padding: 6px 10px; cursor: pointer;
+}
+.icon-btn.stop { color: #d98a8a; }
+.chat-body { flex: 1; overflow-y: auto; padding: 12px 0; display: flex; flex-direction: column; gap: 10px; }
+.chat-empty { text-align: center; color: #6a6a78; padding: 40px 0; }
+.msg { display: flex; padding: 0 12px; }
+.msg.user { justify-content: flex-end; }
+.msg.assistant { justify-content: flex-start; }
+.msg-bubble { max-width: 85%; padding: 10px 12px; border-radius: 14px; font-size: 14px; line-height: 1.5; word-break: break-word; }
+.user-bubble { background: #4a6cf7; color: #fff; border-bottom-right-radius: 4px; }
+.assistant-bubble { background: #16161e; color: #e6e6e6; border-bottom-left-radius: 4px; }
+.assistant-text { white-space: pre-wrap; }
+.assistant-bubble code { background: #0b0b0f; padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+.thinking { margin-bottom: 6px; }
+.thinking summary { cursor: pointer; color: #6a6a78; font-size: 12px; }
+.thinking-text { color: #9a9aa3; font-size: 13px; margin-top: 4px; white-space: pre-wrap; }
+.block { margin-top: 6px; font-size: 12px; color: #9a9aa3; padding: 4px 8px; background: #0b0b0f; border-radius: 6px; }
+.typing { color: #6a6a78; }
+
+/* 批准卡片 */
+.dialog-card {
+  margin: 8px 12px; padding: 12px; background: #1a1a24; border: 1px solid #2a2a38;
+  border-radius: 12px;
+}
+.dialog-question { font-size: 14px; margin-bottom: 10px; }
+.dialog-actions { display: flex; gap: 8px; }
+.dialog-btn { flex: 1; padding: 10px; font-size: 14px; font-weight: 600; border: 0; border-radius: 8px; cursor: pointer; }
+.dialog-btn.approve { background: #5ed98a; color: #0b0b0f; }
+.dialog-btn.deny { background: #3a1f1f; color: #d98a8a; }
+
+/* 输入栏 */
+.chat-input-bar {
+  display: flex; align-items: flex-end; gap: 8px; padding: 8px 12px;
+  padding-bottom: calc(8px + env(safe-area-inset-bottom)); border-top: 1px solid #1f1f2a;
+}
+.chat-input {
+  flex: 1; resize: none; max-height: 120px; padding: 10px 12px; font-size: 14px;
+  background: #16161e; color: #e6e6e6; border: 1px solid #2a2a38; border-radius: 18px; outline: none;
+  line-height: 1.4;
+}
+.chat-input:focus { border-color: #4a6cf7; }
+.send-btn {
+  padding: 10px 16px; font-size: 14px; font-weight: 600;
+  background: #4a6cf7; color: #fff; border: 0; border-radius: 18px; cursor: pointer;
+}
+.send-btn:disabled { background: #2a2a38; color: #6a6a78; cursor: not-allowed; }
