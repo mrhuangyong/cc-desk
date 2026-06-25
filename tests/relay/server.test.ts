@@ -34,7 +34,10 @@ function nextMsg(ws: WebSocket): Promise<any> {
  * 无法把真实的穿越路径 .. 送到服务端。raw socket 直接写字节，还原真实攻击向量。
  * 返回 { status, body }。
  */
-function rawHttp(port: number, requestLine: string): Promise<{ status: number; body: string }> {
+/** 走 raw TCP socket 发手工 HTTP 请求行，返回 status、headers、body。
+ *  与 rawHttp 同源（避开 fetch 对 URL 的规范化），但额外解析响应头，
+ *  用于 MIME 校验等需要读 Content-Type 的场景。 */
+function rawHttpFull(port: number, requestLine: string): Promise<{ status: number; headers: Record<string, string>; body: string }> {
   return new Promise((resolve, reject) => {
     const sock = netConnect({ port, host: '127.0.0.1' })
     const chunks: Buffer[] = []
@@ -45,10 +48,21 @@ function rawHttp(port: number, requestLine: string): Promise<{ status: number; b
       const text = Buffer.concat(chunks).toString('utf-8')
       const m = text.match(/^HTTP\/[\d.]+\s+(\d+)/)
       const status = m ? Number(m[1]) : 0
-      const body = text.split('\r\n\r\n').slice(1).join('\r\n\r\n')
-      resolve({ status, body })
+      const headBody = text.split('\r\n\r\n')
+      const head = headBody[0] ?? ''
+      const body = headBody.slice(1).join('\r\n\r\n')
+      const headers: Record<string, string> = {}
+      for (const line of head.split('\r\n').slice(1)) { // 跳过状态行
+        const idx = line.indexOf(':')
+        if (idx > 0) headers[line.slice(0, idx).trim().toLowerCase()] = line.slice(idx + 1).trim()
+      }
+      resolve({ status, headers, body })
     })
   })
+}
+
+function rawHttp(port: number, requestLine: string): Promise<{ status: number; body: string }> {
+  return rawHttpFull(port, requestLine).then(({ status, body }) => ({ status, body }))
 }
 
 /** 走完整配对流程，建立 D↔M 绑定，并登记双方密钥。返回双方 deviceKey。 */
@@ -199,5 +213,37 @@ describe('relay server 集成', () => {
     await rm(dataDir, { recursive: true, force: true })
     await rm(staticDir, { recursive: true, force: true })
     await rm(secretPath, { force: true })
+  })
+
+  it('Task 15 MIME：静态资源按扩展名返回正确 Content-Type（sw.js / manifest / 未知）', async () => {
+    // 回归：浏览器对 Service Worker 注册有严格 MIME 校验——
+    // /sw.js 必须以 text/javascript 返回，否则 navigator.serviceWorker.register 失败；
+    // /manifest.webmanifest 必须是 application/manifest+json；未知扩展名回落 octet-stream。
+    // 之前 res.writeHead(200) 不带 headers，依赖浏览器嗅探，SW/manifest 无法可靠注册。
+    const staticDir = await mkdtemp(join(tmpdirPath(), 'relay-mime-'))
+    await writeFile(join(staticDir, 'sw.js'), "self.addEventListener('install',()=>{})")
+    await writeFile(join(staticDir, 'manifest.webmanifest'), '{}')
+    await writeFile(join(staticDir, 'foo.xyz'), 'binary-ish')
+    // index.html 兜底，避免 SPA fallback 干扰
+    await writeFile(join(staticDir, 'index.html'), '<html></html>')
+    const dataDir = join(tmpdir(), `relay-${Math.random().toString(36).slice(2)}`)
+    const s = await startRelayServer({ port: 0, dataDir, staticDir })
+    servers.push(s)
+    const port = s.port!
+
+    const sw = await rawHttpFull(port, 'GET /sw.js HTTP/1.1')
+    expect(sw.status).toBe(200)
+    expect(sw.headers['content-type']).toContain('text/javascript')
+
+    const manifest = await rawHttpFull(port, 'GET /manifest.webmanifest HTTP/1.1')
+    expect(manifest.status).toBe(200)
+    expect(manifest.headers['content-type']).toContain('application/manifest+json')
+
+    const unknown = await rawHttpFull(port, 'GET /foo.xyz HTTP/1.1')
+    expect(unknown.status).toBe(200)
+    expect(unknown.headers['content-type']).toBe('application/octet-stream')
+
+    await rm(dataDir, { recursive: true, force: true })
+    await rm(staticDir, { recursive: true, force: true })
   })
 })
