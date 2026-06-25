@@ -81,6 +81,7 @@ interface GitAPI {
   restore(cwd: string, paths: string[], staged: boolean): Promise<void>
   commit(cwd: string, message: string): Promise<{ sha: string }>
   resetHard(cwd: string): Promise<void>
+  generateCommitMessage(cwd: string): Promise<string | null>
 }
 
 interface PtyAPI {

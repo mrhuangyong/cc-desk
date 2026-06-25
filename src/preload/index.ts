@@ -115,6 +115,7 @@ contextBridge.exposeInMainWorld('api', {
     restore: (cwd: string, paths: string[], staged: boolean) => ipcRenderer.invoke('git:restore', cwd, paths, staged),
     commit: (cwd: string, message: string) => ipcRenderer.invoke('git:commit', cwd, message),
     resetHard: (cwd: string) => ipcRenderer.invoke('git:reset-hard', cwd),
+    generateCommitMessage: (cwd: string) => ipcRenderer.invoke('git:generate-commit-message', cwd),
   },
   dialog: {
     openDirectory: () => ipcRenderer.invoke('dialog:open-directory'),

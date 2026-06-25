@@ -21,6 +21,31 @@ const CONFIRM_TOOLS = new Set([
   'Bash', 'Task', 'Skill',
 ])
 
+// 裁剪 diff 给 LLM：保留每个文件的 diff --git 头 + hunk 头 + 前若干行，
+// 超过 maxChars 则截断并标注。纯函数，单测覆盖（tests/commit-message.test.ts）。
+export function trimDiffForPrompt(diff: string, maxChars: number): string {
+  if (!diff.trim()) return ''
+  if (diff.length <= maxChars) return diff
+  // 按 diff --git 切文件块，尽量保留每个文件的开头
+  const files = diff.split(/(?=^diff --git )/m)
+  const kept: string[] = []
+  let used = 0
+  const reserve = 80   // 给截断标注留余量
+  for (const f of files) {
+    if (used + f.length <= maxChars - reserve) {
+      kept.push(f)
+      used += f.length
+      continue
+    }
+    // 当前文件放不下：塞头部若干行
+    const headLines = f.slice(0, Math.max(0, maxChars - reserve - used)).split('\n')
+    kept.push(headLines.join('\n'))
+    break
+  }
+  const fileCount = files.filter(Boolean).length
+  return kept.join('').trimEnd() + `\n\n(diff 已截断，共 ${fileCount} 个文件)`
+}
+
 /**
  * ClaudeService：渲染端 ↔ SessionQueryManager 的桥。
  * send() 委托 manager.ensureSession + pushMessage。事件转发逻辑注入 buildQuery。
@@ -1169,6 +1194,28 @@ export class ClaudeService {
       }
     }
     return text
+  }
+
+  /** 审查 tab：AI 生成 Conventional Commits 格式 commit message（基于 git diff HEAD）。
+   *  走 runSideQuery（独立通路、复用激活模型、不进会话历史、不污染对话流）。
+   *  无改动或无 provider 配置返回 null，调用方回退让用户手填。 */
+  async generateCommitMessage(cwd: string): Promise<string | null> {
+    const gitSvc = await import('./git-service')
+    const diffText = await gitSvc.diff(cwd, 'HEAD')
+    if (!diffText.trim()) return null
+    const trimmed = trimDiffForPrompt(diffText, 8000)
+    const prompt = `你是 commit message 生成器。根据以下 git diff 生成一条 Conventional Commits 格式的提交信息。
+要求：只输出一行，格式为 "<type>(<scope>): <subject>"，type 从 feat/fix/chore/docs/refactor/test/perf 中选最贴切的，scope 用受影响的主要模块。不要解释、不要代码块、不要引号。
+
+git diff:
+${trimmed}`
+    try {
+      const result = await this.runSideQuery(prompt)
+      const cleaned = result?.trim().split('\n')[0].replace(/^["']|["']$/g, '').trim()
+      return cleaned || null
+    } catch {
+      return null   // AI 失败不阻塞 commit 流程
+    }
   }
 }
 
