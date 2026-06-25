@@ -10,7 +10,8 @@
 // 安全要点：
 // - bind 信封用 deviceKey 签名（HMAC-SHA256），中继据 keyRegistry 验签身份。
 //   deviceKey 本身不放进 payload 传输（payload 不携带密钥），验签只用已登记密钥。
-// - 中继下发 error（unbound/bad_sig）时不清 deviceKey，仅置未连接并按退避重试。
+// - 中继下发 error（unbound/bad_sig）时不清 deviceKey，仅置未连接；
+//   因 server 在 bind 失败时不关连接，本端收到 error 后主动 terminate 触发 close → 退避重连。
 import { WebSocket } from 'ws'
 import { makeEnvelope, type Envelope } from '../shared/remote-protocol'
 
@@ -107,9 +108,13 @@ export function createRemoteBridge(deps: BridgeDeps): RemoteBridge {
         return
       }
       if (t === 'error') {
-        // bind 被拒（unbound/bad_sig 等）：保持未连接，按退避重试。
-        // 不清密钥/不 fatal——可能是中继临时重启丢 keyRegistry 内存态。
+        // bind 被拒（unbound/bad_sig 等）：保持未连接。
+        // 重要：server 在 bind 失败时只回 error 信封、不主动关连接（见 server.ts wsWss 分支），
+        // 所以 ws.on('close') 不会自然触发。这里必须主动 terminate，让 close 事件被触发，
+        // 进而走 onGone → scheduleReconnect，否则退避重连链路死锁（Important-1 修复）。
+        // 不清密钥/不 fatal——可能是中继临时重启且 keyRegistry 尚未持久化恢复。
         connected = false
+        try { ws?.terminate() } catch { /* noop */ }
         return
       }
       // 其余均为业务信封（来自对端手机），交给注入的回调。

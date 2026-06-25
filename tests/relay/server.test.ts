@@ -5,7 +5,7 @@ import { WebSocket } from 'ws'
 import { startRelayServer } from '../../relay/server'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { mkdtemp, rm, writeFile, mkdir } from 'fs/promises'
+import { mkdtemp, rm, writeFile, mkdir, readFile } from 'fs/promises'
 import { tmpdir as tmpdirPath } from 'os'
 import { connect as netConnect } from 'net'
 import { makeEnvelope } from '../../src/shared/remote-protocol'
@@ -136,6 +136,41 @@ describe('relay server 集成', () => {
     // 未绑定 → unbound；或密钥未登记 → bad_sig；总之不能是 bind.ok
     expect(msg.type).toBe('error')
     expect(['unbound', 'bad_sig']).toContain(msg.payload?.code)
+    await rm(dataDir, { recursive: true, force: true })
+  })
+
+  it('Important-3：中继重启后 keyRegistry 从盘恢复，已配对设备仍能 bind（不须重新配对）', async () => {
+    // 原 keyRegistry 是纯内存 Map，中继重启后密钥全丢，已配对设备 bind 必 bad_sig、永久失联。
+    // 持久化到 dataDir/keys.json 后，重启读盘恢复，bind 验签仍能通过。
+    const dataDir = join(tmpdir(), `relay-${Math.random().toString(36).slice(2)}`)
+    const desktopKey = 'ZGVza3RvcC1rZXk='
+    const mobileKey = 'bW9iaWxlLWtleQ=='
+
+    // 第一段：起中继，走完整配对（登记双方密钥 + 落 binding），然后关闭
+    let s = await startRelayServer({ port: 0, dataDir })
+    servers.push(s)
+    const port1 = s.port!
+    await pair(port1, desktopKey, mobileKey)
+    // 等 pairing.consume 的 fire-and-forget 落盘（bindings + keys）完成
+    await new Promise(r => setTimeout(r, 150))
+    await s.close()
+    servers = servers.filter(x => x !== s)
+
+    // 断言 keys.json 确实落盘（不信任实现，验证契约）
+    const keysRaw = await readFile(join(dataDir, 'keys.json'), 'utf-8')
+    const keys = JSON.parse(keysRaw)
+    expect(keys.D).toBe(desktopKey)
+    expect(keys.M).toBe(mobileKey)
+
+    // 第二段：同 dataDir 重启中继（新端口），用旧密钥 bind 应成功
+    s = await startRelayServer({ port: 0, dataDir })
+    servers.push(s)
+    const port2 = s.port!
+    const ws = await connect(port2, '/ws')
+    const env = makeEnvelope(mobileKey, 'bind', 'M', { desktopId: 'D' })
+    ws.send(JSON.stringify(env))
+    const msg: any = await nextMsg(ws)
+    expect(msg.type).toBe('bind.ok') // 关键：重启后密钥仍在，验签通过
     await rm(dataDir, { recursive: true, force: true })
   })
 

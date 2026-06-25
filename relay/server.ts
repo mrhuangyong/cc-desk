@@ -5,6 +5,7 @@ import { WebSocketServer, WebSocket } from 'ws'
 import { join, resolve as pathResolve } from 'path'
 import { readFile } from 'fs/promises'
 import { createBindingStore } from './binding-store'
+import { createKeyStore } from './key-store'
 import { createPairingStore } from './pairing'
 import { createRouter } from './router'
 import { verifySig, type Envelope } from '../src/shared/remote-protocol'
@@ -12,6 +13,12 @@ import { verifySig, type Envelope } from '../src/shared/remote-protocol'
 export interface RelayHandle {
   close(): Promise<void>
   port?: number
+  /** 累计连接计数（可观测性）：配对 /pair 与转发 /ws 的 ws 接入次数。
+   *  用于运维监控与连接活跃度回归测试（如 client 重连是否真的发生）。 */
+  stats: {
+    pairConnections: number
+    wsConnections: number
+  }
 }
 
 export async function startRelayServer(opts: {
@@ -24,15 +31,14 @@ export async function startRelayServer(opts: {
   // `void bindings.addBinding(...)` fire-and-forget 落盘，失败被静默吞掉，
   // server 层无法外部 catch（promise 不外露）。需 Task 3 自身改成可观测。
   const pairing = createPairingStore(bindings)
-  // deviceKey 注册表：密钥的唯一信任入口是配对流程。
+  // deviceKey 注册表（Important-3 持久化）：落盘到 dataDir/keys.json。
+  //   原为纯内存 Map，中继重启后密钥全丢，已配对设备 bind 必 bad_sig、永久失联、须重新配对。
+  //   持久化后重启可读盘恢复，已配对设备仍能验签 bind。
+  //   密钥的唯一信任入口仍是配对流程（Task 5 安全决策不变）：
   //   - pair.code：桌面带 deviceKey 来，首次登记（已存在不覆盖，防重放覆盖）。
   //   - pair.consume：手机带 deviceKey 来，配对成功（信任点）时首次登记。
-  //   - bind 握手：不再信任/登记上报的密钥，只用 keyRegistry 已有密钥验签身份。
-  const keyRegistry = new Map<string, string>()
-  /** 首次登记语义：仅当该 deviceId 尚无密钥时写入，已存在则保持原值（信任首次）。 */
-  const registerKey = (deviceId: string, key: string | undefined) => {
-    if (key && !keyRegistry.has(deviceId)) keyRegistry.set(deviceId, key)
-  }
+  //   - bind 握手：不信任/登记上报的密钥，只用此表已登记密钥验签身份。
+  const keyRegistry = createKeyStore(join(opts.dataDir, 'keys.json'))
   const router = createRouter(bindings, (id) => keyRegistry.get(id))
 
   const httpServer = createServer((req, res) => {
@@ -69,6 +75,9 @@ export async function startRelayServer(opts: {
   const pairWss = new WebSocketServer({ noServer: true, perMessageDeflate: false })
   const wsWss = new WebSocketServer({ noServer: true, perMessageDeflate: false })
 
+  // 可观测性计数器：connection 事件累计自增（含重连）。
+  const stats = { pairConnections: 0, wsConnections: 0 }
+
   httpServer.on('upgrade', (req, socket, head) => {
     const { url } = req
     if (url === '/pair') pairWss.handleUpgrade(req, socket, head, (ws) => pairWss.emit('connection', ws, req))
@@ -77,18 +86,19 @@ export async function startRelayServer(opts: {
   })
 
   pairWss.on('connection', (ws) => {
+    stats.pairConnections++
     ws.on('message', (raw) => {
       let msg: any
       try { msg = JSON.parse(raw.toString()) } catch { return }
       if (msg.type === 'pair.code' && msg.deviceId && msg.deviceKey) {
         const { code, expiresAt } = pairing.issueCode(msg.deviceId)
-        registerKey(msg.deviceId, msg.deviceKey) // 首次登记桌面密钥（已存在不覆盖）
+        keyRegistry.register(msg.deviceId, msg.deviceKey) // 首次登记桌面密钥（已存在不覆盖）
         ws.send(JSON.stringify({ type: 'pair.code', payload: { code, expiresAt } }))
       } else if (msg.type === 'pair.consume' && msg.deviceId && msg.code) {
         const r = pairing.consume(msg.code, msg.deviceId)
         if (r) {
           // 配对成功是手机端的信任确认点：登记手机密钥（首次，不覆盖）。
-          registerKey(msg.deviceId, msg.deviceKey)
+          keyRegistry.register(msg.deviceId, msg.deviceKey)
           const desktopKey = keyRegistry.get(r.desktopId)
           ws.send(JSON.stringify({
             type: 'pair.success',
@@ -102,16 +112,18 @@ export async function startRelayServer(opts: {
   })
 
   wsWss.on('connection', (ws) => {
+    stats.wsConnections++
     let boundDeviceId: string | null = null
     ws.on('message', (raw) => {
       let env: Envelope
       try { env = JSON.parse(raw.toString()) } catch { return }
       // bind 握手：第一条消息。
-      //   安全要点：bind 不再信任/登记客户端上报的 deviceKey。
+      //   安全要点（Task 5 不变）：bind 不信任/登记客户端上报的 deviceKey。
       //   身份证明 = 用 keyRegistry 里配对阶段已登记的密钥，验签这条 bind 信封本身。
       //   - 未绑定 → unbound
-      //   - 密钥未登记（理论上不该发生，除非中继重启丢内存态）→ bad_sig
+      //   - 密钥未登记（未走完配对流程）→ bad_sig
       //   - 验签失败 → bad_sig
+      //   （Important-3 后 keyRegistry 持久化，中继重启不丢密钥，已配对设备仍可 bind）
       if (env.type === 'bind' && !boundDeviceId) {
         if (!bindings.has(env.deviceId)) { ws.send(JSON.stringify({ type: 'error', payload: { code: 'unbound' } })); return }
         const key = keyRegistry.get(env.deviceId)
@@ -133,6 +145,7 @@ export async function startRelayServer(opts: {
       const port = typeof addr === 'object' && addr ? addr.port : opts.port
       resolve({
         port,
+        stats,
         close: () => new Promise<void>((res) => {
           // 主动关闭所有已建立的 ws 连接，避免 httpServer.close 等待 keep-alive 卡死。
           for (const c of pairWss.clients) c.terminate()

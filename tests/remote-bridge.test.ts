@@ -128,7 +128,43 @@ describe('remote-bridge 连接与 bind 握手', () => {
     await rm(dataDir, { recursive: true, force: true })
   })
 
-  it('连接断开后自动重连（指数退避）', async () => {
+  it('收到 server 下发的 error 信封后主动重连（不再死锁）', async () => {
+    // Important-1 回归测试：server 在 bind 失败（unbound/bad_sig）时只发 error 不关连接，
+    // 旧实现 message 分支收到 error 后仅置 connected=false 并 return，不触发 scheduleReconnect，
+    // 导致 ws.on('close') 永不触发、退避重连链路死锁。
+    // 修复后：error 分支主动 terminate 连接（触发 close → scheduleReconnect）。
+    //
+    // 确定性验证：用 server.stats.wsConnections 观测重连是否真的发生。
+    // 未配对 bridge 每次重连都会新建 ws 到 /ws → stats.wsConnections 累加。
+    const dataDir = join(tmpdir(), `rb-${Math.random().toString(36).slice(2)}`)
+    const relay = await startRelayServer({ port: 0, dataDir })
+    servers.push(relay)
+    const port = relay.port!
+
+    const { createRemoteBridge } = await import('../src/main/remote-bridge')
+    const bridge = createRemoteBridge({
+      relayUrl: `ws://127.0.0.1:${port}`,
+      deviceId: 'UNKNOWN', // 未配对 → server 必回 error(unbound)，且不关连接
+      deviceKey: 'dGVzdA==',
+      onInbound: () => {},
+    })
+    await bridge.start()
+    // 第一次连接 + bind → error。等握手往返。
+    await waitFor(() => relay.stats!.wsConnections >= 1)
+    expect(bridge.isConnected()).toBe(false)
+
+    // 若 Important-1 bug 存在（error 不重连），stats.wsConnections 会停在 1 永不增长。
+    // 退避序列 1s→2s；等 2.5s 应至少再经历 1 次重连（新增一次 /ws 连接）。
+    expect(await waitFor(() => relay.stats!.wsConnections >= 2, 4000)).toBe(true)
+    await bridge.stop()
+    await rm(dataDir, { recursive: true, force: true })
+  }, 12000)
+
+  it('连接断开后自动重连成功（指数退避，密钥持久化后 bind 仍可验签）', async () => {
+    // Important-2 重写：旧断言 `send 不抛错` 恒为真（send 未连接时静默丢弃），
+    // 是假阳性。真正验证：断连触发重连 → 退避后重连 → bind 握手再次成功 → isConnected 回到 true。
+    // 前提：Important-3 把 keyRegistry 持久化到 dataDir，中继重启后密钥不丢，
+    // 否则重连 bind 必因 bad_sig 失败，无法断言 connected 回到 true。
     const dataDir = join(tmpdir(), `rb-${Math.random().toString(36).slice(2)}`)
     let relay = await startRelayServer({ port: 0, dataDir })
     servers.push(relay)
@@ -147,24 +183,19 @@ describe('remote-bridge 连接与 bind 握手', () => {
     await bridge.start()
     expect(await waitFor(() => bridge.isConnected())).toBe(true)
 
-    // 关掉中继，触发断连 → 进入重连退避
+    // 关掉中继触发断连（keyRegistry 已持久化到 dataDir/keys.json）
     await relay.close()
     servers = servers.filter(s => s !== relay)
     expect(await waitFor(() => !bridge.isConnected())).toBe(true)
 
-    // 重启中继（同端口），退避 timer 触发后应自动重连成功
+    // 重启中继（同端口、同 dataDir）—— bindings 和 keys 都从盘恢复
     relay = await startRelayServer({ port, dataDir })
     servers.push(relay)
-    // bindings 持久化在 dataDir，但 keyRegistry 是内存态会丢 → 重连 bind 会 bad_sig。
-    // 这里只验证「重连被触发并尝试」：isConnected 最终回到 true 需要密钥仍在。
-    // 由于 keyRegistry 重启丢失，重连 bind 必失败；我们断言它确实在重试（不再停留于 stopped）。
-    await new Promise(r => setTimeout(r, 1500))
-    // 未恢复 connected 是预期的（密钥丢失），但 bridge 没有被 stop，仍在重连循环中。
-    // 用 send 不抛错来侧面验证 bridge 仍存活。
-    expect(() => bridge.send(makeEnvelope(desktopKey, 'bind', 'D', {}))).not.toThrow()
+    // 退避后 bridge 自动重连，bind 握手因密钥仍在而成功
+    expect(await waitFor(() => bridge.isConnected(), 6000)).toBe(true)
     await bridge.stop()
     await rm(dataDir, { recursive: true, force: true })
-  })
+  }, 15000)
 
   it('收到对端信封时调用 onInbound', async () => {
     const dataDir = join(tmpdir(), `rb-${Math.random().toString(36).slice(2)}`)
