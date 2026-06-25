@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Folder, File as FileIcon, ChevronRight, ChevronDown } from 'lucide-react'
 import type { FileNode } from '../types'
+import { fileKindOf } from './fileKind'
 
 interface Props {
   cwd?: string
@@ -61,9 +62,14 @@ function Node({ node, depth, currentFilePath, onOpenFile }: {
     )
   }
 
+  const isBinary = fileKindOf(node.path) === 'binary'
+
   return (
     <div
-      onClick={() => onOpenFile(node.path)}
+      onClick={() => {
+        if (isBinary) return                // 二进制：拦截，不触发 onOpenFile
+        onOpenFile(node.path)
+      }}
       style={{
         display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', cursor: 'pointer', ...pad,
         color: 'var(--text)', borderRadius: 'var(--radius)',
@@ -72,7 +78,7 @@ function Node({ node, depth, currentFilePath, onOpenFile }: {
     >
       <span style={{ width: 13 }} />
       <FileIcon size={14} />
-      <span style={{ fontSize: 13 }}>{node.name}</span>
+      <span style={{ fontSize: 13, color: isBinary ? 'var(--text-faint)' : 'var(--text)' }}>{node.name}</span>
     </div>
   )
 }

@@ -35,4 +35,26 @@ describe('FileExplorerPanel', () => {
     fireEvent.click(screen.getByText('a.ts'))
     expect(onOpen).toHaveBeenCalledWith('/proj/a.ts')
   })
+
+  it('点击二进制文件不触发 onOpenFile', async () => {
+    const tree = [
+      { name: 'a.ts', path: '/proj/a.ts', isDir: false },
+      { name: 'pkg.zip', path: '/proj/pkg.zip', isDir: false },
+    ]
+    fsMock.readTree.mockResolvedValue(tree)
+    const onOpen = vi.fn()
+    render(<FileExplorerPanel cwd="/proj" onOpenFile={onOpen} />)
+    await waitFor(() => expect(screen.getByText('pkg.zip')).toBeTruthy())
+    fireEvent.click(screen.getByText('pkg.zip'))
+    expect(onOpen).not.toHaveBeenCalled()              // 二进制：拦截
+  })
+
+  it('点击图片文件触发 onOpenFile', async () => {
+    fsMock.readTree.mockResolvedValue([{ name: 'pic.png', path: '/proj/pic.png', isDir: false }])
+    const onOpen = vi.fn()
+    render(<FileExplorerPanel cwd="/proj" onOpenFile={onOpen} />)
+    await waitFor(() => expect(screen.getByText('pic.png')).toBeTruthy())
+    fireEvent.click(screen.getByText('pic.png'))
+    expect(onOpen).toHaveBeenCalledWith('/proj/pic.png')
+  })
 })
