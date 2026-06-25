@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import * as gitService from '../src/main/git-service'
+import { assertPathsInside, GitServiceError } from '../src/main/git-service'
 
 const exec = promisify(execFile)
 
@@ -71,6 +72,15 @@ describe('git-service.status', () => {
       await rm(empty, { recursive: true, force: true })
     }
   })
+
+  it('rename 解析：-z 模式下正确取 new path', async () => {
+    await initRepo(repo)
+    await exec('git', ['mv', 'README.md', 'NEW.md'], { cwd: repo })
+    const status = await gitService.status(repo)
+    const renamed = status.find(s => s.indexStatus === 'renamed')!
+    expect(renamed).toBeDefined()
+    expect(renamed.path).toBe('NEW.md')
+  })
 })
 
 describe('git-service.diff', () => {
@@ -106,5 +116,103 @@ describe('git-service.diff', () => {
     const d = await gitService.diff(repo, 'HEAD', 'README.md')
     expect(d).toContain('README.md')
     expect(d).not.toContain('b.txt')
+  })
+})
+
+describe('assertPathsInside', () => {
+  it('合法子路径不抛', () => {
+    expect(() => assertPathsInside(repo, ['subdir/file.txt'])).not.toThrow()
+  })
+
+  it('路径越界抛 GitServiceError', () => {
+    expect(() => assertPathsInside(repo, ['../etc/passwd'])).toThrow(GitServiceError)
+    try {
+      assertPathsInside(repo, ['../etc/passwd'])
+    } catch (e: any) {
+      expect(e.code).toBe('GIT_ERROR')
+    }
+  })
+})
+
+describe('git-service 写操作', () => {
+  beforeEach(async () => { await initRepo(repo) })
+
+  it('add 暂存文件', async () => {
+    await writeFile(join(repo, 'a.txt'), 'x\n')
+    await gitService.add(repo, ['a.txt'])
+    const st = await exec('git', ['status', '--porcelain'], { cwd: repo })
+    expect(st.stdout.trim()).toBe('A  a.txt')
+  })
+
+  it('restore --staged 取消暂存', async () => {
+    await writeFile(join(repo, 'a.txt'), 'x\n')
+    await exec('git', ['add', 'a.txt'], { cwd: repo })
+    await gitService.restore(repo, ['a.txt'], { staged: true })
+    const st = await exec('git', ['status', '--porcelain'], { cwd: repo })
+    expect(st.stdout.trim()).toBe('?? a.txt')
+  })
+
+  it('restore（非 staged）丢弃工作区改动', async () => {
+    await writeFile(join(repo, 'README.md'), 'dirty\n')
+    await gitService.restore(repo, ['README.md'], { staged: false })
+    const content = await import('node:fs/promises').then(m => m.readFile(join(repo, 'README.md'), 'utf-8'))
+    expect(content).toBe('init\n')
+  })
+
+  it('commit 返回 sha', async () => {
+    await writeFile(join(repo, 'a.txt'), 'x\n')
+    await gitService.add(repo, ['a.txt'])
+    const { sha } = await gitService.commit(repo, 'add a')
+    expect(sha).toMatch(/^[0-9a-f]{7,40}$/)
+    const log = await exec('git', ['log', '--oneline', '-1'], { cwd: repo })
+    expect(log.stdout).toContain('add a')
+  })
+
+  it('commit 空消息多行用多个 -m', async () => {
+    await writeFile(join(repo, 'a.txt'), 'x\n')
+    await gitService.add(repo, ['a.txt'])
+    await gitService.commit(repo, '标题\n\n正文详情')
+    const log = await exec('git', ['log', '-1', '--format=%B'], { cwd: repo })
+    expect(log.stdout).toContain('标题')
+    expect(log.stdout).toContain('正文详情')
+  })
+
+  it('无暂存改动 commit 抛 NOTHING_TO_COMMIT', async () => {
+    await expect(gitService.commit(repo, 'noop')).rejects.toMatchObject({ code: 'NOTHING_TO_COMMIT' })
+  })
+
+  it('resetHard 丢弃所有改动', async () => {
+    await writeFile(join(repo, 'README.md'), 'dirty\n')
+    await writeFile(join(repo, 'b.txt'), 'new\n')
+    await gitService.resetHard(repo)
+    const st = await exec('git', ['status', '--porcelain'], { cwd: repo })
+    expect(st.stdout.trim()).toBe('')
+  })
+
+  it('路径越界拒绝', async () => {
+    await expect(gitService.add(repo, ['../../../etc/passwd'])).rejects.toMatchObject({ code: 'GIT_ERROR' })
+  })
+
+  it('commit message 不触发 shell 注入（含特殊字符）', async () => {
+    await writeFile(join(repo, 'a.txt'), 'x\n')
+    await gitService.add(repo, ['a.txt'])
+    await gitService.commit(repo, 'feat: `rm -rf /` & $(whoami)')
+    const log = await exec('git', ['log', '-1', '--format=%s'], { cwd: repo })
+    expect(log.stdout.trim()).toBe('feat: `rm -rf /` & $(whoami)')
+  })
+
+  it('同 cwd 写操作串行（不交叉）', async () => {
+    // 并发发起 3 个 add，最终都应成功且无脏数据
+    await writeFile(join(repo, 'a.txt'), '1\n')
+    await writeFile(join(repo, 'b.txt'), '2\n')
+    await writeFile(join(repo, 'c.txt'), '3\n')
+    await Promise.all([
+      gitService.add(repo, ['a.txt']),
+      gitService.add(repo, ['b.txt']),
+      gitService.add(repo, ['c.txt']),
+    ])
+    const st = await exec('git', ['status', '--porcelain'], { cwd: repo })
+    const lines = st.stdout.trim().split('\n').sort()
+    expect(lines).toEqual(['A  a.txt', 'A  b.txt', 'A  c.txt'])
   })
 })
