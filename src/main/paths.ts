@@ -6,7 +6,10 @@ import { join } from 'path'
 import { homedir } from 'os'
 import { mkdirSync, existsSync } from 'fs'
 
-export const CC_DESK_DIR = join(homedir(), '.cc-desk')
+// 应用数据的统一根目录：默认 ~/.cc-desk。
+// 若显式设置 process.env.CC_DESK_DIR（自定义部署 / 测试隔离），优先采用它。
+// 与 CLAUDE_CONFIG_DIR 同模式，支持测试隔离到 tmpdir，不触碰真实 ~/.cc-desk。
+export const CC_DESK_DIR = process.env.CC_DESK_DIR || join(homedir(), '.cc-desk')
 
 // Claude Agent SDK / CLI 子进程的隔离配置目录：默认 ~/.cc-desk/claude。
 // 使 SDK 运行时不再读取 ~/.claude/settings.json（其 env 块会覆盖 options.env 注入的
