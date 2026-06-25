@@ -8,11 +8,36 @@ import { serializeForPrompt } from '../editor/serialize'
 import { runBuiltin } from './builtinCommands'
 import { Tooltip } from './Tooltip'
 import type { SlashMenuItem } from '../editor/types'
+import type { DraftAttachment } from '../types'
 
 type MenuId = 'permission' | 'model' | 'thinking' | 'project' | 'add'
 
 const PERMISSIONS = ['变更前确认', '自动编辑', '计划模式', '完全访问']
 const THINKINGS: Array<'low' | 'medium' | 'high'> = ['low', 'medium', 'high']
+
+export function buildPromptWithAttachments(prompt: string, attachments: DraftAttachment[]): string {
+  if (attachments.length === 0) return prompt
+  const context = attachments.map((att, index) => {
+    const n = index + 1
+    if (att.type === 'pickedElement') {
+      const el = att.el
+      return [
+        `[网页元素 ${n}]`,
+        `来源: ${el.source}`,
+        `标签: ${el.tag}`,
+        `选择器: ${el.selector}`,
+        `文本: ${el.text || '(无文本)'}`,
+        `HTML: ${el.html}`,
+      ].join('\n')
+    }
+    if (att.type === 'file') {
+      return [`[文件 ${n}]`, `名称: ${att.name}`, `路径: ${att.path}`].join('\n')
+    }
+    return [`[图片 ${n}]`, `名称: ${att.name}`, `媒体类型: ${att.mediaType}`].join('\n')
+  }).join('\n\n')
+  const prefix = prompt.trim() ? `${prompt.trim()}\n\n` : ''
+  return `${prefix}以下是用户随消息附加的上下文，请一并参考：\n\n${context}`
+}
 
 export function InputBar() {
   const { state, dispatch } = useStore()
@@ -166,16 +191,19 @@ export function InputBar() {
   const doSend = () => {
     const prompt = serializeForPrompt(state.draft.doc)
     if (!prompt.trim() && state.draft.attachments.length === 0) return
-    // 引用型内置命令（/init /export /add-dir）：选中时插入 /name 文本，发送时识别并执行，
-    // 不发给模型。精确匹配 /name（这些命令无文本参数）。
+    // 宿主级内置命令（/export /add-dir）：Claude 不认识，选中引用后发送时由宿主执行，
+    // 不发给模型。精确匹配 /name。
+    // 注意：/init 不在此列——它是 Claude 原生指令，普通发送给 Claude 它自己就会执行
+    // （探索项目 + 写 CLAUDE.md）。早期实现把 /init 也走宿主 runBuiltin（runSideQuery 旁路生成），
+    // 经代理卡死且偏离原生行为，故 /init 改回普通发送。
     const trimmed = prompt.trim()
-    const referableBuiltin = allSlashItems.find(
+    const hostBuiltin = allSlashItems.find(
       it => it.kind === 'builtin' && it.builtinAction
-        && ['init-project', 'export-session', 'add-dir'].includes(it.builtinAction.type)
+        && ['export-session', 'add-dir'].includes(it.builtinAction.type)
         && trimmed === it.name,
     )
-    if (referableBuiltin) {
-      runBuiltin(referableBuiltin, {
+    if (hostBuiltin) {
+      runBuiltin(hostBuiltin, {
         dispatch, sessionId: state.activeSessionId, cwd: getCwd(), modelName,
         claudeSessionId: state.claudeSessionMap?.[state.activeSessionId],
         toggleMenu, editor: editorRef,

@@ -14,6 +14,13 @@ import { getPermissionMode } from './builtin-commands'
 import { getSkills } from './claude-config'
 import { resolveClaudeCodeExecutable } from './claude-sdk-executable'
 
+// 「写/执行类」工具：default（变更前确认）权限模式下，这些工具调用需弹授权窗让用户批准。
+// 只读工具（Read/Glob/Grep/LS/WebSearch/TodoWrite 等）直接放行，不打扰用户。
+const CONFIRM_TOOLS = new Set([
+  'Write', 'Edit', 'MultiEdit', 'NotebookEdit',
+  'Bash', 'Task', 'Skill',
+])
+
 /**
  * ClaudeService：渲染端 ↔ SessionQueryManager 的桥。
  * send() 委托 manager.ensureSession + pushMessage。事件转发逻辑注入 buildQuery。
@@ -31,6 +38,10 @@ export class ClaudeService {
   private subagentToolUseParent = new Map<string, string>()
   // Pending onUserDialog resolvers keyed by reqId。渲染端经 claude:dialog-response 回答。
   private dialogResolvers = new Map<string, (r: any) => void>()
+  // 每个 session 的 dialog 串行链：保证同一 session 一次只弹一个 dialog（AskUserQuestion /
+  // 权限授权等）。pendingDialog 是渲染端单值，并发 dialog-request 会互相覆盖。askUserViaPanel
+  // 入口 await 前一个 dialog 完成再发新的，FIFO 串行。key 为 localSessionId。
+  private dialogChain = new Map<string, Promise<unknown>>()
   // 每个 session 的 AbortController:创建 query 时传入,interrupt 不生效时 abort() 兜底强制中止。
   private abortControllers = new Map<string, AbortController>()
   // 每个 session 已处理过的「阻塞式 tool_use」id 集合（AskUserQuestion / ExitPlanMode）。
@@ -142,6 +153,15 @@ export class ClaudeService {
     signal?: AbortSignal,
     localSessionId?: string | null,
   ): Promise<any> {
+    // 串行锁：同一 session 的 dialog FIFO 排队，避免并发 dialog-request 互相覆盖
+    // （渲染端 pendingDialog 是单值）。等前一个 dialog 完成再发新的。
+    const chainKey = localSessionId ?? ''
+    const prev = this.dialogChain.get(chainKey) ?? Promise.resolve()
+    let releaseChain!: () => void
+    const myTurn = prev.then(() => new Promise<void>(r => { releaseChain = r }))
+    this.dialogChain.set(chainKey, myTurn)
+    await prev
+
     const reqId = `dlg${Date.now()}_${Math.floor(performance.now())}`
     webContents.send('claude:dialog-request', {
       reqId,
@@ -150,21 +170,26 @@ export class ClaudeService {
       payload,
       toolUseId,
     })
-    return new Promise<any>((resolve) => {
-      this.dialogResolvers.set(reqId, resolve)
-      if (signal) {
-        signal.addEventListener(
-          'abort',
-          () => {
-            if (this.dialogResolvers.has(reqId)) {
-              this.dialogResolvers.delete(reqId)
-              resolve({ behavior: 'cancelled' })
-            }
-          },
-          { once: true },
-        )
-      }
-    })
+    try {
+      return await new Promise<any>((resolve) => {
+        this.dialogResolvers.set(reqId, resolve)
+        if (signal) {
+          signal.addEventListener(
+            'abort',
+            () => {
+              if (this.dialogResolvers.has(reqId)) {
+                this.dialogResolvers.delete(reqId)
+                resolve({ behavior: 'cancelled' })
+              }
+            },
+            { once: true },
+          )
+        }
+      })
+    } finally {
+      // 释放串行锁，让下一个排队 dialog 开始
+      releaseChain()
+    }
   }
 
   /**
@@ -220,6 +245,62 @@ export class ClaudeService {
     })
     this.manager.pushMessage(localSessionId,
       `【用户已正式回答你的 AskUserQuestion，以下是用户的真实选择，请以此为准，忽略此前的任何占位/工具返回（如 "Answer questions?"）】\n${lines.join('\n')}`)
+  }
+
+  /**
+   * canUseTool 回调的授权弹窗逻辑：default（变更前确认）模式下，对写/执行类工具
+   * 弹底部面板让用户批准/拒绝；其余情况直接 allow。
+   * 经第三方代理时 SDK 不发 control_request/permission_denied，但会调用 canUseTool
+   * （进程内 JS 回调），故这是 default 模式下唯一可靠的逐次授权途径。
+   * 返回 SDK 的 PermissionResult：allow / deny。
+   */
+  private async handlePermissionRequest(
+    localSessionId: string,
+    permissionLabel: string,
+    toolName: string,
+    input: Record<string, unknown>,
+    opts: { signal?: AbortSignal; toolUseID?: string; displayName?: string; description?: string; decisionReason?: string; title?: string; suggestions?: any[] },
+    webContents: WebContents,
+  ): Promise<{ behavior: 'allow'; updatedInput: Record<string, unknown>; updatedPermissions?: any[]; toolUseID?: string } | { behavior: 'deny'; message: string; toolUseID?: string }> {
+    // allow 结果需带 updatedInput（原样回传 input 表示不修改）：SDK 运行时 zod 校验
+    // 要求 allow 分支的 updatedInput 为 record（与 sdk.d.ts 标注的可选不一致，CLI 侧校验更严），
+    // 缺失会报 ZodError「expected record, received undefined」导致工具执行失败。
+    // autoAllow=true 时附带 updatedPermissions（SDK 的 suggestions 原样回传）→ SDK 自动把规则
+    // 持久化到 settings.json（按 suggestions 的 destination：user/project/local），后续同类操作
+    // SDK 自行匹配放行。这是 claude cli 原生的「自动允许」机制，cc-desk 不自己维护规则集。
+    const allow = (updatedPermissions?: any[]): { behavior: 'allow'; updatedInput: Record<string, unknown>; updatedPermissions?: any[]; toolUseID?: string } =>
+      ({ behavior: 'allow', updatedInput: input, ...(updatedPermissions ? { updatedPermissions } : {}), toolUseID: opts.toolUseID })
+    // 非 default 模式（自动编辑/完全访问/计划）或只读工具：直接放行
+    if (permissionLabel !== '变更前确认' || !CONFIRM_TOOLS.has(toolName)) {
+      return allow()
+    }
+    const payload = {
+      toolName,
+      displayName: opts.displayName ?? opts.title ?? toolName,
+      description: opts.description,
+      decisionReason: opts.decisionReason,
+      // input 摘要：Write/Edit 的 file_path、Bash 的 command 等，截断显示
+      input,
+    }
+    let result: any
+    try {
+      // 注意 signal 传 undefined：canUseTool 的 AbortSignal 是 SDK 的 query signal，
+      // 它在工具等待期间可能因 SDK 内部超时/竞态提前 abort，导致 askUserViaPanel
+      // resolve 成 cancelled → 误判为拒绝（用户明明点了批准却 deny）。
+      // 权限授权应一直等用户决定，不被 SDK signal 打断；会话中断由 interrupt 单独处理。
+      result = await this.askUserViaPanel(webContents, 'permission_request', payload, opts.toolUseID, undefined, localSessionId)
+    } catch {
+      result = { behavior: 'cancelled' }
+    }
+    if (result?.behavior === 'completed') {
+      // 「自动允许此类」：把 SDK 的 suggestions 原样回传，SDK 据此写盘并后续自动匹配
+      if (result?.autoAllow && Array.isArray(opts.suggestions) && opts.suggestions.length > 0) {
+        return allow(opts.suggestions)
+      }
+      // 「本次批准」：仅本次放行，不持久化
+      return allow()
+    }
+    return { behavior: 'deny', message: '用户拒绝了此操作', toolUseID: opts.toolUseID }
   }
 
   /**
@@ -375,6 +456,12 @@ export class ClaudeService {
           supportedDialogKinds: ['refusal_fallback_prompt'],
           onUserDialog: async (request: any, { signal }: { signal: AbortSignal }) => {
             return this.askUserDialog(webContents, request, signal)
+          },
+          // canUseTool：default（变更前确认）模式下对写/执行类工具弹授权窗，其余 allow。
+          // 经第三方代理时 SDK 不发 control_request，但会调用此回调（已用日志证实），
+          // 故这是 default 模式逐次授权的唯一可靠途径。阻塞等用户决定后返回 PermissionResult。
+          canUseTool: async (toolName: string, input: Record<string, unknown>, opts: any) => {
+            return this.handlePermissionRequest(lsid, permission ?? '', toolName, input, opts, webContents)
           },
         },
       })
@@ -943,6 +1030,7 @@ export class ClaudeService {
     // 清门控计数，防异常残留导致该会话后续消息被永久丢弃。
     this.askGateCount.delete(localSessionId)
     this.askToolUseIds.delete(localSessionId)
+    this.dialogChain.delete(localSessionId)
     return this.manager?.closeSession(localSessionId) ?? Promise.resolve()
   }
 
