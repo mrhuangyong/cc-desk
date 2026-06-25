@@ -19,7 +19,7 @@ export async function loadBindings(filePath: string): Promise<BindingMap> {
   try {
     const raw = await readFile(filePath, 'utf-8')
     const parsed = JSON.parse(raw)
-    return parsed && typeof parsed === 'object' ? parsed : {}
+    return isBindingMap(parsed) ? parsed : {}
   } catch {
     return {}
   }
@@ -31,13 +31,18 @@ export async function saveBindings(filePath: string, map: BindingMap): Promise<v
   await writeFile(filePath, JSON.stringify(map), 'utf-8')
 }
 
+/** 类型守卫：仅接受纯对象（排除断言为 object 的数组/null）。 */
+function isBindingMap(v: unknown): v is BindingMap {
+  return !!v && typeof v === 'object' && !Array.isArray(v)
+}
+
 /** 同步读盘：构造时立即填充 cache，保证 getPeer 同步可用。 */
 function loadSync(filePath: string): BindingMap {
   try {
     if (!existsSync(filePath)) return {}
     const raw = readFileSync(filePath, 'utf-8')
     const parsed = JSON.parse(raw)
-    return parsed && typeof parsed === 'object' ? parsed : {}
+    return isBindingMap(parsed) ? parsed : {}
   } catch {
     return {}
   }
