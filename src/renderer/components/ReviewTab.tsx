@@ -65,9 +65,13 @@ export function ReviewTab() {
 
   const onToggleStage = async (path: string, currentlyStaged: boolean) => {
     if (!cwd) return
-    if (currentlyStaged) await window.api.git.restore(cwd, [path], true)
-    else await window.api.git.add(cwd, [path])
-    refreshStatus()
+    try {
+      if (currentlyStaged) await window.api.git.restore(cwd, [path], true)
+      else await window.api.git.add(cwd, [path])
+      refreshStatus()
+    } catch (err) {
+      console.error('[review] stage toggle failed', err)
+    }
   }
 
   const onSubmit = async () => {
@@ -99,6 +103,8 @@ export function ReviewTab() {
     try {
       const generated = await window.api.git.generateCommitMessage(cwd)
       if (generated) dispatch({ type: 'REVIEW_SET_COMMIT_MESSAGE', projectId, message: generated })
+    } catch (err) {
+      console.error('[review] generate failed', err)
     } finally {
       dispatch({ type: 'REVIEW_SET_LOADING', projectId, loading: { commitBusy: false } })
     }
@@ -107,12 +113,16 @@ export function ReviewTab() {
   const onResetHard = async () => {
     if (!cwd) return
     if (!confirm(t('review.confirmReset'))) return   // 阶段 A 用 window.confirm 兜底；Electron 原生 dialog 见 Task 8
-    await window.api.git.resetHard(cwd)
-    refreshStatus()
+    try {
+      await window.api.git.resetHard(cwd)
+      refreshStatus()
+    } catch (err) {
+      console.error('[review] reset hard failed', err)
+    }
   }
 
   if (!cwd) {
-    return <div style={{ padding: 12, color: 'var(--text-muted)' }}>未选择项目</div>
+    return <div style={{ padding: 12, color: 'var(--text-muted)' }}>{t('review.noProject')}</div>
   }
   if (review?.error?.code === 'NOT_A_REPO' || review?.error?.code === 'GIT_NOT_FOUND') {
     return <div style={{ padding: 12, color: 'var(--text-muted)' }}>{t('review.notARepo')}</div>
@@ -126,9 +136,9 @@ export function ReviewTab() {
       {/* 工具栏 */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderBottom: '1px solid var(--border)', fontSize: 12, color: 'var(--text-muted)' }}>
         <button onClick={refreshStatus} title={t('review.refresh')} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center' }}><RefreshCw size={14} /></button>
-        <span>已修改 {review?.status.length ?? 0} 个文件</span>
+        <span>{t('review.fileCount').replace('{n}', String(review?.status.length ?? 0))}</span>
         <div style={{ flex: 1 }} />
-        <button onClick={onResetHard} title={t('review.refresh')} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center' }}><Trash2 size={14} /></button>
+        <button onClick={onResetHard} title={t('review.reset')} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center' }}><Trash2 size={14} /></button>
       </div>
       {/* 主体：左列表 + 右 diff */}
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
@@ -144,7 +154,7 @@ export function ReviewTab() {
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           {review?.selectedPath
             ? <DiffView diff={selectedDiff} loading={diffLoading} />
-            : <div style={{ padding: 12, color: 'var(--text-muted)' }}>选择左侧文件查看改动</div>}
+            : <div style={{ padding: 12, color: 'var(--text-muted)' }}>{t('review.selectFileHint')}</div>}
         </div>
       </div>
       {/* 底部 commit */}

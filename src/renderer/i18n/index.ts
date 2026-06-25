@@ -126,6 +126,10 @@ const dict: Record<Lang, Record<string, string>> = {
     'review.diffScopeHead': '工作区 vs HEAD',
     'review.diffScopeCached': '仅暂存',
     'review.diffScopeWorkdir': '仅工作区',
+    'review.reset': '重置全部',
+    'review.fileCount': '已修改 {n} 个文件',
+    'review.selectFileHint': '选择左侧文件查看改动',
+    'review.noProject': '未选择项目',
   },
   'en': {
     'title.newSession': 'New session',
@@ -242,6 +246,10 @@ const dict: Record<Lang, Record<string, string>> = {
     'review.diffScopeHead': 'Working tree vs HEAD',
     'review.diffScopeCached': 'Staged only',
     'review.diffScopeWorkdir': 'Working tree only',
+    'review.reset': 'Reset all',
+    'review.fileCount': '{n} files changed',
+    'review.selectFileHint': 'Select a file to view changes',
+    'review.noProject': 'No project selected',
   },
 }
 

@@ -71,6 +71,18 @@ describe('ReviewTab', () => {
     await waitFor(() => expect(gitMock.commit).toHaveBeenCalledWith(expect.any(String), 'feat: add a'))
   })
 
+  it('commit 成功后清空 message', async () => {
+    gitMock.status.mockResolvedValue([{ path: 'a.ts', indexStatus: 'modified', workdirStatus: null }])
+    gitMock.commit.mockResolvedValue({ sha: 'abc1234' })
+    renderReview()
+    await waitFor(() => expect(screen.getByText('a.ts')).toBeTruthy())
+    const textarea = screen.getByPlaceholderText(/commit message/i) as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: 'feat: x' } })
+    fireEvent.click(screen.getByText('提交'))
+    await waitFor(() => expect(gitMock.commit).toHaveBeenCalledWith(expect.any(String), 'feat: x'))
+    await waitFor(() => expect((screen.getByPlaceholderText(/commit message/i) as HTMLTextAreaElement).value).toBe(''))
+  })
+
   it('非 git 仓库显示空状态', async () => {
     const err = Object.assign(new Error('not a repo'), { code: 'NOT_A_REPO' })
     gitMock.status.mockRejectedValue(err)
