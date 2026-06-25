@@ -38,6 +38,7 @@ function makeInitialState(seedProjects?: Project[]): AppState {
     abortedBySession: {},
     editingMessageId: null, editingQueueId: null,
     updateStatus: { state: 'idle' },
+    reviewByProject: {},
   }
   if (!seedProjects || seedProjects.length === 0) return base
   const sessions = seedProjects.flatMap(p => p.sessions)

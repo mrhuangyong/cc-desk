@@ -32,6 +32,7 @@ function initialState(): AppState {
     dirtyTabIds: {}, lastFileOpenedSeq: 0, queueBySession: {}, tasksBySession: {}, backendTasksBySession: {}, panelFold: { root: false }, panelPosition: { x: 0, y: 0 }, subagentOutputBySession: {}, planBySession: {}, abortedBySession: {},
     editingMessageId: null, editingQueueId: null,
     updateStatus: { state: 'idle' },
+    reviewByProject: {},
   }
 }
 
@@ -812,5 +813,38 @@ describe('reducer ARCHIVE_STALE 自动归档', () => {
     const state = initialState()
     const next = reducer(state, { type: 'SET_EDITING_MESSAGE', messageId: 'm1' })
     expect(next.editingMessageId).toBe('m1')
+  })
+})
+
+describe('reviewByProject 分片', () => {
+  it('initialState 含 reviewByProject: {}', () => {
+    const s = initialState()
+    expect(s.reviewByProject).toEqual({})
+  })
+
+  it('REVIEW_SET_STATUS upsert 指定项目', () => {
+    const s0 = initialState()
+    const status = [{ path: 'a.ts', indexStatus: 'modified' as const, workdirStatus: null }]
+    const s1 = reducer(s0, { type: 'REVIEW_SET_STATUS', projectId: 'p1', status })
+    expect(s1.reviewByProject.p1.status).toEqual(status)
+  })
+
+  it('REVIEW_SET_DIFF 设置指定文件 diff 缓存', () => {
+    const s0 = reducer(initialState(), { type: 'REVIEW_SET_STATUS', projectId: 'p1', status: [] })
+    const s1 = reducer(s0, { type: 'REVIEW_SET_DIFF', projectId: 'p1', path: 'a.ts', diff: '@@ -1 +1 @@' })
+    expect(s1.reviewByProject.p1.diffCache['a.ts']).toBe('@@ -1 +1 @@')
+  })
+
+  it('不同 projectId 互不干扰', () => {
+    let s = reducer(initialState(), { type: 'REVIEW_SET_STATUS', projectId: 'p1', status: [] })
+    s = reducer(s, { type: 'REVIEW_SET_COMMIT_MESSAGE', projectId: 'p2', message: 'hi' })
+    expect(s.reviewByProject.p1.commitMessage).toBe('')
+    expect(s.reviewByProject.p2.commitMessage).toBe('hi')
+  })
+
+  it('REVIEW_CLEAR 清空指定项目', () => {
+    let s = reducer(initialState(), { type: 'REVIEW_SET_STATUS', projectId: 'p1', status: [{ path: 'x', indexStatus: null, workdirStatus: 'modified' }] })
+    s = reducer(s, { type: 'REVIEW_CLEAR', projectId: 'p1' })
+    expect(s.reviewByProject.p1).toBeUndefined()
   })
 })

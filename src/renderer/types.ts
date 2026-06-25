@@ -314,3 +314,27 @@ export type DraftAttachment =
   | { type: 'pickedElement'; el: PickedElement }
   | { type: 'image'; name: string; base64: string; mediaType: string }
   | { type: 'file'; name: string; path: string }
+
+// 审查 tab：git 改动状态
+export type GitChangeKind = 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'conflicted'
+
+export interface GitFileStatus {
+  path: string
+  indexStatus: GitChangeKind | null
+  workdirStatus: GitChangeKind | null
+}
+
+export type DiffScope = 'HEAD' | 'cached' | 'workdir'
+
+// review 状态按项目分片（git 状态只跟仓库有关，不按会话）
+export interface ReviewState {
+  status: GitFileStatus[]
+  selectedPath: string | null
+  diffCache: Record<string, string>
+  diffScope: DiffScope
+  loadingStatus: boolean
+  loadingDiffPath: string | null
+  error: { code: string; message: string } | null
+  commitMessage: string
+  commitBusy: boolean
+}

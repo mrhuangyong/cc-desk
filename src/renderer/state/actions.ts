@@ -1,4 +1,4 @@
-import type { AppView, AppSettings, ContentBlock, Message, PickedElement, Project, SettingsSection, SystemNotice, Tab, TabType, ThemeId, ToolResult } from '../types'
+import type { AppView, AppSettings, ContentBlock, Message, PickedElement, Project, SettingsSection, SystemNotice, Tab, TabType, ThemeId, ToolResult, GitFileStatus, DiffScope, ReviewState } from '../types'
 
 export type Action =
   | { type: 'ADD_PROJECT'; name: string; path: string }
@@ -99,3 +99,13 @@ export type Action =
   | { type: 'SHOW_COST'; sessionId: string; text: string }
   | { type: 'COMPACT_DONE'; sessionId: string; summary: string; keepRecent: number }
   | { type: 'UPDATE_STATUS'; status: import('../types').UpdateStatus }
+  // 审查 tab：按项目分片的 git 状态（git 状态只跟仓库有关，不按会话）
+  | { type: 'REVIEW_SET_STATUS'; projectId: string; status: GitFileStatus[] }
+  | { type: 'REVIEW_SELECT_FILE'; projectId: string; path: string | null }
+  | { type: 'REVIEW_SET_DIFF'; projectId: string; path: string; diff: string }
+  | { type: 'REVIEW_SET_DIFF_SCOPE'; projectId: string; scope: DiffScope }
+  | { type: 'REVIEW_SET_LOADING'; projectId: string; loading: Partial<Pick<ReviewState, 'loadingStatus' | 'loadingDiffPath' | 'commitBusy'>> }
+  | { type: 'REVIEW_SET_ERROR'; projectId: string; error: ReviewState['error'] }
+  | { type: 'REVIEW_SET_COMMIT_MESSAGE'; projectId: string; message: string }
+  | { type: 'REVIEW_CLEAR_DIFF_CACHE'; projectId: string }
+  | { type: 'REVIEW_CLEAR'; projectId: string }

@@ -1,5 +1,5 @@
 import type { Action } from './actions'
-import type { AppView, ContentBlock, Draft, Project, Session, SettingsSection, SystemNotice, Tab, ThemeId, AppSettings, UpdateStatus } from '../types'
+import type { AppView, ContentBlock, Draft, Project, Session, SettingsSection, SystemNotice, Tab, ThemeId, AppSettings, UpdateStatus, ReviewState } from '../types'
 import { serializeForPrompt } from '../editor/serialize'
 
 export interface AppState {
@@ -57,6 +57,8 @@ export interface AppState {
   editingQueueId: string | null
   // 应用更新状态机（全局单例）。TitleBar / 应用菜单 / 关于页共享。
   updateStatus: UpdateStatus
+  // 审查 tab：按项目分片的 git 改动状态
+  reviewByProject: Record<string, ReviewState>
 }
 
 // TODO: idCounter is module-level mutable state — non-deterministic IDs. Acceptable for prototype; thread through state if persistence/time-travel needed later.
@@ -64,6 +66,15 @@ let idCounter = 0
 function nextId(prefix: string): string {
   idCounter += 1
   return `${prefix}${idCounter}`
+}
+
+// 审查 tab：单个项目的 review 状态默认值（reducer 各 REVIEW_* 分支首次 upsert 时使用）
+function emptyReview(): ReviewState {
+  return {
+    status: [], selectedPath: null, diffCache: {}, diffScope: 'HEAD',
+    loadingStatus: false, loadingDiffPath: null, error: null,
+    commitMessage: '', commitBusy: false,
+  }
 }
 
 // 按会话隔离的列表 upsert：tasksBySession / backendTasksBySession 共用。
@@ -928,6 +939,42 @@ export function reducer(state: AppState, action: Action): AppState {
     }
     case 'UPDATE_STATUS': {
       return { ...state, updateStatus: action.status }
+    }
+    case 'REVIEW_SET_STATUS': {
+      const prev = state.reviewByProject[action.projectId] ?? emptyReview()
+      return { ...state, reviewByProject: { ...state.reviewByProject, [action.projectId]: { ...prev, status: action.status } } }
+    }
+    case 'REVIEW_SELECT_FILE': {
+      const prev = state.reviewByProject[action.projectId] ?? emptyReview()
+      return { ...state, reviewByProject: { ...state.reviewByProject, [action.projectId]: { ...prev, selectedPath: action.path } } }
+    }
+    case 'REVIEW_SET_DIFF': {
+      const prev = state.reviewByProject[action.projectId] ?? emptyReview()
+      return { ...state, reviewByProject: { ...state.reviewByProject, [action.projectId]: { ...prev, diffCache: { ...prev.diffCache, [action.path]: action.diff } } } }
+    }
+    case 'REVIEW_SET_DIFF_SCOPE': {
+      const prev = state.reviewByProject[action.projectId] ?? emptyReview()
+      return { ...state, reviewByProject: { ...state.reviewByProject, [action.projectId]: { ...prev, diffScope: action.scope } } }
+    }
+    case 'REVIEW_SET_LOADING': {
+      const prev = state.reviewByProject[action.projectId] ?? emptyReview()
+      return { ...state, reviewByProject: { ...state.reviewByProject, [action.projectId]: { ...prev, ...action.loading } } }
+    }
+    case 'REVIEW_SET_ERROR': {
+      const prev = state.reviewByProject[action.projectId] ?? emptyReview()
+      return { ...state, reviewByProject: { ...state.reviewByProject, [action.projectId]: { ...prev, error: action.error } } }
+    }
+    case 'REVIEW_SET_COMMIT_MESSAGE': {
+      const prev = state.reviewByProject[action.projectId] ?? emptyReview()
+      return { ...state, reviewByProject: { ...state.reviewByProject, [action.projectId]: { ...prev, commitMessage: action.message } } }
+    }
+    case 'REVIEW_CLEAR_DIFF_CACHE': {
+      const prev = state.reviewByProject[action.projectId] ?? emptyReview()
+      return { ...state, reviewByProject: { ...state.reviewByProject, [action.projectId]: { ...prev, diffCache: {} } } }
+    }
+    case 'REVIEW_CLEAR': {
+      const { [action.projectId]: _gone, ...rest } = state.reviewByProject
+      return { ...state, reviewByProject: rest }
     }
     default:
       return state
