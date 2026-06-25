@@ -33,4 +33,17 @@ describe('FileEditorPane', () => {
     render(<AppProvider initialProjects={seedWithPath()}><FileEditorPane tabId="t1" filePath="/proj/a.ts" /></AppProvider>)
     await waitFor(() => expect(screen.getByText(/boom/)).toBeTruthy())
   })
+
+  it('图片类型渲染 <img> 预览', async () => {
+    render(<AppProvider initialProjects={seedWithPath()}><FileEditorPane tabId="t1" filePath="/proj/pic.png" /></AppProvider>)
+    const img = await screen.findByRole('img')
+    expect(img.getAttribute('src')).toContain('file://')
+    expect(fsMock.readFile).not.toHaveBeenCalled()     // 图片不走 readFile
+  })
+
+  it('binary 类型显示不支持预览', async () => {
+    render(<AppProvider initialProjects={seedWithPath()}><FileEditorPane tabId="t1" filePath="/proj/pkg.zip" /></AppProvider>)
+    await waitFor(() => expect(screen.getByText('该文件类型不支持预览')).toBeTruthy())
+    expect(fsMock.readFile).not.toHaveBeenCalled()     // binary 不走 readFile
+  })
 })
