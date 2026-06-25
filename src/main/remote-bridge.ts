@@ -13,7 +13,7 @@
 // - 中继下发 error（unbound/bad_sig）时不清 deviceKey，仅置未连接；
 //   因 server 在 bind 失败时不关连接，本端收到 error 后主动 terminate 触发 close → 退避重连。
 import { WebSocket } from 'ws'
-import { makeEnvelope, type Envelope } from '../shared/remote-protocol'
+import { makeEnvelope, PROTOCOL_VERSION, type Envelope, type MessageType } from '../shared/remote-protocol'
 
 export interface BridgeDeps {
   /** 中继 ws 基地址，如 ws://host:port 或 wss://host:port。会自动追加 /ws。 */
@@ -245,6 +245,61 @@ export function createDialogReplayer(sendFn: (env: Envelope) => void): DialogRep
       for (const [id, { expiresAt }] of pending) {
         if (now > expiresAt) pending.delete(id)
       }
+    },
+  }
+}
+
+export interface EventForwarderOpts {
+  /** dialog.request 登记回调（用于断线重连补发）；为空时仅转发不登记。 */
+  enqueueDialog?: (reqId: string, env: Envelope) => void
+}
+
+/** 待签名占位信封：sig/deviceId/ts/nonce 由 remote-bridge 的 send 统一用 makeEnvelope 重签。 */
+function placeholderEnv(type: MessageType, payload: unknown): Envelope {
+  return { v: PROTOCOL_VERSION, type, deviceId: '', ts: 0, nonce: '', sig: '', payload }
+}
+
+/**
+ * 出站事件旁路转发（Task 10）：监听桌面 claude:* IPC 事件，转成协议消息发中继。
+ *
+ * 设计：forwarder 只负责「业务事件 → 协议 type/payload 映射」，产出「待签名」信封
+ * （sig 等字段占位为空）。真正的签名由 remote-bridge 注入的 sendFn 完成 —— 调用方
+ * 应把 sendFn 实现成「取传入 env 的 type/payload，用 makeEnvelope 重签后 bridge.send」。
+ * 这样测试只需断言 type/payload 映射，不依赖密钥；线上发中继时签名仍由 deviceKey 兜底。
+ *
+ * 注意：dialog.request 是唯一状态化出站消息（spec §5.3）：除转发外，还须 enqueue 到
+ * dialogReplayer，以便断线重连后补发给手机（手机可能在 dialog 挂起期间掉线）。
+ */
+export function createEventForwarder(
+  sendFn: (env: Envelope) => void,
+  opts: EventForwarderOpts = {},
+) {
+  return {
+    /** claude:delta —— text/thinking 流式增量。thinking 走独立字段，便于手机端折叠展示。 */
+    onClaudeDelta(data: { kind: 'text' | 'thinking'; delta: string; localSessionId: string }) {
+      const payload =
+        data.kind === 'thinking'
+          ? { localSessionId: data.localSessionId, thinking: data.delta }
+          : { localSessionId: data.localSessionId, text: data.delta }
+      sendFn(placeholderEnv('session.delta', payload))
+    },
+    /** claude:blocks —— tool_use_start / assistant_blocks / tool_result / 计划卡片。payload 透传。 */
+    onClaudeBlocks(data: unknown) {
+      sendFn(placeholderEnv('session.blocks', data))
+    },
+    /** claude:notice —— 系统提示 info/warn/error。payload 透传。 */
+    onNotice(data: unknown) {
+      sendFn(placeholderEnv('session.notice', data))
+    },
+    /** claude:result —— query 结束。payload 透传。 */
+    onResult(data: unknown) {
+      sendFn(placeholderEnv('session.result', data))
+    },
+    /** claude:dialog-request —— 批准请求。转发 + 同步 enqueue 到 replayer 供重连补发。 */
+    onDialogRequest(data: { reqId: string; localSessionId: string; dialogKind: string; payload: unknown }) {
+      const env = placeholderEnv('dialog.request', data)
+      opts.enqueueDialog?.(data.reqId, env)
+      sendFn(env)
     },
   }
 }
