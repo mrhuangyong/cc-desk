@@ -69,7 +69,7 @@ describe('useDialogQueue - 入队', () => {
 })
 
 describe('useDialogQueue - resolve（批准/拒绝）', () => {
-  it('approve 发 dialog.response，result=approve，并移出队列', async () => {
+  it('approve 发 dialog.response，result 按 dialogKind 构造（plan→completed+permissionMode），并移出队列', async () => {
     const send = vi.fn().mockResolvedValue(true)
     const { result } = renderHook(() => useDialogQueue({ send }))
     act(() => {
@@ -80,7 +80,7 @@ describe('useDialogQueue - resolve（批准/拒绝）', () => {
     })
     expect(send).toHaveBeenCalledWith('dialog.response', {
       reqId: 'r1',
-      result: { behavior: 'approve' },
+      result: { behavior: 'completed', result: { permissionMode: '自动编辑' } },
     })
     expect(result.current.items).toHaveLength(0)
   })
@@ -99,6 +99,39 @@ describe('useDialogQueue - resolve（批准/拒绝）', () => {
       result: { behavior: 'deny' },
     })
     expect(result.current.items).toHaveLength(0)
+  })
+
+  it('permission_request 批准 → result=completed（不带 autoAllow）', async () => {
+    const send = vi.fn().mockResolvedValue(true)
+    const { result } = renderHook(() => useDialogQueue({ send }))
+    act(() => {
+      result.current.onInbound({
+        ...mkDialogEnv('r1'),
+        payload: { reqId: 'r1', localSessionId: 's1', dialogKind: 'permission_request', payload: {} },
+      })
+    })
+    await act(async () => {
+      await result.current.approve('r1')
+    })
+    expect(send).toHaveBeenCalledWith('dialog.response', {
+      reqId: 'r1',
+      result: { behavior: 'completed' },
+    })
+  })
+
+  it('send 失败（未连接）时保留队列项，不移除', async () => {
+    // I1：useRelay.send 未连接时返回 false（静默丢弃）。断线时点批准不应让卡片消失。
+    const send = vi.fn().mockResolvedValue(false)
+    const { result } = renderHook(() => useDialogQueue({ send }))
+    act(() => {
+      result.current.onInbound(mkDialogEnv('r1'))
+    })
+    await act(async () => {
+      await result.current.approve('r1')
+    })
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(result.current.items).toHaveLength(1)
+    expect(result.current.current?.reqId).toBe('r1')
   })
 
   it('解决 current 后下一条成为 current', async () => {

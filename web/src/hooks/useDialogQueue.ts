@@ -11,11 +11,13 @@
 // 协议契约（src/shared/remote-protocol-types.ts）：
 //   - 收：dialog.request（payload: { reqId, localSessionId, dialogKind, payload }）
 //   - 发：dialog.response（payload: { reqId, result }）
-//   result 形态 { behavior: 'approve' | 'deny' | 'cancelled' }（与桌面端 askUserViaPanel
-//   的 onUserDialog 回包对齐：approve/deny 对应授权模式选择）。
+//   result 形态按 dialogKind 构造（见 lib/dialog-result.ts），与桌面端 askUserViaPanel
+//   的三类 dialog 处理逻辑对齐：permission→completed、plan→completed+permissionMode、
+//   ask→cancelled（UI 无答案输入的遗留缺口）。
 import { useCallback, useRef, useState } from 'react'
 import type { Envelope, MessageType } from '@shared/remote-protocol-types'
 import { createDialogQueue, parseDialogRequest, type DialogRequest } from '../lib/dialog-queue'
+import { buildDialogResult } from '../lib/dialog-result'
 
 /** useRelay.send 的最小签名（仅本 hook 用到的子集，便于注入测试）。 */
 export type SendFn = (
@@ -69,15 +71,26 @@ export function useDialogQueue(opts: UseDialogQueueOptions): UseDialogQueueHandl
     sync()
   }, [sync])
 
+  /** 按 reqId 查队列项的 dialogKind（构造 result 时需要）。 */
+  const dialogKindOf = useCallback((reqId: string): string | undefined => {
+    return queueRef.current.state().items.find((d) => d.reqId === reqId)?.dialogKind
+  }, [])
+
   const approve = useCallback(async (reqId: string) => {
-    await send('dialog.response', { reqId, result: { behavior: 'approve' } })
+    const dialogKind = dialogKindOf(reqId) ?? ''
+    const ok = await send('dialog.response', { reqId, result: buildDialogResult(dialogKind, 'approve') })
+    // I1：send 失败（未连接/中继不可达）时保留队列项，让用户重连后重试，
+    // 避免卡片消失但桌面端未收到 → 重连补发后又突兀出现。
+    if (!ok) return
     removeFromQueue(reqId)
-  }, [send, removeFromQueue])
+  }, [send, removeFromQueue, dialogKindOf])
 
   const deny = useCallback(async (reqId: string) => {
-    await send('dialog.response', { reqId, result: { behavior: 'deny' } })
+    const dialogKind = dialogKindOf(reqId) ?? ''
+    const ok = await send('dialog.response', { reqId, result: buildDialogResult(dialogKind, 'deny') })
+    if (!ok) return
     removeFromQueue(reqId)
-  }, [send, removeFromQueue])
+  }, [send, removeFromQueue, dialogKindOf])
 
   const ignore = useCallback((reqId: string) => {
     removeFromQueue(reqId)

@@ -25,6 +25,7 @@ import {
 } from './remote-config'
 import {
   createRemoteBridge, createDispatcher, createDialogReplayer, createEventForwarder,
+  buildSessionListPayload,
   type RemoteBridge, type DialogReplayer,
 } from './remote-bridge'
 import { makeEnvelope, type Envelope, type MessageType } from '../shared/remote-protocol'
@@ -84,6 +85,7 @@ type ForwarderHandle = {
   onNotice(data: any): void
   onResult(data: any): void
   onDialogRequest(data: any): void
+  sendSessionList(sessions: { localSessionId: string; title: string; status: 'running' | 'completed' | 'error' | 'idle' }[]): void
 }
 
 /** 需要旁路转发给手机端的 claude:* 业务事件通道白名单。 */
@@ -190,6 +192,23 @@ function startRemoteBridge(cfg: RemoteConfig): void {
     if (cur !== lastState) {
       lastState = cur
       emitRemoteState(cur)
+      // I2：连上中继（false→true）后下发当前会话清单，让手机端 SessionListPage 有数据。
+      // 从 projects-store 读快照、扁平化、转协议 payload。用 forwarder.sendSessionList
+      // 统一经 makeEnvelope 重签后发中继。重连也会重发（手机重连后能重新拿到列表）。
+      if (cur) {
+        try {
+          const snap = getProjectsSnapshot()
+          forwarder.sendSessionList(
+            buildSessionListPayload(snap.projects).sessions.map((s) => ({
+              localSessionId: s.localSessionId,
+              title: s.title,
+              status: s.status,
+            })),
+          )
+        } catch {
+          // 读快照失败不应影响连接状态上报
+        }
+      }
     }
   }, 2000)
 

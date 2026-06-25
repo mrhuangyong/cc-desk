@@ -172,9 +172,25 @@ export interface DispatchDeps {
   send: (opts: { prompt: string; localSessionId?: string; webContents?: any }) => Promise<void>
   interrupt: (localSessionId: string) => void
   resolveDialog: (reqId: string, result: any) => void
+  /** 手机接管某会话（标记"手机在看"）。可选：当前 forwarder 转发所有会话事件，attach 仅做记录。 */
+  onAttach?: (localSessionId: string) => void
+  /**
+   * 手机请求新建会话。返回新会话的 localSessionId；返回 null/undefined 表示桌面端
+   * 不支持远程新建（主进程无建会话 API 时走此分支，由调用方决定如何回告手机）。
+   * 可选：未注入时 dispatcher 对 session.create 不做实质处理。
+   */
+  onSessionCreate?: () => string | null | undefined
 }
 
-/** 入站消息分发：手机→桌面的命令白名单。未知 type 静默忽略（最小特权）。 */
+/**
+ * 入站消息分发：手机→桌面的命令白名单。未知 type 静默忽略（最小特权）。
+ *
+ * session.attach：记录"手机在看"某会话（当前 forwarder 转发所有会话事件，attach 仅通知，
+ *   不改变转发过滤——简化实现，避免漏推关键事件）。
+ * session.create：主进程目前没有"建会话"API（会话由渲染端 reducer NEW_SESSION 创建，
+ *   主进程 projects-store 只整体读写快照）。故 onSessionCreate 未注入时不做实质处理；
+ *   注入后返回新 localSessionId。详见报告「session.create 遗留缺口」。
+ */
 export function createDispatcher(deps: DispatchDeps) {
   return async (env: Envelope) => {
     switch (env.type) {
@@ -193,10 +209,17 @@ export function createDispatcher(deps: DispatchDeps) {
         deps.resolveDialog(p.reqId, p.result)
         break
       }
-      case 'session.attach':
-      case 'session.create':
-        // TODO Task 10: 会话清单/接管/新建
+      case 'session.attach': {
+        const p = env.payload as { localSessionId: string }
+        deps.onAttach?.(p.localSessionId)
         break
+      }
+      case 'session.create': {
+        // 真实现：交由注入的 onSessionCreate（主进程有建会话能力时）。
+        // 未注入时不 mock —— 静默忽略（最小特权），由手机端超时/缺省处理。
+        deps.onSessionCreate?.()
+        break
+      }
       default:
         // 白名单外，静默忽略（最小特权）
         break
@@ -301,5 +324,59 @@ export function createEventForwarder(
       opts.enqueueDialog?.(data.reqId, env)
       sendFn(env)
     },
+    /** session.list —— 桌面连上中继后下发当前可远程操作的会话清单。 */
+    sendSessionList(sessions: SessionListItem[]) {
+      sendFn(placeholderEnv('session.list', { sessions }))
+    },
   }
+}
+
+/**
+ * session.list payload 的单条会话项。
+ * localSessionId 是协议路由键（与 claude:* 事件的 localSessionId 对齐）；
+ * status 取运行态（running/completed/error/idle）供手机端列表区分进行中/已结束。
+ */
+export interface SessionListItem {
+  localSessionId: string
+  title: string
+  status: 'running' | 'completed' | 'error' | 'idle'
+}
+
+/** buildSessionListPayload 的输入：从 projects-store 快照抽取的最小字段。 */
+export interface SessionListInputSession {
+  id: string
+  title: string
+  archived?: boolean
+}
+export interface SessionListInputProject {
+  id: string
+  name: string
+  sessions: SessionListInputSession[]
+}
+
+/**
+ * 从工作区快照构造 session.list 的 payload（纯函数，可单测）。
+ *
+ * 设计：
+ * - 扁平化所有项目的会话，每条带 projectId/projectName 便于手机端分组展示。
+ * - 排除已归档会话（archived=true）—— 远程操作归档会话无意义。
+ * - status 统一为 'idle'：桌面端 forwarder 转发所有会话的 claude:result/claude:error 等事件，
+ *   手机端据实时事件更新状态比依赖初始快照更准；初始下发用 idle 占位。
+ *   后续若主进程暴露 running-sessions 查询，可在此注入真实 status。
+ */
+export function buildSessionListPayload(projects: SessionListInputProject[]): { sessions: (SessionListItem & { projectId: string; projectName: string })[] } {
+  const sessions: (SessionListItem & { projectId: string; projectName: string })[] = []
+  for (const p of projects) {
+    for (const s of p.sessions) {
+      if (s.archived) continue
+      sessions.push({
+        localSessionId: s.id,
+        title: s.title || '(未命名会话)',
+        status: 'idle',
+        projectId: p.id,
+        projectName: p.name,
+      })
+    }
+  }
+  return { sessions }
 }
