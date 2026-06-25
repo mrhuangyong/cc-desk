@@ -30,6 +30,7 @@ function makeState(): AppState {
     dirtyTabIds: {}, lastFileOpenedSeq: 0, queueBySession: {}, tasksBySession: {}, backendTasksBySession: {}, panelFold: { root: false }, panelPosition: { x: 0, y: 0 }, subagentOutputBySession: {}, planBySession: {}, abortedBySession: {},
     editingMessageId: null, editingQueueId: null,
     updateStatus: { state: 'idle' },
+    reviewByProject: {},
   }
 }
 

@@ -28,6 +28,7 @@ function initialState(): AppState {
     abortedBySession: {},
     editingMessageId: null, editingQueueId: null,
     updateStatus: { state: 'idle' },
+    reviewByProject: {},
   }
 }
 

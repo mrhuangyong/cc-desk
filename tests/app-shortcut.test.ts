@@ -34,6 +34,7 @@ function makeState(): AppState {
     planBySession: {},
     abortedBySession: {}, editingMessageId: null, editingQueueId: null,
     updateStatus: { state: 'idle' },
+    reviewByProject: {},
   }
 }
 
