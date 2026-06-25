@@ -7,6 +7,14 @@ interface Props {
   collapsed: boolean
 }
 
+export function getPanelContentLockWidth({ animating, dragging, originalWidth }: {
+  animating: boolean
+  dragging: boolean
+  originalWidth: number
+}): number | undefined {
+  return animating && !dragging ? originalWidth : undefined
+}
+
 export function RightPanel({ collapsed }: Props) {
   const { width, dragging, onPointerDown, registerApply } = useResizableWidth({
     initial: 420,
@@ -43,7 +51,7 @@ export function RightPanel({ collapsed }: Props) {
       ref={refCallback}
       onTransitionEnd={onTransitionEnd}
       style={{
-        width, flexShrink: 0, position: 'relative', background: 'var(--bg)',
+        width, flexShrink: 0, minHeight: 0, position: 'relative', background: 'var(--bg)',
         borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column',
         ...animStyles,
         // 拖动时去掉 width transition，避免动画平滑导致不跟手；仅展开/折叠保留动画
@@ -66,8 +74,9 @@ export function RightPanel({ collapsed }: Props) {
       {/* 内层 wrapper：动画期间固定原始宽度，外层 overflow:hidden 裁剪 */}
       <div style={{
         display: 'flex', flexDirection: 'column', flex: 1,
-        width: animating ? originalWidthRef.current : undefined,
+        width: getPanelContentLockWidth({ animating, dragging, originalWidth: originalWidthRef.current }),
         minWidth: 0,  // flex 子项默认 min-width:auto 会被内容撑住，导致外层缩小时内容不跟着缩
+        minHeight: 0, // flex 子项默认 min-height:auto 会让 webview 回退到固有高度
         overflow: 'hidden',
       }}>
         <TabBar />

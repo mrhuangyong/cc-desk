@@ -153,6 +153,19 @@ describe('reducer', () => {
     expect(s2.tabsBySession['s1'].length).toBe(2) // browser 不去重，可多开
   })
 
+  it('UPDATE_TAB_URL 持久保存浏览器当前网址，切换会话后仍保留', () => {
+    const state = initialState()
+    const opened = reducer(state, { type: 'OPEN_TAB', tabType: 'browser' })
+    const tabId = opened.activeTabIdBySession['s1']!
+    const navigated = reducer(opened, { type: 'UPDATE_TAB_URL', tabId, url: 'https://example.com/docs' })
+
+    const toS2 = reducer(navigated, { type: 'SELECT_SESSION', sessionId: 's2' })
+    const backToS1 = reducer(toS2, { type: 'SELECT_SESSION', sessionId: 's1' })
+
+    expect(backToS1.tabsBySession['s1'].find(t => t.id === tabId)?.url).toBe('https://example.com/docs')
+    expect(backToS1.tabsBySession['s1'].find(t => t.id === tabId)?.title).toBe('https://example.com/docs')
+  })
+
   it('OPEN_TAB terminal 类型携带 cwd 写入 Tab', () => {
     const state = initialState()
     const next = reducer(state, { type: 'OPEN_TAB', tabType: 'terminal', cwd: '/proj' })

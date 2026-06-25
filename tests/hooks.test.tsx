@@ -159,4 +159,21 @@ describe('usePanelAnimation', () => {
     expect(result.current.animating).toBe(false)
     expect(result.current.styles).toEqual({})
   })
+
+  it('展开动画即使没有收到 transitionend，也会兜底结束 animating，避免内容长期锁宽', async () => {
+    const { result, rerender } = renderHook(
+      ({ collapsed }) => usePanelAnimation(collapsed),
+      { initialProps: { collapsed: true } }
+    )
+
+    rerender({ collapsed: false })
+    expect(result.current.animating).toBe(true)
+
+    await act(async () => {
+      await new Promise(r => setTimeout(r, 400))
+    })
+
+    expect(result.current.mounted).toBe(true)
+    expect(result.current.animating).toBe(false)
+  })
 })

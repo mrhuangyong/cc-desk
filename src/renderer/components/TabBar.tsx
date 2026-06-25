@@ -58,7 +58,7 @@ export function TabBar() {
           />
         )
       } else if (t.type === 'browser') {
-        body = <BrowserTab initialUrl={t.url} />
+        body = <BrowserTab tabId={t.id} initialUrl={t.url} />
       } else if (t.type === 'review') {
         body = <ReviewTab />
       } else {
@@ -80,7 +80,7 @@ export function TabBar() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, minWidth: 0 }}>
       <div style={{ display: 'flex', minHeight: 36, alignItems: 'stretch', borderBottom: '1px solid var(--border)', background: 'var(--bg-sidebar)', position: 'relative' }}>
         {/* tab 列表：可水平滚动，tab 不缩 */}
         <div style={{ display: 'flex', flex: 1, minWidth: 0, overflowX: 'auto' }} className="tab-scroll">
@@ -190,7 +190,9 @@ export function TabBar() {
             </div>
           </>
         )}
-      {renderAllTabs()}
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
+        {renderAllTabs()}
+      </div>
     </div>
   )
 }

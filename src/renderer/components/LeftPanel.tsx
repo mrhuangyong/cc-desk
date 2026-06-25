@@ -8,6 +8,7 @@ import { useStore } from '../state/store'
 import { useI18n } from '../i18n/useI18n'
 import { useResizableWidth } from '../hooks/useResizableWidth'
 import { usePanelAnimation } from '../hooks/usePanelAnimation'
+import { getPanelContentLockWidth } from './RightPanel'
 
 interface Props {
   collapsed: boolean
@@ -151,7 +152,7 @@ export function LeftPanel({ collapsed, onOpenSearch }: Props) {
         {/* 内层 wrapper：动画期间固定原始宽度，外层 overflow:hidden 裁剪 */}
         <div style={{
           display: 'flex', flexDirection: 'column', flex: 1,
-          width: animating ? originalWidthRef.current : undefined,
+          width: getPanelContentLockWidth({ animating, dragging, originalWidth: originalWidthRef.current }),
           overflow: 'hidden',
         }}>
           {/* 顶部功能区：新建会话/搜索/技能各独占一行 */}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 type Phase = 'idle' | 'expanding' | 'transitioning' | 'expanded' | 'collapsing'
+const ANIMATION_FALLBACK_MS = 350
 
 /**
  * 面板展开/折叠动画。
@@ -18,9 +19,11 @@ export function usePanelAnimation(collapsed: boolean) {
   // 追踪展开动画：expanding 开始 → transitionEnd 结束
   const expandingRef = useRef(false)
   const rafRef = useRef(0)
+  const timeoutRef = useRef(0)
 
   useEffect(() => {
     cancelAnimationFrame(rafRef.current)
+    clearTimeout(timeoutRef.current)
     if (!collapsed) {
       expandingRef.current = true
       setPhase('expanding')
@@ -32,17 +35,32 @@ export function usePanelAnimation(collapsed: boolean) {
           setTargetWidth(undefined)
         })
       })
+      // transitionend 在宽度被直接写 style、页面隐藏或 React 重排时可能丢失。
+      // 兜底释放 animating，避免内层 wrapper 长期锁住展开前宽度。
+      timeoutRef.current = window.setTimeout(() => {
+        expandingRef.current = false
+        setPhase('expanded')
+        setTargetWidth(undefined)
+      }, ANIMATION_FALLBACK_MS)
     } else {
       if (phase === 'idle') return
       expandingRef.current = false
       setPhase('collapsing')
       setTargetWidth(0)
+      timeoutRef.current = window.setTimeout(() => {
+        setPhase('idle')
+        setTargetWidth(undefined)
+      }, ANIMATION_FALLBACK_MS)
     }
-    return () => cancelAnimationFrame(rafRef.current)
+    return () => {
+      cancelAnimationFrame(rafRef.current)
+      clearTimeout(timeoutRef.current)
+    }
   }, [collapsed])
 
   const onTransitionEnd = useCallback((e: React.TransitionEvent) => {
     if (e.propertyName !== 'width') return
+    clearTimeout(timeoutRef.current)
     if (expandingRef.current) {
       // 展开动画结束
       expandingRef.current = false

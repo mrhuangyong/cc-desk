@@ -60,6 +60,68 @@ const PICKER_SCRIPT = `
 })();
 `
 
+// 某些预览页会在 webview 内部用 iframe height:100% 承载实际内容，但 iframe 的父级
+// 没有明确高度，导致 100% 高度链断开。只修声明了 100% 高度的 iframe 祖先链，避免
+// 影响普通网页布局。
+export const VIEWPORT_CHAIN_FIX_SCRIPT = `
+(function () {
+  var STYLE_ID = 'ccdesk-browser-viewport-chain-fix';
+  if (!document.getElementById(STYLE_ID)) {
+    var style = document.createElement('style');
+    style.id = STYLE_ID;
+    style.textContent = [
+      'html, body { width: 100% !important; height: 100% !important; min-height: 100% !important; }',
+      'iframe[data-ccdesk-fullheight="true"] { width: 100% !important; height: 100% !important; display: block !important; }'
+    ].join('\\n');
+    (document.head || document.documentElement).appendChild(style);
+  }
+
+  function wantsFullHeight(iframe) {
+    var heightAttr = (iframe.getAttribute('height') || '').trim();
+    var inlineHeight = (iframe.style && iframe.style.height || '').trim();
+    var styleText = iframe.getAttribute('style') || '';
+    return heightAttr === '100%' || inlineHeight === '100%' || /height\\s*:\\s*100%/i.test(styleText);
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('iframe'), function (iframe) {
+    if (!wantsFullHeight(iframe)) return;
+    iframe.setAttribute('data-ccdesk-fullheight', 'true');
+    var el = iframe.parentElement;
+    while (el && el !== document.documentElement) {
+      el.style.minHeight = '100%';
+      el.style.height = '100%';
+      if (getComputedStyle(el).display === 'inline') el.style.display = 'block';
+      el = el.parentElement;
+    }
+  });
+})();
+`
+
+export function injectViewportChainFix(webview: Pick<WebviewEl, 'executeJavaScript'>): void {
+  try {
+    const result = webview.executeJavaScript?.(VIEWPORT_CHAIN_FIX_SCRIPT)
+    if (result && typeof result.catch === 'function') {
+      result.catch((err: unknown) => {
+        console.warn('[cc-desk] 注入浏览器高度链修复失败', err)
+      })
+    }
+  } catch (err) {
+    console.warn('[cc-desk] 注入浏览器高度链修复失败', err)
+  }
+}
+
+export function syncWebviewShadowFrameSize(webview: Pick<HTMLElement, 'clientHeight' | 'clientWidth' | 'shadowRoot'>): void {
+  const iframe = webview.shadowRoot?.querySelector('iframe') as HTMLIFrameElement | null
+  if (!iframe) return
+  const h = webview.clientHeight
+  const w = webview.clientWidth
+  if (w > 0) iframe.style.width = '100%'
+  if (h > 0) iframe.style.height = `${h}px`
+  iframe.style.minHeight = '0'
+  iframe.style.display = 'block'
+  iframe.style.border = '0'
+}
+
 interface PickedInfo {
   source: string
   tag: string
@@ -75,7 +137,7 @@ type WebviewEl = HTMLDivElement & {
   openDevTools?: () => void
 }
 
-export function BrowserTab({ initialUrl }: { initialUrl?: string }) {
+export function BrowserTab({ tabId, initialUrl }: { tabId: string; initialUrl?: string }) {
   const { state, dispatch } = useStore()
   const webviewRef = useRef<WebviewEl | null>(null)
   const webviewWrapRef = useRef<HTMLDivElement | null>(null)
@@ -92,6 +154,7 @@ export function BrowserTab({ initialUrl }: { initialUrl?: string }) {
     setIdx(newHistory.length - 1)
     setUrl(full)
     setInput(full)
+    dispatch({ type: 'UPDATE_TAB_URL', tabId, url: full })
   }
 
   const go = (delta: number) => {
@@ -100,6 +163,7 @@ export function BrowserTab({ initialUrl }: { initialUrl?: string }) {
     setIdx(ni)
     setUrl(history[ni])
     setInput(history[ni])
+    dispatch({ type: 'UPDATE_TAB_URL', tabId, url: history[ni] })
   }
 
   // 通过 webview 的 console-message 事件接收 guest 页面回传的拾取结果
@@ -136,26 +200,69 @@ export function BrowserTab({ initialUrl }: { initialUrl?: string }) {
     }
   }, [])
 
-  // webview 是独立 Chromium 渲染进程，容器（右栏）拖动改变宽度时，CSS flex
-  // 尺寸变化不总能触发 guest 页面 viewport 重排——导致右栏缩放时浏览器内容
-  // 不跟着变。用 ResizeObserver 监听包装容器，回调里把容器尺寸显式写到
-  // webview 的 style，强制其内部重新布局（与 TerminalTab 的 ResizeObserver
-  // + fit 模式同理：主动通知而非依赖被动 stretch）。
+  useEffect(() => {
+    const wv = webviewRef.current
+    if (!wv || typeof wv.executeJavaScript !== 'function') return
+    const injectViewportFix = () => injectViewportChainFix(wv)
+    wv.addEventListener('dom-ready', injectViewportFix)
+    wv.addEventListener('did-finish-load', injectViewportFix)
+    return () => {
+      wv.removeEventListener('dom-ready', injectViewportFix)
+      wv.removeEventListener('did-finish-load', injectViewportFix)
+    }
+  }, [url])
+
+  useEffect(() => {
+    const wv = webviewRef.current
+    if (!wv) return
+    const syncGuestUrl = (e: Event) => {
+      const nextUrl = (e as unknown as { url?: string }).url
+      if (!nextUrl) return
+      setUrl(nextUrl)
+      setInput(nextUrl)
+      dispatch({ type: 'UPDATE_TAB_URL', tabId, url: nextUrl })
+    }
+    wv.addEventListener('did-navigate', syncGuestUrl)
+    wv.addEventListener('did-navigate-in-page', syncGuestUrl)
+    return () => {
+      wv.removeEventListener('did-navigate', syncGuestUrl)
+      wv.removeEventListener('did-navigate-in-page', syncGuestUrl)
+    }
+  }, [dispatch, tabId, url])
+
+  // webview 是独立 Chromium 渲染进程，且元素异步 attach。CSS height:100% 对 webview 不可靠
+  // （Electron webview 有固有 preferred size，常表现为 ~140px 默认高度）。用 ResizeObserver
+  // 高度由包装层显式写到 webview style.px；宽度保持 100% 交给 flex 布局自适应。
+  // 不能把宽度写成像素值，否则右栏拖宽后如果 ResizeObserver/动画时序错过一帧，
+  // webview 会残留旧宽度（例如 420px）。
   useEffect(() => {
     const wrap = webviewWrapRef.current
     const wv = webviewRef.current
     if (!wrap || !wv) return
-    const apply = () => {
-      const w = wrap.clientWidth
+    let rafId = 0
+    const syncSize = () => {
       const h = wrap.clientHeight
-      if (w === 0 || h === 0) return
-      wv.style.width = `${w}px`
+      wv.style.width = '100%'
+      if (h === 0) return
       wv.style.height = `${h}px`
+      syncWebviewShadowFrameSize(wv)
     }
-    apply()
-    const ro = new ResizeObserver(apply)
+    const scheduleSync = () => {
+      syncSize()
+      if (rafId) cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(syncSize)
+    }
+    scheduleSync()
+    // webview attach 后布局稳定，再 apply 一次（解决 effect 早跑、attach晚的问题）
+    const onAttach = scheduleSync
+    wv.addEventListener('did-attach', onAttach)
+    const ro = new ResizeObserver(scheduleSync)
     ro.observe(wrap)
-    return () => ro.disconnect()
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      wv.removeEventListener('did-attach', onAttach)
+      ro.disconnect()
+    }
   }, [url])
 
   const togglePick = () => {
@@ -185,7 +292,7 @@ export function BrowserTab({ initialUrl }: { initialUrl?: string }) {
     : { ...btnBase, color: 'var(--text-muted)' }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, minWidth: 0 }}>
       <div style={{ display: 'flex', gap: 4, padding: 6, borderBottom: '1px solid var(--border)', alignItems: 'center' }}>
         <Tooltip label="后退"><button disabled={idx === 0} onClick={() => go(-1)} style={{ ...btnBase, color: idx === 0 ? 'var(--text-muted)' : 'var(--text-muted)', opacity: idx === 0 ? 0.3 : 1, display: 'inline-flex', alignItems: 'center' }}><ArrowLeft size={16} /></button></Tooltip>
         <Tooltip label="前进"><button disabled={idx >= history.length - 1} onClick={() => go(1)} style={{ ...btnBase, color: 'var(--text-muted)', opacity: idx >= history.length - 1 ? 0.3 : 1, display: 'inline-flex', alignItems: 'center' }}><ArrowRight size={16} /></button></Tooltip>
@@ -205,7 +312,7 @@ export function BrowserTab({ initialUrl }: { initialUrl?: string }) {
         </Tooltip>
       </div>
       {url ? (
-        <div ref={webviewWrapRef} style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
+        <div ref={webviewWrapRef} style={{ flex: 1, minHeight: 0, minWidth: 0, position: 'relative', overflow: 'hidden' }}>
           <webview
             ref={setWebviewRef}
             src={url}

@@ -351,6 +351,19 @@ export function reducer(state: AppState, action: Action): AppState {
         lastFileOpenedSeq: state.lastFileOpenedSeq + 1
       }
     }
+    case 'UPDATE_TAB_URL': {
+      let changed = false
+      const tabsBySession = Object.fromEntries(Object.entries(state.tabsBySession).map(([sessionId, tabs]) => {
+        const nextTabs = tabs.map(tab => {
+          if (tab.id !== action.tabId || tab.type !== 'browser') return tab
+          if (tab.url === action.url && tab.title === action.url) return tab
+          changed = true
+          return { ...tab, url: action.url, title: action.url }
+        })
+        return [sessionId, nextTabs]
+      }))
+      return changed ? { ...state, tabsBySession } : state
+    }
     case 'TAB_DIRTY': {
       const dirtyTabIds = { ...state.dirtyTabIds }
       if (action.dirty) dirtyTabIds[action.tabId] = true
