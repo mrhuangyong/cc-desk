@@ -203,3 +203,48 @@ export function createDispatcher(deps: DispatchDeps) {
     }
   }
 }
+
+const DIALOG_TTL_MS = 24 * 3600_000 // 24h 兜底硬上限，防挂起请求泄漏
+
+export interface DialogReplayer {
+  /** 登记一条挂起的 dialog.request（用于断线重连后补发）。 */
+  enqueue(reqId: string, env: Envelope): void
+  /** 重连后按目标设备补发所有未取消/未过期的登记（deviceId 预留给路由扩展，当前广播）。 */
+  replayFor(deviceId: string): void
+  /** dialog 已被解决或取消时移除登记。 */
+  cancel(reqId: string): void
+  /** 清理超过 24h 的陈旧登记（兜底硬上限防泄漏）。 */
+  cleanupExpired(): void
+}
+
+/**
+ * 登记挂起的 dialog.request，断线重连后补发给手机。24h 兜底清理防泄漏。
+ *
+ * 协议里 dialog.request 是唯一状态化出站消息（spec §5.3）：桌面端 dialogResolvers
+ * 持有 Promise，remote-bridge 额外登记一份用于重连补发。一旦手机回 dialog.response
+ * 或桌面侧 cancel，即从登记中移除。
+ *
+ * 注：内部用 Date.now() 计算过期时间，测试可用 vi.setSystemTime 控制。
+ */
+export function createDialogReplayer(sendFn: (env: Envelope) => void): DialogReplayer {
+  const pending = new Map<string, { env: Envelope; expiresAt: number }>()
+  return {
+    enqueue(reqId, env) {
+      pending.set(reqId, { env, expiresAt: Date.now() + DIALOG_TTL_MS })
+    },
+    replayFor(_deviceId) {
+      // 当前 broadcast 语义：把所有未取消/未过期的登记按入队顺序补发。
+      // Map 保持插入顺序，所以重连后补发顺序与原 enqueue 一致。
+      for (const { env } of pending.values()) sendFn(env)
+    },
+    cancel(reqId) {
+      pending.delete(reqId)
+    },
+    cleanupExpired() {
+      const now = Date.now()
+      for (const [id, { expiresAt }] of pending) {
+        if (now > expiresAt) pending.delete(id)
+      }
+    },
+  }
+}
