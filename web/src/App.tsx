@@ -1,33 +1,44 @@
 // web/src/App.tsx
 // PWA 根组件。
 //
-// Task 12 占位实现：渲染最小可用壳子，接入 useRelay 显示连接状态。
-// 后续任务（Task 13-14）会在此之上叠加配对 UI / 会话列表 / 对话流。
-import { useState } from 'react'
-import { useRelay } from './hooks/useRelay'
+// Task 13：未配对 → PairPage（扫码/输码）；已配对 → 占位会话列表（Task 14 实现）。
+// 配对状态以本地存储的桌面身份为准（PairPage 配对成功后会写入）。
+import { useEffect, useState } from 'react'
+import { loadDesktopIdentity } from './lib/pair'
+import PairPage from './pages/PairPage'
 
 export default function App() {
-  // 占位：实际 deviceId/deviceKey 来自配对流程（Task 13）；先用本地存储兜底。
-  const [deviceId] = useState(() => localStorage.getItem('deviceId') || '')
-  const [deviceKey] = useState(() => localStorage.getItem('deviceKey') || '')
-  const relayUrl = import.meta.env.VITE_RELAY_URL || `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`
+  // 已配对的桌面身份；配对页成功后会落盘并触发重新读取。
+  const [desktop, setDesktop] = useState(() => loadDesktopIdentity())
 
-  const relay = useRelay({ relayUrl, deviceId, deviceKey })
+  // 配对成功回调：刷新身份态，触发视图切换。
+  // PairPage 卸载时已落盘，这里只需重读。
+  const handlePaired = () => {
+    setDesktop(loadDesktopIdentity())
+  }
+
+  // 跨 Tab / 多窗口场景：localStorage 变化时同步配对态。
+  useEffect(() => {
+    const onStorage = () => setDesktop(loadDesktopIdentity())
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
+
+  if (!desktop) {
+    return <PairPage onPaired={handlePaired} />
+  }
 
   return (
     <div className="app">
       <header className="app-header">
         <h1>cc-desk</h1>
-        <span className={`status ${relay.connected ? 'on' : 'off'}`}>
-          {relay.connected ? '已连接' : '未连接'}
-        </span>
+        <span className="status on">已配对</span>
       </header>
       <main className="app-body">
-        {!deviceId || !deviceKey ? (
-          <p className="hint">尚未配对。请打开桌面端 cc-desk 的远程控制，扫描配对码。</p>
-        ) : (
-          <p className="hint">已配对设备：{deviceId.slice(0, 8)}…</p>
-        )}
+        <p className="hint">
+          已配对桌面：{desktop.desktopId.slice(0, 12)}…
+        </p>
+        <p className="hint">（会话列表页待 Task 14 实现）</p>
       </main>
     </div>
   )
