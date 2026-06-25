@@ -113,6 +113,28 @@ interface MiscAPI {
   onArchiveTick(cb: (data: { beforeTs: number }) => void): () => void
 }
 
+// 远程控制（设置页：开关/配对/解绑/状态）
+interface RemoteAPI {
+  getConfig(): Promise<{
+    enabled: boolean
+    relayUrl: string
+    deviceId: string
+    deviceKey: string
+    pairedDevices: string[]
+  }>
+  saveConfig(patch: Partial<{
+    enabled: boolean
+    relayUrl: string
+    pairedDevices: string[]
+  }>): Promise<void>
+  pair(): Promise<{ code?: string; qr?: string; expiresAt?: number; error?: string }>
+  cancelPair(): Promise<{ ok: boolean }>
+  unpair(deviceId: string): Promise<{ ok: boolean }>
+  onPairEvent(cb: (data: { kind: string; deviceId?: string }) => void): () => void
+  onState(cb: (s: { connected: boolean }) => void): () => void
+  removeAllListeners(): void
+}
+
 // Claude 配置（读写隔离目录 ~/.cc-desk/claude/）
 interface ClaudeConfigAPI {
   mcp: {
@@ -201,6 +223,7 @@ declare global {
         get: () => Promise<{ version: string; electron: string; chrome: string; node: string }>
       }
       setDevTools: (enabled: boolean) => Promise<void>
+      remote: RemoteAPI
     }
   }
 }
