@@ -167,3 +167,39 @@ export function createRemoteBridge(deps: BridgeDeps): RemoteBridge {
     },
   }
 }
+
+export interface DispatchDeps {
+  send: (opts: { prompt: string; localSessionId?: string; webContents?: any }) => Promise<void>
+  interrupt: (localSessionId: string) => void
+  resolveDialog: (reqId: string, result: any) => void
+}
+
+/** 入站消息分发：手机→桌面的命令白名单。未知 type 静默忽略（最小特权）。 */
+export function createDispatcher(deps: DispatchDeps) {
+  return async (env: Envelope) => {
+    switch (env.type) {
+      case 'session.message': {
+        const p = env.payload as { localSessionId: string; text: string }
+        await deps.send({ prompt: p.text, localSessionId: p.localSessionId })
+        break
+      }
+      case 'session.interrupt': {
+        const p = env.payload as { localSessionId: string }
+        deps.interrupt(p.localSessionId)
+        break
+      }
+      case 'dialog.response': {
+        const p = env.payload as { reqId: string; result: any }
+        deps.resolveDialog(p.reqId, p.result)
+        break
+      }
+      case 'session.attach':
+      case 'session.create':
+        // TODO Task 10: 会话清单/接管/新建
+        break
+      default:
+        // 白名单外，静默忽略（最小特权）
+        break
+    }
+  }
+}
