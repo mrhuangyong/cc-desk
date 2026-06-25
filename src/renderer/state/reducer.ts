@@ -74,6 +74,7 @@ function emptyReview(): ReviewState {
     status: [], selectedPath: null, diffCache: {}, diffScope: 'HEAD',
     loadingStatus: false, loadingDiffPath: null, error: null,
     commitMessage: '', commitBusy: false,
+    notice: null,
   }
 }
 
@@ -967,6 +968,10 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'REVIEW_SET_COMMIT_MESSAGE': {
       const prev = state.reviewByProject[action.projectId] ?? emptyReview()
       return { ...state, reviewByProject: { ...state.reviewByProject, [action.projectId]: { ...prev, commitMessage: action.message } } }
+    }
+    case 'REVIEW_SET_NOTICE': {
+      const prev = state.reviewByProject[action.projectId] ?? emptyReview()
+      return { ...state, reviewByProject: { ...state.reviewByProject, [action.projectId]: { ...prev, notice: action.notice } } }
     }
     case 'REVIEW_CLEAR_DIFF_CACHE': {
       const prev = state.reviewByProject[action.projectId] ?? emptyReview()

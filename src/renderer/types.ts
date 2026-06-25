@@ -337,4 +337,7 @@ export interface ReviewState {
   error: { code: string; message: string } | null
   commitMessage: string
   commitBusy: boolean
+  // 本地反馈：commit/reset 成功/失败提示。git 操作不属于任何会话，
+  // 主进程 claude:notice 带 localSessionId:'' 会被消费者丢弃，故由 ReviewState 自管。
+  notice: { kind: 'success' | 'error'; text: string } | null
 }

@@ -151,15 +151,10 @@ function registerIpcHandlers(): void {
   ipcMain.handle('git:diff', (_e, cwd: string, scope: string, filePath?: string) => gitSvc.diff(cwd, scope as any, filePath))
   ipcMain.handle('git:add', (_e, cwd: string, paths: string[]) => gitSvc.add(cwd, paths))
   ipcMain.handle('git:restore', (_e, cwd: string, paths: string[], staged: boolean) => gitSvc.restore(cwd, paths, { staged }))
-  ipcMain.handle('git:commit', async (_e, cwd: string, message: string) => {
-    const r = await gitSvc.commit(cwd, message)
-    getActiveWin()?.webContents.send('claude:notice', { level: 'info', text: `已提交 ${r.sha}`, localSessionId: '' })
-    return r
-  })
-  ipcMain.handle('git:reset-hard', async (_e, cwd: string) => {
-    await gitSvc.resetHard(cwd)
-    getActiveWin()?.webContents.send('claude:notice', { level: 'warn', text: '已重置工作区', localSessionId: '' })
-  })
+  // git:commit / git:reset-hard 仅纯转发：成功反馈由 ReviewTab 本地 notice 状态管理
+  // （主进程 claude:notice 带 localSessionId:'' 会被 ChatArea 的 if(!sid) 丢弃，属死代码）
+  ipcMain.handle('git:commit', (_e, cwd: string, message: string) => gitSvc.commit(cwd, message))
+  ipcMain.handle('git:reset-hard', (_e, cwd: string) => gitSvc.resetHard(cwd))
   ipcMain.handle('git:generate-commit-message', (_e, cwd: string) => claude.generateCommitMessage(cwd))
 
   ipcMain.handle('dialog:open-directory', async () => {

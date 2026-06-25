@@ -81,6 +81,22 @@ describe('ReviewTab', () => {
     fireEvent.click(screen.getByText('提交'))
     await waitFor(() => expect(gitMock.commit).toHaveBeenCalledWith(expect.any(String), 'feat: x'))
     await waitFor(() => expect((screen.getByPlaceholderText(/commit message/i) as HTMLTextAreaElement).value).toBe(''))
+    // commit 成功后渲染 success notice（包含 sha）
+    await waitFor(() => expect(screen.getByTestId('review-notice')).toBeTruthy())
+    expect(screen.getByTestId('review-notice').textContent).toContain('abc1234')
+  })
+
+  it('commit 失败时显示 error notice', async () => {
+    gitMock.status.mockResolvedValue([{ path: 'a.ts', indexStatus: 'modified', workdirStatus: null }])
+    gitMock.commit.mockRejectedValue(new Error('boom'))
+    renderReview()
+    await waitFor(() => expect(screen.getByText('a.ts')).toBeTruthy())
+    const textarea = screen.getByPlaceholderText(/commit message/i) as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: 'feat: x' } })
+    fireEvent.click(screen.getByText('提交'))
+    await waitFor(() => expect(gitMock.commit).toHaveBeenCalled())
+    await waitFor(() => expect(screen.getByTestId('review-notice')).toBeTruthy())
+    expect(screen.getByTestId('review-notice').textContent).toContain('boom')
   })
 
   it('非 git 仓库显示空状态', async () => {

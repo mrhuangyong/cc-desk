@@ -63,6 +63,12 @@ export function ReviewTab() {
     if (!review?.diffCache[path]) loadDiff(path)
   }
 
+  const onManualRefresh = () => {
+    // 用户主动刷新时清掉旧 notice（commit/reset 自动刷新不清，保留反馈）
+    dispatch({ type: 'REVIEW_SET_NOTICE', projectId, notice: null })
+    refreshStatus()
+  }
+
   const onToggleStage = async (path: string, currentlyStaged: boolean) => {
     if (!cwd) return
     try {
@@ -86,12 +92,13 @@ export function ReviewTab() {
         if (finalMsg) dispatch({ type: 'REVIEW_SET_COMMIT_MESSAGE', projectId, message: finalMsg })
       }
       if (!finalMsg.trim()) return   // 生成也失败 → 不阻塞，用户手填
-      await window.api.git.commit(cwd, finalMsg)
+      const r = await window.api.git.commit(cwd, finalMsg)
       dispatch({ type: 'REVIEW_SET_COMMIT_MESSAGE', projectId, message: '' })
+      dispatch({ type: 'REVIEW_SET_NOTICE', projectId, notice: { kind: 'success', text: `${t('review.committed')} ${r.sha}` } })
       refreshStatus()
     } catch (err: any) {
-      // 错误反馈：阶段 A 仅 console，Task 8 接 notice
       console.error('[review] commit failed', err)
+      dispatch({ type: 'REVIEW_SET_NOTICE', projectId, notice: { kind: 'error', text: (err?.message ?? t('review.commitFailed')) } })
     } finally {
       dispatch({ type: 'REVIEW_SET_LOADING', projectId, loading: { commitBusy: false } })
     }
@@ -115,9 +122,11 @@ export function ReviewTab() {
     if (!confirm(t('review.confirmReset'))) return   // 阶段 A 用 window.confirm 兜底；Electron 原生 dialog 见 Task 8
     try {
       await window.api.git.resetHard(cwd)
+      dispatch({ type: 'REVIEW_SET_NOTICE', projectId, notice: { kind: 'success', text: t('review.resetDone') } })
       refreshStatus()
-    } catch (err) {
+    } catch (err: any) {
       console.error('[review] reset hard failed', err)
+      dispatch({ type: 'REVIEW_SET_NOTICE', projectId, notice: { kind: 'error', text: (err?.message || t('review.resetFailed')) } })
     }
   }
 
@@ -135,11 +144,22 @@ export function ReviewTab() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* 工具栏 */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderBottom: '1px solid var(--border)', fontSize: 12, color: 'var(--text-muted)' }}>
-        <button onClick={refreshStatus} title={t('review.refresh')} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center' }}><RefreshCw size={14} /></button>
+        <button onClick={onManualRefresh} title={t('review.refresh')} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center' }}><RefreshCw size={14} /></button>
         <span>{t('review.fileCount').replace('{n}', String(review?.status.length ?? 0))}</span>
         <div style={{ flex: 1 }} />
         <button onClick={onResetHard} title={t('review.reset')} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center' }}><Trash2 size={14} /></button>
       </div>
+      {/* 本地反馈条：commit/reset 成功(绿)/失败(红)。git 操作不属于会话，故由 ReviewTab 自管 notice */}
+      {review?.notice && (
+        <div role="status" data-testid="review-notice" style={{
+          padding: '4px 10px', fontSize: 12,
+          color: review.notice.kind === 'success' ? 'var(--success, #16a34a)' : 'var(--danger, #dc2626)',
+          background: review.notice.kind === 'success' ? 'var(--success-bg, rgba(22,163,74,0.1))' : 'var(--danger-bg, rgba(220,38,38,0.1))',
+          borderBottom: '1px solid var(--border)',
+        }}>
+          {review.notice.text}
+        </div>
+      )}
       {/* 主体：左列表 + 右 diff */}
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         <div style={{ width: 200, flexShrink: 0, borderRight: '1px solid var(--border)', overflowY: 'auto' }}>

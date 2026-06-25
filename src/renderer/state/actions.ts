@@ -107,5 +107,6 @@ export type Action =
   | { type: 'REVIEW_SET_LOADING'; projectId: string; loading: Partial<Pick<ReviewState, 'loadingStatus' | 'loadingDiffPath' | 'commitBusy'>> }
   | { type: 'REVIEW_SET_ERROR'; projectId: string; error: ReviewState['error'] }
   | { type: 'REVIEW_SET_COMMIT_MESSAGE'; projectId: string; message: string }
+  | { type: 'REVIEW_SET_NOTICE'; projectId: string; notice: { kind: 'success' | 'error'; text: string } | null }
   | { type: 'REVIEW_CLEAR_DIFF_CACHE'; projectId: string }
   | { type: 'REVIEW_CLEAR'; projectId: string }
