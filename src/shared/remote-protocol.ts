@@ -1,54 +1,33 @@
 // src/shared/remote-protocol.ts
 // 远程控制协议地基：桌面 / 中继 / PWA 三端共享。
 // 纯类型 + 纯函数，无 IO，无副作用，便于测试。
+//
+// 类型与常量定义已拆到 remote-protocol-types.ts（纯类型文件，无 node:crypto 依赖），
+// 供 web 端（浏览器）单独复用。本文件保留 Node 同步签名实现（createHmac / randomBytes），
+// 所有现有 Node 端 import 路径（'../shared/remote-protocol'）透明兼容。
 
 import { createHmac, randomBytes } from 'crypto'
+import {
+  PROTOCOL_VERSION,
+  TS_TOLERANCE_MS,
+  type Envelope,
+  type MessageType,
+  type ServerToClient,
+  type ClientToServer,
+  type ControlMessage,
+} from './remote-protocol-types'
 
-/** 协议版本 */
-export const PROTOCOL_VERSION = 1
-
-/** 时间戳容差（毫秒） */
-export const TS_TOLERANCE_MS = 60_000
-
-/** 消息类型 —— 桌面→手机 */
-export type ServerToClient =
-  | 'session.list'        // 当前可远程操作的会话清单
-  | 'session.delta'       // 流式增量
-  | 'session.blocks'      // tool_use/tool_result/计划卡片
-  | 'session.notice'      // 系统提示
-  | 'session.result'      // query 结束
-  | 'dialog.request'      // 批准请求（对应 claude:dialog-request）
-  | 'connection.state'    // 桌面在线状态
-
-/** 消息类型 —— 手机→桌面 */
-export type ClientToServer =
-  | 'bind'                // /ws 连接后的身份握手
-  | 'session.attach'      // 接管会话
-  | 'session.create'      // 新建会话
-  | 'session.message'     // 发消息
-  | 'session.interrupt'   // 中断 query
-  | 'dialog.response'     // 批准/拒绝/忽略
-
-/** 控制类消息（配对、错误等） */
-export type ControlMessage =
-  | 'pair.code'           // 桌面→中继：请求生成配对码
-  | 'pair.request'        // 中继→桌面：手机请求配对
-  | 'pair.approve'        // 桌面→中继：同意配对
-  | 'pair.success'        // 中继→手机：配对完成，下发密钥
-  | 'error'               // 错误回报
-  | 'peer_offline'        // 对端不在线
-
-export type MessageType = ServerToClient | ClientToServer | ControlMessage
-
-/** 消息信封（所有消息统一外壳） */
-export interface Envelope<T = unknown> {
-  v: number               // 协议版本
-  type: MessageType
-  deviceId: string        // 发送方设备
-  ts: number              // 毫秒时间戳
-  nonce: string           // 单调随机，防重放
-  sig: string             // HMAC-SHA256(deviceKey, ts+nonce+payload) base64
-  payload: T
+// 透传 re-export：保持 '../shared/remote-protocol' 的现有 API 表面不变。
+export {
+  PROTOCOL_VERSION,
+  TS_TOLERANCE_MS,
+}
+export type {
+  Envelope,
+  MessageType,
+  ServerToClient,
+  ClientToServer,
+  ControlMessage,
 }
 
 /** 用 deviceKey 对 ts+nonce+payload 做 HMAC-SHA256，返回 base64 签名。 */
