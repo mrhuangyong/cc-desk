@@ -30,6 +30,38 @@ const store = new Store<{ remote: RemoteConfig }>({
   defaults: { remote: DEFAULT },
 })
 
+/**
+ * 内存态「最近解绑设备」集合（不落盘）。
+ *
+ * 背景：中继 v1 无 unbind 端点，用户在桌面主动解绑（remote:unpair）后，中继 binding 里
+ * 仍残留该设备。若该设备的业务信封还在转发（中继未清 binding），recordPairedDevice 会
+ * 把它自动加回 pairedDevices —— 等于用户刚解绑就被偷偷加回，违背用户意图。
+ *
+ * 这里维护一个进程内的解绑名单，recordPairedDevice 跳过其中的设备，直到用户下次主动
+ * 重新发起配对（remote:pair 流程会清空该名单）。不落盘：进程重启后 binding 若仍在转发，
+ * 视作用户新会话，可重新登记（保守地倾向重新可见，避免永久屏蔽）。
+ */
+const recentlyUnpaired = new Set<string>()
+
+/** 标记某设备为「最近解绑」，recordPairedDevice 应跳过它。 */
+export function markUnpaired(deviceId: string): void {
+  if (deviceId) recentlyUnpaired.add(deviceId)
+}
+
+/** 判断是否应把某手机设备登记进 pairedDevices（未解绑且未重复）。纯函数，便于单测。 */
+export function shouldRecordPaired(cfg: RemoteConfig, mobileId: string): boolean {
+  if (!mobileId) return false
+  if (mobileId === cfg.deviceId) return false
+  if (recentlyUnpaired.has(mobileId)) return false
+  if (cfg.pairedDevices.includes(mobileId)) return false
+  return true
+}
+
+/** 用户主动重新发起配对时调用，清空解绑名单，允许被解绑设备重新登记。 */
+export function clearUnpaired(): void {
+  recentlyUnpaired.clear()
+}
+
 export function getRemoteConfig(): RemoteConfig {
   return { ...DEFAULT, ...store.get('remote', DEFAULT) }
 }

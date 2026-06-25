@@ -19,7 +19,10 @@ import { ensureClaudeConfigDir } from './paths'
 import { migrateFromClaude } from './migrate-from-claude'
 import { UpdateManager } from './update-manager'
 import { fixEnvSync } from './fix-env'
-import { getRemoteConfig, saveRemoteConfig, ensureDeviceIdentity, type RemoteConfig } from './remote-config'
+import {
+  getRemoteConfig, saveRemoteConfig, ensureDeviceIdentity,
+  shouldRecordPaired, markUnpaired, clearUnpaired, type RemoteConfig,
+} from './remote-config'
 import {
   createRemoteBridge, createDispatcher, createDialogReplayer, createEventForwarder,
   type RemoteBridge, type DialogReplayer,
@@ -125,7 +128,13 @@ function startRemoteBridge(cfg: RemoteConfig): void {
   if (!win) return
   const wc = win.webContents
 
-  remoteReplayer = createDialogReplayer((env) => remoteBridge?.send(env))
+  // replayer 补发的是 forwarder 早先 enqueue 的「占位信封」（sig 为空），
+  // 必须和 forwarder 的 sendFn 一样用 makeEnvelope 重签后发给中继，
+  // 否则中继会以 bad_sig 拒收，手机重连后永远看不到挂起的批准请求。
+  remoteReplayer = createDialogReplayer((env) => {
+    const signed = makeEnvelope(cfg.deviceKey, env.type as MessageType, cfg.deviceId, env.payload)
+    remoteBridge?.send(signed)
+  })
 
   const dispatcher = createDispatcher({
     send: (opts) => claude.send({ ...opts, webContents: wc }),
@@ -145,9 +154,8 @@ function startRemoteBridge(cfg: RemoteConfig): void {
   // 配对设备增补：中继把手机的业务信封转发过来时，env.deviceId 即手机设备 ID。
   // 收到任意业务信封说明该设备已配对上线，补进 pairedDevices（去重）并通知渲染端刷新。
   const recordPairedDevice = (mobileId: string) => {
-    if (!mobileId || mobileId === cfg.deviceId) return
     const cur = getRemoteConfig()
-    if (cur.pairedDevices.includes(mobileId)) return
+    if (!shouldRecordPaired(cur, mobileId)) return
     saveRemoteConfig({ pairedDevices: [...cur.pairedDevices, mobileId] })
     emitPairEvent({ kind: 'paired', deviceId: mobileId })
   }
@@ -533,6 +541,8 @@ function registerIpcHandlers(): void {
     if (!cfg.enabled || !cfg.deviceId || !cfg.deviceKey) {
       return { error: '请先启用远程控制' }
     }
+    // 用户主动重新发起配对：清空解绑名单，允许被解绑设备重新登记。
+    clearUnpaired()
     return requestPairCode(cfg)
   })
   ipcMain.handle('remote:cancel-pair', () => {
@@ -542,10 +552,8 @@ function registerIpcHandlers(): void {
   ipcMain.handle('remote:unpair', (_e, deviceId: string) => {
     const cfg = getRemoteConfig()
     saveRemoteConfig({ pairedDevices: cfg.pairedDevices.filter(d => d !== deviceId) })
-    // 通知中继删绑定：经业务 ws 发一条 pair.approve 的反向操作——
-    // 当前中继 v1 无 unbind 端点，binding-store 仅服务端侧管理。
-    // 桌面端清本地记录后，被解绑设备的 bind 握手会被中继拒绝（bindings.has 失败）。
-    // 注：中继持久化的 binding 需运维侧或后续 Task 补 unbind 端点清理。
+    // 标记为「最近解绑」：防止该设备仍在中继 binding 里时，收到其业务信封被自动加回。
+    markUnpaired(deviceId)
     emitPairEvent({ kind: 'unpaired', deviceId })
     return { ok: true }
   })
