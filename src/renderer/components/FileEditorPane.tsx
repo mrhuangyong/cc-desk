@@ -7,6 +7,7 @@ import { Eye, Pencil } from 'lucide-react'
 import { useStore } from '../state/store'
 import { monacoThemeFor, monacoLanguageFor } from '../editor/monacoEnv'
 import { MarkdownRenderer } from './markdown/MarkdownRenderer'
+import { fileKindOf, toFileUrl } from './fileKind'
 
 export interface FileEditorPaneHandle {
   save: () => Promise<boolean>
@@ -29,16 +30,20 @@ export const FileEditorPane = forwardRef<FileEditorPaneHandle, Props>(function F
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'preview' | 'edit'>(() => isMarkdown(filePath) ? 'preview' : 'edit')
+  const [imgError, setImgError] = useState(false)
   const contentRef = useRef<string>('')
   const loadedRef = useRef<string>('')
   const tabIdRef = useRef<string>(tabId)
   const filePathRef = useRef<string | undefined>(filePath)
   useEffect(() => { tabIdRef.current = tabId }, [tabId])
   useEffect(() => { filePathRef.current = filePath }, [filePath])
+  useEffect(() => { setImgError(false) }, [filePath])
 
-  // 加载文件
+  // 加载文件（图片/二进制不读 readFile）
   useEffect(() => {
     if (!filePath) { setContent(''); loadedRef.current = ''; contentRef.current = ''; return }
+    const kind = fileKindOf(filePath)
+    if (kind === 'image' || kind === 'binary') return
     let cancelled = false
     setLoading(true)
     setError(null)
@@ -99,6 +104,31 @@ export const FileEditorPane = forwardRef<FileEditorPaneHandle, Props>(function F
   if (!filePath) {
     return <div style={{ padding: 12, color: 'var(--text-muted)' }}>选择一个文件</div>
   }
+
+  // 图片 / 二进制分支：在加载/错误态之前判断，避免无谓 readFile
+  const kind = filePath ? fileKindOf(filePath) : 'text'
+
+  if (kind === 'image') {
+    if (imgError) {
+      return <div style={{ padding: 12, color: 'var(--text-muted)' }}>图片加载失败</div>
+    }
+    return (
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    overflow: 'auto', padding: 16, minHeight: 0, background: 'var(--bg)' }}>
+        <img
+          src={toFileUrl(filePath)}
+          alt={filePath}
+          onError={() => setImgError(true)}
+          style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+        />
+      </div>
+    )
+  }
+
+  if (kind === 'binary') {
+    return <div style={{ padding: 12, color: 'var(--text-muted)' }}>该文件类型不支持预览</div>
+  }
+
   if (loading) {
     return <div style={{ padding: 12, color: 'var(--text-muted)' }}>加载中…</div>
   }
