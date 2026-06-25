@@ -215,4 +215,15 @@ describe('git-service 写操作', () => {
     const lines = st.stdout.trim().split('\n').sort()
     expect(lines).toEqual(['A  a.txt', 'A  b.txt', 'A  c.txt'])
   })
+
+  it('前序写操作失败不阻塞后续（串行队列 rejection handler）', async () => {
+    await writeFile(join(repo, 'ok.txt'), 'x\n')
+    // 前序：commit 无改动必失败（NOTHING_TO_COMMIT）；后续：add ok.txt 应成功
+    const failing = gitService.commit(repo, 'noop').catch(() => 'failed as expected')
+    const succeeding = gitService.add(repo, ['ok.txt'])
+    const [, addResult] = await Promise.all([failing, succeeding])
+    expect(addResult).toBeUndefined()   // add 成功返回 void
+    const st = await exec('git', ['status', '--porcelain'], { cwd: repo })
+    expect(st.stdout.trim()).toBe('A  ok.txt')
+  })
 })
