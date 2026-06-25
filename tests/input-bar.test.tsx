@@ -20,7 +20,7 @@ vi.mock('../src/renderer/components/AttachmentChip', () => ({
   AttachmentChip: ({ onRemove }: any) => <button data-testid="chip-remove" onClick={onRemove}>x</button>,
 }))
 
-import { InputBar } from '../src/renderer/components/InputBar'
+import { buildPromptWithAttachments, InputBar } from '../src/renderer/components/InputBar'
 
 function baseState(overrides: Record<string, any> = {}) {
   return {
@@ -51,6 +51,47 @@ describe('InputBar 外围交互', () => {
       claude: { send: vi.fn(), stop: vi.fn(), onBuiltinResult: () => {} },
     }
     mockState = baseState()
+  })
+
+  describe('拾取内容发送', () => {
+    const picked = {
+      type: 'pickedElement' as const,
+      el: {
+        source: 'http://localhost:45486/page',
+        tag: 'button',
+        text: '提交订单',
+        selector: 'button.primary',
+        html: '<button class="primary">提交订单</button>',
+      },
+    }
+
+    it('buildPromptWithAttachments 把拾取元素写入发送 prompt', () => {
+      const prompt = buildPromptWithAttachments('分析这个按钮', [picked])
+
+      expect(prompt).toContain('分析这个按钮')
+      expect(prompt).toContain('来源: http://localhost:45486/page')
+      expect(prompt).toContain('标签: button')
+      expect(prompt).toContain('选择器: button.primary')
+      expect(prompt).toContain('文本: 提交订单')
+      expect(prompt).toContain('HTML: <button class="primary">提交订单</button>')
+    })
+
+    it('点击发送时 claude.send 收到包含拾取元素内容的 prompt', () => {
+      mockState = baseState({
+        draft: {
+          doc: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: '看这个元素' }] }] },
+          attachments: [picked],
+        },
+      })
+
+      render(<InputBar />)
+      fireEvent.click(screen.getByLabelText('input.send'))
+
+      expect((window as any).api.claude.send).toHaveBeenCalledWith(expect.objectContaining({
+        prompt: expect.stringContaining('文本: 提交订单'),
+      }))
+      expect((window as any).api.claude.send.mock.calls[0][0].prompt).toContain('HTML: <button class="primary">提交订单</button>')
+    })
   })
 
   describe('权限下拉', () => {

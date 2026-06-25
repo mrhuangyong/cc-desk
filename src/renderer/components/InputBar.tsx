@@ -163,7 +163,7 @@ export function InputBar() {
     dispatch({ type: 'SEND_MESSAGE' })
     dispatch({ type: 'DEQUEUE_MESSAGE', sessionId: state.activeSessionId, queueId: next.id })
     dispatch({ type: 'STREAM_START', sessionId: state.activeSessionId })
-    window.api?.claude?.send({ prompt: next.prompt, localSessionId: state.activeSessionId, sessionId: claudeSessionId || undefined, cwd, permission, thinking, extraDirs: activeSession?.extraDirs })
+    window.api?.claude?.send({ prompt: buildPromptWithAttachments(next.prompt, next.attachments), localSessionId: state.activeSessionId, sessionId: claudeSessionId || undefined, cwd, permission, thinking, extraDirs: activeSession?.extraDirs })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isStreaming, queue.length])
 
@@ -184,7 +184,7 @@ export function InputBar() {
       dispatch({ type: 'SET_DRAFT_DOC', doc })
       dispatch({ type: 'SEND_MESSAGE' })
       dispatch({ type: 'STREAM_START', sessionId: state.activeSessionId })
-      window.api?.claude?.send({ prompt: qm.prompt, localSessionId: state.activeSessionId, sessionId: claudeSessionId || undefined, cwd, permission, thinking, extraDirs: activeSession?.extraDirs })
+      window.api?.claude?.send({ prompt: buildPromptWithAttachments(qm.prompt, qm.attachments), localSessionId: state.activeSessionId, sessionId: claudeSessionId || undefined, cwd, permission, thinking, extraDirs: activeSession?.extraDirs })
     }, 200)
   }
 
@@ -218,7 +218,7 @@ export function InputBar() {
     dispatch({ type: 'SEND_MESSAGE' })
     dispatch({ type: 'STREAM_START', sessionId: state.activeSessionId })
     window.api?.claude?.send({
-      prompt,
+      prompt: buildPromptWithAttachments(prompt, state.draft.attachments),
       localSessionId: state.activeSessionId,
       sessionId: claudeSessionId || undefined,
       cwd,
