@@ -2,7 +2,7 @@
 // 渲染进程通过 window.api.claude / .settings / .fs / .pty 调用主进程。
 
 import type { AppSettings, UpdateStatus } from './types'
-import type { Project, Tab, ModelProvider, ModelItem } from './types'
+import type { Project, Tab, ModelProvider, ModelItem, GitFileStatus, DiffScope } from './types'
 import type {
   ClaudeMcpServer, ClaudePlugin, ClaudeSkill, ClaudeCommand,
   HookEntry, HookMatcher, HookEventView, HooksFull,
@@ -72,6 +72,15 @@ interface FsAPI {
   searchFiles(dirPath: string): Promise<any[]>
   exists(filePath: string): Promise<boolean>
   statKind(filePath: string): Promise<'file' | 'dir' | 'absent'>
+}
+
+interface GitAPI {
+  status(cwd: string): Promise<GitFileStatus[]>
+  diff(cwd: string, scope: DiffScope, filePath?: string): Promise<string>
+  add(cwd: string, paths: string[]): Promise<void>
+  restore(cwd: string, paths: string[], staged: boolean): Promise<void>
+  commit(cwd: string, message: string): Promise<{ sha: string }>
+  resetHard(cwd: string): Promise<void>
 }
 
 interface PtyAPI {
@@ -174,6 +183,7 @@ declare global {
       ccDesk: CcDeskAPI,
       projects: ProjectsAPI
       fs: FsAPI
+      git: GitAPI
       pty: PtyAPI
       backendTask: BackendTaskAPI
       session: SessionAPI

@@ -10,6 +10,7 @@ import { getModelProvidersConfig, saveModelProvidersConfig } from './cc-desk-sto
 import { getProjectsSnapshot, saveProjectsSnapshot } from './projects-store'
 import * as cc from './claude-config'
 import * as mkt from './marketplace-manager'
+import * as gitSvc from './git-service'
 import { getMemoryFile, saveMemoryFile } from './memory-file'
 import { BackendTaskRegistry } from './backend-task-registry'
 import { ensureClaudeConfigDir } from './paths'
@@ -144,6 +145,15 @@ function registerIpcHandlers(): void {
   ipcMain.handle('fs:write-file', async (_e, filePath: string, content: string) => writeFileContent(filePath, content))
   ipcMain.handle('fs:exists', async (_e, filePath: string) => pathExists(filePath))
   ipcMain.handle('fs:stat-kind', async (_e, filePath: string) => statKind(filePath))
+
+  // Git（审查 tab）
+  ipcMain.handle('git:status', (_e, cwd: string) => gitSvc.status(cwd))
+  ipcMain.handle('git:diff', (_e, cwd: string, scope: string, filePath?: string) => gitSvc.diff(cwd, scope as any, filePath))
+  ipcMain.handle('git:add', (_e, cwd: string, paths: string[]) => gitSvc.add(cwd, paths))
+  ipcMain.handle('git:restore', (_e, cwd: string, paths: string[], staged: boolean) => gitSvc.restore(cwd, paths, { staged }))
+  ipcMain.handle('git:commit', (_e, cwd: string, message: string) => gitSvc.commit(cwd, message))
+  ipcMain.handle('git:reset-hard', (_e, cwd: string) => gitSvc.resetHard(cwd))
+
   ipcMain.handle('dialog:open-directory', async () => {
     const result = await dialog.showOpenDialog(getActiveWin()!, {
       properties: ['openDirectory'],

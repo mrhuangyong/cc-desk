@@ -108,6 +108,14 @@ contextBridge.exposeInMainWorld('api', {
     exists: (filePath: string) => ipcRenderer.invoke('fs:exists', filePath),
     statKind: (filePath: string) => ipcRenderer.invoke('fs:stat-kind', filePath),
   },
+  git: {
+    status: (cwd: string) => ipcRenderer.invoke('git:status', cwd),
+    diff: (cwd: string, scope: string, filePath?: string) => ipcRenderer.invoke('git:diff', cwd, scope, filePath),
+    add: (cwd: string, paths: string[]) => ipcRenderer.invoke('git:add', cwd, paths),
+    restore: (cwd: string, paths: string[], staged: boolean) => ipcRenderer.invoke('git:restore', cwd, paths, staged),
+    commit: (cwd: string, message: string) => ipcRenderer.invoke('git:commit', cwd, message),
+    resetHard: (cwd: string) => ipcRenderer.invoke('git:reset-hard', cwd),
+  },
   dialog: {
     openDirectory: () => ipcRenderer.invoke('dialog:open-directory'),
   },
