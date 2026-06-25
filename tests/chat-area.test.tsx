@@ -232,6 +232,41 @@ describe('ChatArea 渲染', () => {
     expect(screen.getByText('chat.noSession')).toBeTruthy()
   })
 
+  it('用户消息渲染 attachments 中的拾取网页元素', () => {
+    mockState = {
+      activeSessionId: 's1',
+      projects: [{
+        id: 'p1',
+        name: 'proj',
+        sessions: [{
+          id: 's1',
+          title: '会话1',
+          messages: [{
+            id: 'm1',
+            role: 'user',
+            content: [{ type: 'text', text: '看这个元素' }],
+            attachments: [{
+              type: 'pickedElement',
+              el: { source: 'http://localhost/page', tag: 'button', text: '提交', selector: 'button.primary', html: '<button>提交</button>' },
+            }],
+          }],
+        }],
+      }],
+      settings: { showTodo: false, showBackendTask: false, taskNotify: false, notifySound: false },
+      tasksBySession: {},
+      backendTasksBySession: {},
+      subagentOutputBySession: {},
+      planBySession: {},
+      streamingBySession: {},
+      panelFold: { root: false },
+      panelPosition: { x: 0, y: 0 },
+    }
+
+    render(<ChatArea />)
+
+    expect(screen.getByTestId('chip-stub')).toBeTruthy()
+  })
+
   it('user 消息渲染 is-user 类', () => {
     mockState = {
       activeSessionId: 's1',

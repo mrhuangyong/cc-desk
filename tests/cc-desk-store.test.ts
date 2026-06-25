@@ -91,6 +91,8 @@ describe('cc-desk-store', () => {
     // 无条目的 role 回退到选中模型 sdkModelId
     expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('glm-5.2')
     expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('glm-5.2')
+    // 关闭 SDK 归因 header 注入，避免第三方代理下 cch 每轮变化导致 KV Cache 失效
+    expect(env.CLAUDE_CODE_ATTRIBUTION_HEADER).toBe('0')
   })
 
   it('buildSdkEnv: baseUrl 为空时不注入 ANTHROPIC_BASE_URL', async () => {

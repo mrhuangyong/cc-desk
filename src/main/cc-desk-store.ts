@@ -86,5 +86,12 @@ export function buildSdkEnv(
   env.ANTHROPIC_DEFAULT_OPUS_MODEL = roleId('opus')
   env.ANTHROPIC_DEFAULT_SONNET_MODEL = roleId('sonnet')
   env.ANTHROPIC_DEFAULT_HAIKU_MODEL = roleId('haiku')
+  // 关闭 Claude Agent SDK 的归因 header 注入（CLAUDE_CODE_ATTRIBUTION_HEADER）。
+  // SDK 原生二进制会在每次请求的 system prompt 顶部注入
+  //   x-anthropic-billing-header: cc_version=...; cc_entrypoint=...; cch=<每轮变化的哈希>;
+  // 直连 Anthropic 时后端会剥离它；但走第三方代理（ANTHROPIC_BASE_URL 指向 new-api 等）时，
+  // 代理不认识这段 header，作为普通文本透传给下游模型，cch 每轮变化导致 system prompt 前缀
+  // 每轮不同 → KV Cache 完全失效。设为 "0" 让 SDK 跳过注入（见 native 二进制 f16 判定）。
+  env.CLAUDE_CODE_ATTRIBUTION_HEADER = '0'
   return env
 }

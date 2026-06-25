@@ -13,7 +13,7 @@ import { renderBlocks } from './blocks/BlockRenderer'
 import { Notices } from './Notices'
 import { Tooltip } from './Tooltip'
 
-import type { ContentBlock, TaskStatus } from '../types'
+import type { ContentBlock, DraftAttachment, Message, TaskStatus } from '../types'
 
 // SDK 的 TaskUpdate patch.status（原始字符串）→ 渲染端 TaskStatus 映射。
 // TaskCreate 建任务时落 pending；SDK 用 in_progress 表示开始执行，映射成 running。
@@ -40,6 +40,12 @@ export function extractText(blocks: ContentBlock[]): string {
     }
     return ''
   }).join('\n').trim()
+}
+
+function messageAttachments(message: Message): DraftAttachment[] {
+  if (message.attachments?.length) return message.attachments
+  if (message.attachment) return [{ type: 'pickedElement', el: message.attachment }]
+  return []
 }
 
 export function CopyButton({ text, inline }: { text: string; inline?: boolean }) {
@@ -383,7 +389,7 @@ export function ChatArea() {
               display: 'flex', flexDirection: 'column', gap: 0,
               userSelect: 'text', cursor: 'text',
             }}>
-              {m.attachment && <AttachmentChip attachment={{ type: 'pickedElement', el: m.attachment }} />}
+              {messageAttachments(m).map((attachment, index) => <AttachmentChip key={index} attachment={attachment} />)}
               <Notices notices={m.notices ?? []} />
               {renderBlocks(m.content, false, subagentOutputByToolUseId, subagentToolUseIds)}
               {/* 底部行：cost 元数据 + 复制钮，mono 小字 */}
@@ -448,7 +454,7 @@ export function ChatArea() {
                 </div>
               ) : (
                 <>
-                  {m.attachment && <AttachmentChip attachment={{ type: 'pickedElement', el: m.attachment }} />}
+                  {messageAttachments(m).map((attachment, index) => <AttachmentChip key={index} attachment={attachment} />)}
                   {renderBlocks(m.content, true, subagentOutputByToolUseId, subagentToolUseIds)}
                   <CopyButton text={extractText(m.content)} />
                 </>

@@ -428,17 +428,10 @@ export class ClaudeService {
           additionalDirectories: extraDirs?.length ? extraDirs : undefined,
           // 技能白名单：仅加载用户启用的技能（禁用的技能从模型列表隐藏）。
           skills: enabledSkillNames.length ? enabledSkillNames : 'all',
-          // 模型输出语言跟随界面国际化设置。
-          // 用 preset:'claude_code' 保留 SDK 完整默认系统提示，append 追加语言约束——
-          // 对任意模型（含经第三方代理的 GLM）都生效，比 settings.language 可靠
-          // （settings.language 对经代理的非 Anthropic 模型常被忽略）。
-          systemPrompt: {
-            type: 'preset',
-            preset: 'claude_code',
-            append: settings.lang === 'en'
-              ? 'Always respond in English, regardless of the language of the user message.'
-              : '始终用简体中文回复，无论用户消息使用何种语言。',
-          },
+          // 不自定义 systemPrompt：改用 SDK 默认 preset。
+          // 原先用 systemPrompt.append 强制输出语言（settings.language 对经代理的非
+          // Anthropic 模型常被忽略），但 systemPrompt append 会改变 prefix，第三方代理
+          // 下影响 KV Cache 命中。语言约束退回下面的 settings.language 兜底。
           settings: {
             language: settings.lang === 'en' ? 'english' : 'chinese',
             // 显式启用 SDK 内置自动压缩：context 接近满时，SDK 会真正摘要并替换内部
