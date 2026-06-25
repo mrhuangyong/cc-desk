@@ -5,10 +5,31 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#0b0b0f" />
     <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- iOS Safari 不完全支持 manifest 的 display/icons，需 apple 元数据补齐：
+         apple-touch-icon 用于「添加到主屏幕」图标；
+         apple-mobile-web-app-capable=yes 让 PWA 全屏运行（无 Safari 地址栏）；
+         apple-mobile-web-app-status-bar-style=black-translucent 配合 viewport viewport-fit=cover 沉浸式刘海。 -->
+    <link rel="apple-touch-icon" href="/icons/icon-180.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="cc-desk" />
     <title>cc-desk</title>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <!-- Service Worker 注册：scope='/' 同源根；生产构建下才有 sw.js（dev 下 vite 不复制 public）。
+         注册逻辑放主入口（而非单独 main.ts），避免额外网络请求与启动时序问题。
+         try/catch 兜底：SW 注册失败绝不阻塞应用渲染（远程控制核心是 WebSocket，PWA 只是壳）。 -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function (err) {
+            console.warn('[cc-desk] SW register failed:', err)
+          })
+        })
+      }
+    </script>
   </body>
 </html>

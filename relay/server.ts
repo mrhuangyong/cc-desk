@@ -41,6 +41,33 @@ export async function startRelayServer(opts: {
   const keyRegistry = createKeyStore(join(opts.dataDir, 'keys.json'))
   const router = createRouter(bindings, (id) => keyRegistry.get(id))
 
+  // PWA 静态资源 MIME 映射（Task 15）。
+  // 为什么必须显式设 Content-Type：浏览器对 Service Worker 注册有严格 MIME 校验——
+  // 若 /sw.js 不以 text/javascript（或 application/javascript）返回，navigator.serviceWorker.register
+  // 会失败（"MIME type ('text/plain') is not a supported stylesheet/script MIME type"）。
+  // 之前 res.writeHead(200) 无 headers，依赖浏览器嗅探，SW 与 manifest 无法可靠注册。
+  // 这里按扩展名补全；未知类型回落 application/octet-stream（触发下载而非执行，安全默认）。
+  const MIME_BY_EXT: Record<string, string> = {
+    '.html': 'text/html; charset=utf-8',
+    '.js': 'text/javascript; charset=utf-8',
+    '.mjs': 'text/javascript; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+    '.json': 'application/json; charset=utf-8',
+    '.webmanifest': 'application/manifest+json; charset=utf-8',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.svg': 'image/svg+xml',
+    '.ico': 'image/x-icon',
+    '.woff': 'font/woff',
+    '.woff2': 'font/woff2',
+    '.map': 'application/json; charset=utf-8',
+  }
+  const contentTypeFor = (absPath: string): string => {
+    const ext = absPath.slice(absPath.lastIndexOf('.')).toLowerCase()
+    return MIME_BY_EXT[ext] ?? 'application/octet-stream'
+  }
+
   const httpServer = createServer((req, res) => {
     // 托管 PWA 静态资源（v1：单页，SPA fallback 到 index.html）
     void (async () => {
@@ -55,13 +82,14 @@ export async function startRelayServer(opts: {
       if (!isSafe) { res.writeHead(403); res.end('forbidden'); return }
       try {
         const data = await readFile(abs)
-        res.writeHead(200)
+        res.writeHead(200, { 'Content-Type': contentTypeFor(abs) })
         res.end(data)
       } catch {
         // SPA fallback（fallback 目标同样在 staticDir 内，天然安全）
         try {
-          const index = await readFile(join(staticRoot, 'index.html'))
-          res.writeHead(200); res.end(index)
+          const indexPath = join(staticRoot, 'index.html')
+          const index = await readFile(indexPath)
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(index)
         } catch {
           res.writeHead(404); res.end('not found')
         }
