@@ -80,6 +80,22 @@ export function ReviewTab() {
     }
   }
 
+  const onStageAll = async () => {
+    if (!cwd || !review?.status.length) return
+    const paths = review.status.filter(f => !f.indexStatus || f.indexStatus === 'untracked').map(f => f.path)
+    if (!paths.length) return
+    try { await window.api.git.add(cwd, paths); refreshStatus() }
+    catch (err) { console.error('[review] stage all failed', err) }
+  }
+
+  const onUnstageAll = async () => {
+    if (!cwd || !review?.status.length) return
+    const paths = review.status.filter(f => f.indexStatus && f.indexStatus !== 'untracked').map(f => f.path)
+    if (!paths.length) return
+    try { await window.api.git.restore(cwd, paths, true); refreshStatus() }
+    catch (err) { console.error('[review] unstage all failed', err) }
+  }
+
   const onSubmit = async () => {
     if (!cwd) return
     const msg = review?.commitMessage ?? ''
@@ -169,6 +185,10 @@ export function ReviewTab() {
             loading={review?.loadingStatus ?? false}
             onSelect={onSelect}
             onToggleStage={onToggleStage}
+            onStageAll={onStageAll}
+            onUnstageAll={onUnstageAll}
+            stageAllLabel={t('review.stagedAll')}
+            unstageAllLabel={t('review.unstageAll')}
           />
         </div>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>

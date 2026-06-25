@@ -54,7 +54,7 @@ describe('ReviewTab', () => {
     gitMock.add.mockResolvedValue(undefined)
     renderReview()
     await waitFor(() => expect(screen.getByText('a.ts')).toBeTruthy())
-    const checkbox = screen.getByRole('checkbox')
+    const checkbox = screen.getByRole('checkbox', { name: 'a.ts' })
     fireEvent.click(checkbox)
     await waitFor(() => expect(gitMock.add).toHaveBeenCalledWith(expect.any(String), ['a.ts']))
   })

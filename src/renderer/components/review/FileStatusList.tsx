@@ -20,17 +20,45 @@ interface Props {
   loading: boolean
   onSelect: (path: string) => void
   onToggleStage: (path: string, currentlyStaged: boolean) => void
+  onStageAll: () => void
+  onUnstageAll: () => void
+  stageAllLabel: string
+  unstageAllLabel: string
 }
 
-export function FileStatusList({ status, selectedPath, loading, onSelect, onToggleStage }: Props) {
+export function FileStatusList({ status, selectedPath, loading, onSelect, onToggleStage, onStageAll, onUnstageAll, stageAllLabel, unstageAllLabel }: Props) {
   if (loading) {
     return <div style={{ padding: 12, color: 'var(--text-muted)' }}>加载中…</div>
   }
   if (status.length === 0) {
     return <div style={{ padding: 12, color: 'var(--text-muted)' }}>无改动</div>
   }
+  // 全选框状态：全部已暂存 = 勾选；部分暂存 = indeterminate；全未暂存 = 不勾选
+  const stagedCount = status.filter(f => f.indexStatus !== null && f.indexStatus !== 'untracked').length
+  const allStaged = stagedCount === status.length
+  const noneStaged = stagedCount === 0
   return (
     <div style={{ overflowY: 'auto' }}>
+      {/* 全选头行：复选框 + "全部暂存/取消" label */}
+      <div
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px',
+          borderBottom: '1px solid var(--border-hair)', fontSize: 12,
+          color: 'var(--text-muted)',
+        }}
+      >
+        <input
+          type="checkbox"
+          aria-label={allStaged ? unstageAllLabel : stageAllLabel}
+          ref={el => { if (el) el.indeterminate = !allStaged && !noneStaged }}
+          checked={allStaged}
+          onChange={() => { allStaged ? onUnstageAll() : onStageAll() }}
+          style={{ margin: 0 }}
+        />
+        <span style={{ cursor: 'pointer' }} onClick={() => { allStaged ? onUnstageAll() : onStageAll() }}>
+          {allStaged ? unstageAllLabel : stageAllLabel}
+        </span>
+      </div>
       {status.map(f => {
         // 派生 staged/unstaged：untracked 不算已暂存（需先 add）
         const staged = f.indexStatus !== null && f.indexStatus !== 'untracked'
@@ -48,6 +76,7 @@ export function FileStatusList({ status, selectedPath, loading, onSelect, onTogg
           >
             <input
               type="checkbox"
+              aria-label={f.path}
               checked={staged}
               onClick={(e) => e.stopPropagation()}
               onChange={() => onToggleStage(f.path, staged)}
