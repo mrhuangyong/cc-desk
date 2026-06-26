@@ -2,6 +2,15 @@ import type { Action } from './actions'
 import type { AppView, ContentBlock, Draft, Project, Session, SettingsSection, SystemNotice, Tab, ThemeId, AppSettings, UpdateStatus, ReviewState } from '../types'
 import { serializeForPrompt } from '../editor/serialize'
 
+// 上下文用量信息（来自 SDK getContextUsage control 命令）。
+// totalTokens/maxTokens/percentage 是进度环主数据；categories 是 tooltip 明细。
+export interface ContextUsageInfo {
+  totalTokens: number
+  maxTokens: number
+  percentage: number
+  categories?: { name: string; tokens: number; color?: string; isDeferred?: boolean }[]
+}
+
 export interface AppState {
   projects: Project[]
   activeSessionId: string
@@ -51,6 +60,9 @@ export interface AppState {
   // 用户主动中止的 session 标志:interrupt 可能不立即生效,SDK 续推的 delta 会被忽略,
   // 直到用户发新消息(STREAM_START)清除。避免停止后 streaming 被重建(停止按钮闪烁)。
   abortedBySession: Record<string, boolean>
+  // 上下文用量（SDK getContextUsage）：按会话分片，供输入框进度环展示。
+  // null/缺失表示尚未查询或会话不存在该数据。
+  contextUsageBySession: Record<string, ContextUsageInfo | null>
   // 就地编辑：当前正在编辑的消息 id（最后一条用户消息编辑重发）
   editingMessageId: string | null
   // 队列编辑：当前正在编辑的排队消息 id
@@ -409,6 +421,10 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'SET_THEME': {
       return { ...state, theme: action.theme }
     }
+    case 'SET_CONTEXT_USAGE': {
+      // usage 为 null 时也写入（表示查询失败/未知态），覆盖旧值
+      return { ...state, contextUsageBySession: { ...state.contextUsageBySession, [action.sessionId]: action.usage } }
+    }
     case 'SET_DRAFT_DOC': {
       return { ...state, draft: { ...state.draft, doc: action.doc } }
     }
@@ -427,10 +443,20 @@ export function reducer(state: AppState, action: Action): AppState {
       // 文本和附件都为空则不发送
       if (!prompt.trim() && attachments.length === 0) return state
       const sessionId = state.activeSessionId
+      // 用户附加的图片：转成 image content block，让用户气泡显示自己发的图，
+      // 同时也随消息进入持久化。source 为纯 base64，ImageBlock 渲染时自动加 data: 前缀。
+      const imageBlocks = attachments
+        .filter(a => a.type === 'image')
+        .map(a => ({ type: 'image' as const, source: a.base64 }))
+      const content: ContentBlock[] = [
+        ...(prompt ? [{ type: 'text' as const, text: prompt }] : []),
+        ...imageBlocks,
+      ]
+      // 无文本也无图片时不该走到这（上面已拦截），兜底防 content 为空
       const newMessage = {
         id: nextId('m'),
         role: 'user' as const,
-        content: [{ type: 'text' as const, text: prompt }],
+        content: content.length > 0 ? content : [{ type: 'text' as const, text: prompt }],
         ...(attachments.length ? { attachments } : {}),
       }
       // 首条消息标题：用 prompt 文本生成

@@ -13,7 +13,7 @@ import type {
 } from '../main/marketplace-manager'
 
 interface ClaudeAPI {
-  send(opts: { prompt: string; localSessionId?: string; sessionId?: string; cwd?: string; permission?: string; thinking?: 'low' | 'medium' | 'high'; extraDirs?: string[] }): Promise<void>
+  send(opts: { prompt: string; localSessionId?: string; sessionId?: string; cwd?: string; permission?: string; thinking?: 'low' | 'medium' | 'high'; extraDirs?: string[]; images?: { mediaType: string; data: string; name?: string }[] }): Promise<void>
   stop(localSessionId: string): Promise<void>
   runningSessions(): Promise<string[]>
   onSystem(cb: (data: { sessionId: string; model: string; tools: string[] }) => void): void
@@ -30,6 +30,8 @@ interface ClaudeAPI {
   onSubagentOutput(cb: (data: any) => void): void
   dialogResponse(payload: { reqId: string; result: any }): Promise<void>
   setPermissionMode(opts: { localSessionId: string; permission: string }): Promise<void>
+  contextUsage(localSessionId: string): Promise<any>
+  onContextUsage(cb: (data: any) => void): (() => void) | undefined
   removeAllListeners(): void
 }
 
