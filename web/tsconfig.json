@@ -13,7 +13,9 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "types": ["vitest/globals"],
+    // types: vitest/globals 给测试；node 给 @shared/remote-protocol.ts 类型检查用
+    // （crypto/Buffer 类型；仅类型检查，不进 vite 运行时 bundle）。
+    "types": ["vitest/globals", "node"],
     // 单一真相源：复用根目录 src/shared/remote-protocol-types.ts 的协议类型。
     // 用纯类型文件（不含 node:crypto），保证 tsc 校验类型时不引入 Node 依赖、
     // vite 打包时不把 crypto 拖进浏览器 bundle。Node 端继续用 remote-protocol.ts
