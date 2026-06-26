@@ -76,7 +76,7 @@ export interface UseRelayHandle {
 // 手机→桌面的业务消息白名单（控制类 bind 之外）。
 type ClientMsgType = Extract<
   MessageType,
-  'session.attach' | 'session.create' | 'session.message' | 'session.interrupt' | 'dialog.response'
+  'session.attach' | 'session.create' | 'session.archive' | 'session.message' | 'session.interrupt' | 'dialog.response' | 'session.sync' | 'session.setActiveModel' | 'session.history.request'
 >
 
 export function useRelay(opts: UseRelayOptions): UseRelayHandle {
@@ -164,6 +164,15 @@ export function useRelay(opts: UseRelayOptions): UseRelayHandle {
         // 握手成功：重置退避，置连接态。
         attemptRef.current = 0
         setConn(true)
+        connectedRef.current = true
+        // 上线后主动请求重推会话列表（session.sync）。
+        // 修复「web 刷新后桌面 bridge 连接未断、不重推 list」的 bug：由手机主动拉，
+        // 不依赖桌面检测到状态变化。直接 ws.send（不等 setConn flush，避免时序问题）。
+        try {
+          makeSignedEnvelope(deviceKey, 'session.sync', deviceId, {}).then((sync) => {
+            ws.send(JSON.stringify(sync))
+          })
+        } catch { /* noop */ }
         return
       }
       if (t === 'error') {
@@ -175,6 +184,8 @@ export function useRelay(opts: UseRelayOptions): UseRelayHandle {
       }
       // 其余为业务信封（来自对端桌面），交给回调。
       try {
+        // 调试日志：确认收到业务信封
+        console.warn('[useRelay] recv', env.type)
         onInboundRef.current?.(env as Envelope)
       } catch {
         // 回调异常不应影响连接稳定性

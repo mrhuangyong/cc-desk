@@ -16,7 +16,7 @@
 //
 // 传输层为何不走 useRelay：useRelay 是 /ws + bind 握手（已配对设备的常驻转发连接），
 // 配对阶段是 /pair 一次性短连接、不发签名信封，是不同端点不同协议，故独立实现。
-import { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   parsePairCodeFromUrl,
   buildPairConsumeMessage,
@@ -41,12 +41,14 @@ export interface PairPageProps {
   relayUrl?: string
   /** 可选：覆盖初始 URL（测试用）；默认 location.href。 */
   initialUrl?: string
+  /** header 右侧额外控件（主题切换等）。 */
+  headerExtra?: React.ReactNode
 }
 
 const CODE_RE = /^\d{6}$/
 
 export default function PairPage(props: PairPageProps) {
-  const { onPaired, WS, relayUrl, initialUrl } = props
+  const { onPaired, WS, relayUrl, initialUrl, headerExtra } = props
   const WSImpl = WS ?? WebSocket
 
   const relayBase =
@@ -173,7 +175,13 @@ export default function PairPage(props: PairPageProps) {
 
   return (
     <div className="pair-page">
+      {headerExtra && (
+        <div style={{ position: 'absolute', top: 'calc(12px + env(safe-area-inset-top))', right: 16 }}>
+          {headerExtra}
+        </div>
+      )}
       <header className="pair-header">
+        <div className="pair-logo">⌘</div>
         <h1>cc-desk</h1>
         <p className="pair-subtitle">远程控制配对</p>
       </header>

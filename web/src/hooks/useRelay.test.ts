@@ -272,13 +272,13 @@ describe('useRelay hook', () => {
     const ws = FakeWebSocket.instances[0]
     act(() => { ws.emitOpen(); ws.emitMessage({ type: 'bind.ok' }) })
     expect(result.current.connected).toBe(true)
-    // bind 信封是异步签名后发送，等它落盘
-    await vi.waitFor(() => { expect(ws.sent).toHaveLength(1) })
+    // bind.ok 后发两条：bind（握手）+ session.sync（上线请求重推列表）
+    await vi.waitFor(() => { expect(ws.sent).toHaveLength(2) })
     let sentOk = false
     await act(async () => { sentOk = await result.current.send('session.message', { localSessionId: 's1', text: 'hi' }) })
     expect(sentOk).toBe(true)
-    await vi.waitFor(() => { expect(ws.sent).toHaveLength(2) })
-    const env = JSON.parse(ws.sent[1])
+    await vi.waitFor(() => { expect(ws.sent).toHaveLength(3) })
+    const env = JSON.parse(ws.sent[2])
     expect(env.type).toBe('session.message')
     expect(env.payload).toEqual({ localSessionId: 's1', text: 'hi' })
     expect(await verifyEnvelopeSig(DEVICE_KEY, env)).toBe(true)
@@ -292,10 +292,10 @@ describe('useRelay hook', () => {
     act(() => { result.current.start() })
     const ws = FakeWebSocket.instances[0]
     act(() => { ws.emitOpen(); ws.emitMessage({ type: 'bind.ok' }) })
-    await vi.waitFor(() => { expect(ws.sent).toHaveLength(1) }) // bind 信封
+    await vi.waitFor(() => { expect(ws.sent).toHaveLength(2) }) // bind + session.sync
     await act(async () => { await result.current.attach('session-abc') })
-    await vi.waitFor(() => { expect(ws.sent).toHaveLength(2) })
-    const env = JSON.parse(ws.sent[1])
+    await vi.waitFor(() => { expect(ws.sent).toHaveLength(3) })
+    const env = JSON.parse(ws.sent[2])
     expect(env.type).toBe('session.attach')
     expect(env.payload).toEqual({ localSessionId: 'session-abc' })
   })

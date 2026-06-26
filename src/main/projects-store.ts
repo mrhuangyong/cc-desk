@@ -60,3 +60,48 @@ export function saveProjectsSnapshot(snap: Omit<ProjectsSnapshot, 'lastSeq' | 's
   const lastSeq = computeLastSeq(snap)
   store.set('snapshot', { ...snap, lastSeq, savedAt: Date.now() })
 }
+
+/**
+ * 在工作区中指定项目下新建一个空会话（远程控制 session.create 用）。
+ * 主进程无 reducer NEW_SESSION；这里直接操作 projects-store 的持久化快照。
+ * 返回 { sessionId, cwd }：sessionId 是新会话 ID，cwd 是项目路径（作为会话工作目录）。
+ * 注：不通知渲染端（远程会话的 live 态由 forwarder 转发的事件流驱动）。
+ */
+export function addSessionToProject(projectId: string): { sessionId: string; cwd?: string } | null {
+  const snap = getProjectsSnapshot()
+  const p = snap.projects.find((p) => p.id === projectId)
+  if (!p) return null
+  const id = `remote-s-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+  const newSession = {
+    id,
+    title: '新会话',
+    messages: [],
+    updatedAt: Date.now(),
+  }
+  p.sessions.push(newSession as any)
+  saveProjectsSnapshot(snap)
+  return { sessionId: id, cwd: p.path }
+}
+
+/**
+ * 归档指定会话（远程控制 session.archive 用）：标记 archived=true 并落盘。
+ * 与渲染端 reducer 的 ARCHIVE_SESSION 语义一致（软删除，桌面保留记录可恢复）。
+ * buildSessionListPayload 会过滤 archived 会话，归档后自动从远程列表消失。
+ * 不可变更新：仅置 archived/archivedAt，保留会话其余字段（含未知字段，深合并约定）。
+ * 找不到会话时静默（不报错），调用方负责后续 closeSession/clearBySession。
+ */
+export function archiveSessionInStore(localSessionId: string): void {
+  const snap = getProjectsSnapshot()
+  let found = false
+  for (const p of snap.projects) {
+    const idx = p.sessions.findIndex((s) => s.id === localSessionId)
+    if (idx >= 0) {
+      const sess: any = p.sessions[idx]
+      // 不可变替换：保留原对象其余字段，仅覆盖 archived/archivedAt
+      p.sessions[idx] = { ...sess, archived: true, archivedAt: Date.now() }
+      found = true
+      break
+    }
+  }
+  if (found) saveProjectsSnapshot(snap)
+}

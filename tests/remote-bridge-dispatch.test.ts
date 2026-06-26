@@ -33,4 +33,49 @@ describe('remote-bridge 入站分发', () => {
     const dispatch = createDispatcher({ send: vi.fn(), interrupt: vi.fn(), resolveDialog: vi.fn() })
     await expect(dispatch({ type: 'unknown.type', deviceId: 'M', payload: {} } as any)).resolves.not.toThrow()
   })
+
+  it('session.sync → 调 onSync（重推列表）', async () => {
+    const { createDispatcher } = await import('../src/main/remote-bridge')
+    const onSync = vi.fn()
+    const dispatch = createDispatcher({ send: vi.fn(), interrupt: vi.fn(), resolveDialog: vi.fn(), onSync })
+    await dispatch({ type: 'session.sync', deviceId: 'M', payload: {} } as any)
+    expect(onSync).toHaveBeenCalledTimes(1)
+  })
+
+  it('session.create → 调 onSessionCreate 拿到结果后调 onSessionCreated 回告', async () => {
+    const { createDispatcher } = await import('../src/main/remote-bridge')
+    const createdInfo = { localSessionId: 'remote-s-1', projectId: 'p1', title: '新会话', cwd: '/code/x' }
+    const onSessionCreate = vi.fn().mockReturnValue(createdInfo)
+    const onSessionCreated = vi.fn()
+    const dispatch = createDispatcher({
+      send: vi.fn(), interrupt: vi.fn(), resolveDialog: vi.fn(),
+      onSessionCreate, onSessionCreated,
+    })
+    await dispatch({ type: 'session.create', deviceId: 'M', payload: { projectId: 'p1' } } as any)
+    expect(onSessionCreate).toHaveBeenCalledWith('p1')
+    // 回告必须带上 onSessionCreate 返回的完整会话信息
+    expect(onSessionCreated).toHaveBeenCalledWith(createdInfo)
+  })
+
+  it('session.create 返回 null（不支持远程新建）时不调 onSessionCreated（静默）', async () => {
+    const { createDispatcher } = await import('../src/main/remote-bridge')
+    const onSessionCreate = vi.fn().mockReturnValue(null)
+    const onSessionCreated = vi.fn()
+    const dispatch = createDispatcher({
+      send: vi.fn(), interrupt: vi.fn(), resolveDialog: vi.fn(),
+      onSessionCreate, onSessionCreated,
+    })
+    await dispatch({ type: 'session.create', deviceId: 'M', payload: { projectId: 'p1' } } as any)
+    expect(onSessionCreated).not.toHaveBeenCalled()
+  })
+
+  it('session.archive → 调 onArchive(localSessionId)', async () => {
+    const { createDispatcher } = await import('../src/main/remote-bridge')
+    const onArchive = vi.fn()
+    const dispatch = createDispatcher({
+      send: vi.fn(), interrupt: vi.fn(), resolveDialog: vi.fn(), onArchive,
+    })
+    await dispatch({ type: 'session.archive', deviceId: 'M', payload: { localSessionId: 's9' } } as any)
+    expect(onArchive).toHaveBeenCalledWith('s9')
+  })
 })

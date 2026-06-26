@@ -42,6 +42,44 @@ describe('buildSessionListPayload', () => {
     const { buildSessionListPayload } = await import('../src/main/remote-bridge')
     expect(buildSessionListPayload([]).sessions).toEqual([])
   })
+
+  it('runningIds 命中的会话 status=running，否则 idle', async () => {
+    const { buildSessionListPayload } = await import('../src/main/remote-bridge')
+    const r = buildSessionListPayload([
+      { id: 'p1', name: 'p', sessions: [
+        { id: 's1', title: '在跑' },
+        { id: 's2', title: '没跑' },
+      ] },
+    ], ['s1'])
+    expect(r.sessions.find((s) => s.localSessionId === 's1')?.status).toBe('running')
+    expect(r.sessions.find((s) => s.localSessionId === 's2')?.status).toBe('idle')
+  })
+
+  it('projectsMeta 带项目路径，按首次出现顺序，只含活跃会话的项目', async () => {
+    const { buildSessionListPayload } = await import('../src/main/remote-bridge')
+    const r = buildSessionListPayload([
+      { id: 'p1', name: 'proj-1', path: '/Users/x/proj-1', sessions: [{ id: 's1', title: 'a' }] },
+      { id: 'p2', name: 'proj-2', path: '/Users/x/proj-2', sessions: [{ id: 's2', title: 'b', archived: true }] }, // 全归档
+      { id: 'p3', name: 'proj-3', sessions: [{ id: 's3', title: 'c' }] }, // 无 path
+    ])
+    expect(r.projectsMeta.map((m) => m.projectId)).toEqual(['p1', 'p3']) // p2 全归档被排除
+    expect(r.projectsMeta[0]).toMatchObject({ projectName: 'proj-1', projectPath: '/Users/x/proj-1' })
+    expect(r.projectsMeta[1].projectPath).toBeUndefined()
+  })
+
+  it('updatedAt 取会话的 updatedAt，缺失时回退 lastUserSentAt', async () => {
+    const { buildSessionListPayload } = await import('../src/main/remote-bridge')
+    const r = buildSessionListPayload([
+      { id: 'p1', name: 'p', sessions: [
+        { id: 's1', title: 'a', updatedAt: 1000 },
+        { id: 's2', title: 'b', lastUserSentAt: 2000 },
+        { id: 's3', title: 'c' },
+      ] },
+    ])
+    expect(r.sessions.find((s) => s.localSessionId === 's1')?.updatedAt).toBe(1000)
+    expect(r.sessions.find((s) => s.localSessionId === 's2')?.updatedAt).toBe(2000)
+    expect(r.sessions.find((s) => s.localSessionId === 's3')?.updatedAt).toBeUndefined()
+  })
 })
 
 describe('dispatcher session.attach / session.create', () => {
@@ -75,18 +113,22 @@ describe('dispatcher session.attach / session.create', () => {
 })
 
 describe('forwarder sendSessionList', () => {
-  it('session.list → session.list 协议消息（payload.sessions）', async () => {
+  it('session.list → session.list 协议消息（payload.sessions + projectsMeta）', async () => {
     const { createEventForwarder } = await import('../src/main/remote-bridge')
     const sent: any[] = []
     const fwd = createEventForwarder((env) => sent.push(env))
-    fwd.sendSessionList([
-      { localSessionId: 's1', title: 'A', status: 'idle' },
-      { localSessionId: 's2', title: 'B', status: 'running' },
-    ])
+    fwd.sendSessionList({
+      sessions: [
+        { localSessionId: 's1', title: 'A', status: 'idle' },
+        { localSessionId: 's2', title: 'B', status: 'running' },
+      ],
+      projectsMeta: [{ projectId: 'p1', projectName: 'P1', projectPath: '/a/b' }],
+    })
     expect(sent).toHaveLength(1)
     expect(sent[0].type).toBe('session.list')
     expect(sent[0].payload.sessions).toHaveLength(2)
     expect(sent[0].payload.sessions[0]).toMatchObject({ localSessionId: 's1', title: 'A', status: 'idle' })
+    expect(sent[0].payload.projectsMeta[0]).toMatchObject({ projectId: 'p1', projectPath: '/a/b' })
     // 占位字段（由外层 send 重签）
     expect(sent[0].sig).toBe('')
   })

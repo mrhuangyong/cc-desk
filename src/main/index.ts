@@ -9,7 +9,7 @@ import { readDirTree, readFileContent, searchFiles, writeFileContent, pathExists
 import { getSettings, saveSettings } from './settings-store'
 import { menuT } from './menu-i18n'
 import { getModelProvidersConfig, saveModelProvidersConfig } from './cc-desk-store'
-import { getProjectsSnapshot, saveProjectsSnapshot } from './projects-store'
+import { getProjectsSnapshot, saveProjectsSnapshot, addSessionToProject, archiveSessionInStore } from './projects-store'
 import * as cc from './claude-config'
 import * as mkt from './marketplace-manager'
 import * as gitSvc from './git-service'
@@ -25,7 +25,7 @@ import {
 } from './remote-config'
 import {
   createRemoteBridge, createDispatcher, createDialogReplayer, createEventForwarder,
-  buildSessionListPayload,
+  buildSessionListPayload, toHistoryMessages, buildModelsPayload,
   type RemoteBridge, type DialogReplayer,
 } from './remote-bridge'
 import { makeEnvelope, type Envelope, type MessageType } from '../shared/remote-protocol'
@@ -85,7 +85,10 @@ type ForwarderHandle = {
   onNotice(data: any): void
   onResult(data: any): void
   onDialogRequest(data: any): void
-  sendSessionList(sessions: { localSessionId: string; title: string; status: 'running' | 'completed' | 'error' | 'idle' }[]): void
+  sendSessionList(payload: { sessions: any[]; projectsMeta: any[] }): void
+  sendHistory(payload: { localSessionId: string; items: any[]; hasMore: boolean }): void
+  sendModels(payload: { models: any[]; activeModelId: string; thinking: string }): void
+  sendSessionCreated(payload: { localSessionId: string; projectId?: string; title?: string; cwd?: string }): void
 }
 
 /** 需要旁路转发给手机端的 claude:* 业务事件通道白名单。 */
@@ -138,10 +141,129 @@ function startRemoteBridge(cfg: RemoteConfig): void {
     remoteBridge?.send(signed)
   })
 
+  // 重推会话列表：读 projects-store 快照 + runningIds，经 forwarder 下发。
+  // 被两处调用：① 桌面 bridge 连上中继（轮询 false→true）；② 手机 session.sync（上线/刷新）。
+  // 抽出来是因为「web 刷新后桌面 bridge 连接未断、lastState 不变 → 轮询不触发」，
+  // 需要由手机主动 sync 触发重推（修复「刷新拿不到列表」bug）。
+  const pushSessionList = () => {
+    try {
+      const snap = getProjectsSnapshot()
+      const runningIds = claude.runningSessionIds()
+      forwarder?.sendSessionList(buildSessionListPayload(snap.projects, runningIds))
+    } catch { /* 读快照失败不影响其他逻辑 */ }
+  }
+  // 下发可用模型列表（和 session.list 一起，手机同步时下发）。
+  const pushModels = () => {
+    try {
+      const cfg = getModelProvidersConfig()
+      const payload = buildModelsPayload({
+        models: cfg.models,
+        activeModelId: cfg.activeModelId,
+      })
+      forwarder?.sendModels(payload)
+    } catch { /* 读配置失败不影响其他逻辑 */ }
+  }
+
+  // 远程写操作（新建/归档）改变了 projects.json，但 renderer reducer 不知情
+  // （远程控制是独立数据通路，绕过 reducer 直读写快照）。通过本事件通知渲染端，
+  // 触发 projects:get → HYDRATE 重新同步（HYDRATE 幂等，含存活会话挑选与孤儿清理）。
+  // 避免桌面 UI 与远程操作数据分叉。
+  const notifyRendererWorkspaceChanged = () => {
+    try {
+      wc.send('workspace:changed', {})
+    } catch { /* webContents 可能已销毁，忽略 */ }
+  }
+
   const dispatcher = createDispatcher({
     send: (opts) => claude.send({ ...opts, webContents: wc }),
     interrupt: (lsid) => { void claude.interrupt(lsid, wc) },
     resolveDialog: (reqId, result) => claude.resolveDialog(reqId, result),
+    // 拉取会话历史：从 projects-store 读该会话 messages，转换后下发（真实数据，非 mock）。
+    onHistoryRequest: (localSessionId, limit) => {
+      try {
+        const snap = getProjectsSnapshot()
+        const messages: any[] = []
+        for (const p of snap.projects) {
+          if (p.sessions) {
+            const sess = p.sessions.find((s: any) => s.id === localSessionId)
+            if (sess?.messages) { messages.push(...sess.messages); break }
+          }
+        }
+        const { items, hasMore } = toHistoryMessages(messages as any, limit)
+        forwarder?.sendHistory({ localSessionId, items, hasMore })
+      } catch {
+        // 读历史失败不报错（手机端拿不到历史，显示空）
+      }
+    },
+    // 手机上线/刷新后重推列表（修复刷新拿不到列表）
+    onSync: () => {
+      pushSessionList()
+      pushModels()
+    },
+    // 手机切换激活模型：改 cc-desk-store 的 activeModelId，之后所有 send 自然用新模型。
+    onSetActiveModel: (modelId) => {
+      try {
+        saveModelProvidersConfig({ activeModelId: modelId })
+        // 推一次模型列表让手机确认切换成功
+        pushModels()
+      } catch {
+        // 保存失败不抛异常，手机端超时/缺省处理
+      }
+    },
+    // 手机请求新建会话：在 projects-store 指定项目下创建空会话。
+    // 返回 { sessionId, projectId, title, cwd }（dispatcher 据此调 onSessionCreated 回告手机）。
+    // 用对象返回避免 dispatcher 难以反查项目 title/path（addSessionToProject 只返回 sessionId/cwd）。
+    onSessionCreate: (projectId) => {
+      try {
+        const r = addSessionToProject(projectId ?? '')
+        if (!r) return undefined
+        const snap = getProjectsSnapshot()
+        const p = snap.projects.find((p) => p.id === projectId)
+        return {
+          localSessionId: r.sessionId,
+          projectId: projectId ?? '',
+          title: '新会话',
+          cwd: r.cwd,
+          projectName: p?.name,
+        }
+      } catch {
+        return undefined
+      }
+    },
+    // 新建成功后回告手机（session.created），手机端据此自动进入该会话。
+    onSessionCreated: (info) => {
+      forwarder?.sendSessionCreated(info)
+      // 远程新建改变了 projects.json，通知桌面渲染端同步（避免桌面 UI 看不到远程新建的会话）。
+      notifyRendererWorkspaceChanged()
+    },
+    // 手机请求归档会话：关 SDK query + 清后台任务 + 标记 archived + 落盘 +
+    // 通知桌面渲染端 + 推更新后的列表给手机。与桌面 session:archive IPC 语义一致。
+    onArchive: async (localSessionId) => {
+      try {
+        await claude.closeSession(localSessionId)
+      } catch { /* 会话可能未在跑，忽略 */ }
+      try {
+        backendTaskRegistry.clearBySession(localSessionId)
+      } catch { /* 忽略 */ }
+      archiveSessionInStore(localSessionId)
+      notifyRendererWorkspaceChanged()
+      pushSessionList()
+    },
+    // 反查会话所属项目的 cwd：从 projects-store 找该会话在哪个项目下，返回项目 path。
+    // 用于 session.message 时让 SDK 在正确目录运行（如 cc-webui 项目，而非默认 /Users/mrhua）。
+    resolveCwd: (localSessionId) => {
+      try {
+        const snap = getProjectsSnapshot()
+        for (const p of snap.projects) {
+          if (p.sessions?.some((s: any) => s.id === localSessionId)) {
+            return p.path
+          }
+        }
+      } catch {
+        // 读快照失败回退 undefined（send 用默认 process.cwd()）
+      }
+      return undefined
+    },
   })
 
   // 出站转发：把 forwarder 产出的占位信封用 deviceKey 重签后发中继。
@@ -192,23 +314,10 @@ function startRemoteBridge(cfg: RemoteConfig): void {
     if (cur !== lastState) {
       lastState = cur
       emitRemoteState(cur)
-      // I2：连上中继（false→true）后下发当前会话清单，让手机端 SessionListPage 有数据。
-      // 从 projects-store 读快照、扁平化、转协议 payload。用 forwarder.sendSessionList
-      // 统一经 makeEnvelope 重签后发中继。重连也会重发（手机重连后能重新拿到列表）。
-      if (cur) {
-        try {
-          const snap = getProjectsSnapshot()
-          forwarder.sendSessionList(
-            buildSessionListPayload(snap.projects).sessions.map((s) => ({
-              localSessionId: s.localSessionId,
-              title: s.title,
-              status: s.status,
-            })),
-          )
-        } catch {
-          // 读快照失败不应影响连接状态上报
-        }
-      }
+      // I2：连上中继（false→true）后下发当前会话清单。
+      // 注：手机端刷新后还会主动发 session.sync 触发重推（见 dispatcher.onSync），
+      // 避免桌面连接未断、lastState 不变时不推 list 的 bug。
+      if (cur) { pushSessionList(); pushModels() }
     }
   }, 2000)
 
@@ -220,6 +329,8 @@ function startRemoteBridge(cfg: RemoteConfig): void {
     wc.send = ((channel: string, ...args: any[]) => {
       try {
         if (REMOTE_FORWARD_CHANNELS.has(channel)) {
+          // 调试：确认 wc.send 包装拦截到了 claude 事件，打日志到控制台
+          try { console.warn('[remote-fwd]', channel, typeof args[0] === 'object' ? Object.keys(args[0] || {}) : typeof args[0]) } catch {}
           switch (channel) {
             case 'claude:delta': forwarder.onClaudeDelta(args[0]); break
             case 'claude:blocks': forwarder.onClaudeBlocks(args[0]); break

@@ -83,4 +83,16 @@ describe('出站事件转发 createEventForwarder', () => {
     ).not.toThrow()
     expect(sent[0].type).toBe('dialog.request')
   })
+
+  it('sendSessionCreated → session.created 协议消息（回告新建会话信息）', async () => {
+    const { createEventForwarder } = await import('../src/main/remote-bridge')
+    const sent: any[] = []
+    const fwd = createEventForwarder((env) => sent.push(env))
+    fwd.sendSessionCreated({ localSessionId: 'remote-s-1', projectId: 'p1', title: '新会话', cwd: '/code/x' })
+    expect(sent).toHaveLength(1)
+    expect(sent[0].type).toBe('session.created')
+    expect(sent[0].payload).toMatchObject({
+      localSessionId: 'remote-s-1', projectId: 'p1', title: '新会话', cwd: '/code/x',
+    })
+  })
 })

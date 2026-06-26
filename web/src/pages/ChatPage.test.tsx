@@ -1,11 +1,18 @@
 // web/src/pages/ChatPage.test.tsx
 // ChatPage 组件交互测试（Task 14）。
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeAll } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import React from 'react'
 import ChatPage from './ChatPage'
 import type { AnyMessage } from '../hooks/useSessionChat'
 import type { DialogRequest } from '../lib/dialog-queue'
+
+// jsdom 不实现 scrollTo；ChatPage 进入会话的 effect 会调用，需 polyfill。
+beforeAll(() => {
+  if (!window.HTMLElement.prototype.scrollTo) {
+    window.HTMLElement.prototype.scrollTo = vi.fn()
+  }
+})
 
 const assistantMsg = (text: string, blocks: any[] = []): AnyMessage => ({
   role: 'assistant',
@@ -305,5 +312,66 @@ describe('ChatPage - 批准卡片', () => {
     )
     fireEvent.click(screen.getByRole('button', { name: '拒绝' }))
     expect(onDeny).toHaveBeenCalledWith('r1')
+  })
+})
+
+describe('ChatPage - 进入会话自动滚动', () => {
+  beforeAll(() => {
+    // 用 spy 替换 polyfill，便于断言被调用
+    window.HTMLElement.prototype.scrollTo = vi.fn()
+  })
+
+  it('初次进入会话（localSessionId 渲染）触发 scrollToBottom', () => {
+    const scrollTo = window.HTMLElement.prototype.scrollTo as unknown as ReturnType<typeof vi.fn>
+    scrollTo.mockClear()
+    render(
+      <ChatPage
+        title="会话A"
+        localSessionId="s1"
+        messages={[assistantMsg('内容')]}
+        running={false}
+        inputValue=""
+        onInputChange={() => {}}
+        onSend={() => {}}
+        onInterrupt={() => {}}
+        onBack={() => {}}
+      />,
+    )
+    // 进入会话的 effect 应无条件触发滚动（对标桌面端 activeSessionId effect）
+    expect(scrollTo).toHaveBeenCalled()
+  })
+
+  it('切换到另一个会话（localSessionId 变化）再次触发 scrollToBottom', () => {
+    const scrollTo = window.HTMLElement.prototype.scrollTo as unknown as ReturnType<typeof vi.fn>
+    scrollTo.mockClear()
+    const { rerender } = render(
+      <ChatPage
+        title="会话A"
+        localSessionId="s1"
+        messages={[assistantMsg('A')]}
+        running={false}
+        inputValue=""
+        onInputChange={() => {}}
+        onSend={() => {}}
+        onInterrupt={() => {}}
+        onBack={() => {}}
+      />,
+    )
+    scrollTo.mockClear()
+    // 切到另一个会话（即使 title 相同也用 localSessionId 判定）
+    rerender(
+      <ChatPage
+        title="会话B"
+        localSessionId="s2"
+        messages={[assistantMsg('B')]}
+        running={false}
+        inputValue=""
+        onInputChange={() => {}}
+        onSend={() => {}}
+        onInterrupt={() => {}}
+        onBack={() => {}}
+      />,
+    )
+    expect(scrollTo).toHaveBeenCalled()
   })
 })

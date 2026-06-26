@@ -143,3 +143,61 @@ describe('useSessionChat - reset', () => {
     expect(result.current.messages).toHaveLength(0)
   })
 })
+
+describe('useSessionChat - 历史灌入', () => {
+  const historyEnv = (items: any[], hasMore = false): Envelope => ({
+    v: 1, type: 'session.history', deviceId: 'd', ts: 1, nonce: 'n', sig: '',
+    payload: { localSessionId: 's1', items, hasMore },
+  })
+
+  it('session.history 前置历史消息，不触发 running', () => {
+    const send = vi.fn().mockResolvedValue(true)
+    const { result } = renderHook(() => useSessionChat({ send }))
+    act(() => {
+      result.current.onInbound(historyEnv([
+        { role: 'user', text: '历史提问' },
+        { role: 'assistant', text: '历史回答', thinking: '思考', blocks: [{ kind: 'tool_use', label: 'Bash' }] },
+      ], true))
+    })
+    expect(result.current.messages).toHaveLength(2)
+    expect(result.current.messages[0]).toMatchObject({ role: 'user', text: '历史提问' })
+    expect(result.current.messages[1]).toMatchObject({ role: 'assistant', text: '历史回答' })
+    expect(result.current.running).toBe(false)
+    expect(result.current.hasMoreHistory).toBe(true)
+  })
+
+  it('历史灌入后，新 delta 续到历史之后（不串入历史）', () => {
+    const send = vi.fn().mockResolvedValue(true)
+    const { result } = renderHook(() => useSessionChat({ send }))
+    act(() => {
+      result.current.onInbound(historyEnv([{ role: 'user', text: '历史' }], false))
+    })
+    act(() => {
+      result.current.onInbound(deltaEnv('新流式'))
+    })
+    expect(result.current.messages).toHaveLength(2)
+    expect(result.current.messages[1]).toMatchObject({ role: 'assistant', text: '新流式' })
+  })
+
+  it('loadHistory 发 session.history.request', async () => {
+    const send = vi.fn().mockResolvedValue(true)
+    const { result } = renderHook(() => useSessionChat({ send }))
+    await act(async () => {
+      await result.current.loadHistory('s1', 30)
+    })
+    expect(send).toHaveBeenCalledWith('session.history.request', { localSessionId: 's1', limit: 30 })
+  })
+
+  it('reset 清空 hasMoreHistory', () => {
+    const send = vi.fn().mockResolvedValue(true)
+    const { result } = renderHook(() => useSessionChat({ send }))
+    act(() => {
+      result.current.onInbound(historyEnv([], true))
+    })
+    expect(result.current.hasMoreHistory).toBe(true)
+    act(() => {
+      result.current.reset()
+    })
+    expect(result.current.hasMoreHistory).toBe(false)
+  })
+})

@@ -23,16 +23,23 @@ export type ServerToClient =
   | 'session.blocks'      // tool_use/tool_result/计划卡片
   | 'session.notice'      // 系统提示
   | 'session.result'      // query 结束
+  | 'session.history'     // 历史对话（响应手机的拉取请求）
+  | 'session.models'      // 可用模型清单 + 当前激活模型（手机端切换用）
+  | 'session.created'     // 新建会话成功回告（payload: { localSessionId, projectId, title, cwd? }）
   | 'dialog.request'      // 批准请求（对应 claude:dialog-request）
   | 'connection.state'    // 桌面在线状态
 
 /** 消息类型 —— 手机→桌面 */
 export type ClientToServer =
   | 'bind'                // /ws 连接后的身份握手
+  | 'session.sync'        // 上线/刷新后请求重推会话列表（无需重新配对）
   | 'session.attach'      // 接管会话
   | 'session.create'      // 新建会话
+  | 'session.archive'     // 归档会话（payload: { localSessionId }）
   | 'session.message'     // 发消息
   | 'session.interrupt'   // 中断 query
+  | 'session.setActiveModel' // 切换激活模型（改桌面 cc-desk-store activeModelId）
+  | 'session.history.request' // 拉取会话历史（分页）
   | 'dialog.response'     // 批准/拒绝/忽略
 
 /** 控制类消息（配对、错误等） */

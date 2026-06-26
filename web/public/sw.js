@@ -15,7 +15,9 @@
 //
 // 注册范围：scope = '/'（与 index.html 同源根，见 index.html 的注册）。
 
-const CACHE_NAME = 'cc-desk-shell-v1' // SYNC-WITH sw-cache-strategy.ts CACHE_NAME
+const CACHE_NAME = 'cc-desk-shell-v2' // SYNC-WITH sw-cache-strategy.ts CACHE_NAME
+// v2 变更：JS/CSS 从 stale-while-revalidate 改为网络优先，避免部署后手机刷新仍用旧 bundle。
+// 升版本号触发 activate 清掉 v1 缓存。
 
 // 预缓存的 app shell：名固定（bundle 带 hash，运行时 SWR 懒缓存）。
 const PRECACHE_URLS = ['/', '/index.html', '/manifest.webmanifest'] // SYNC-WITH sw-cache-strategy.ts PRECACHE_URLS
@@ -108,31 +110,26 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // SAME_ORIGIN_ASSET：stale-while-revalidate
-  // 立即返回缓存（快），后台同步更新（新版本下次生效）。
+  // SAME_ORIGIN_ASSET：网络优先（v2 改动）。
+  // 在线时永远拿最新 bundle（部署后刷新即生效），仅离线才回退缓存。
+  // 原先的 stale-while-revalidate 会让手机刷新继续用旧 JS，新版本「下次」才生效，
+  // 导致用户以为没部署成功。
   event.respondWith(
     (async () => {
       const cache = await caches.open(CACHE_NAME)
-      const cached = await cache.match(req)
-      const network = fetch(req)
-        .then((res) => {
-          // 只缓存成功的同源响应（opaque/错误响应不进缓存）。
-          if (res && res.ok && res.type === 'basic') {
-            cache.put(req, res.clone()).catch(() => {})
-          }
-          return res
-        })
-        .catch(() => null)
-      // 有缓存先用缓存，否则等网络。
-      if (cached) {
-        // fire-and-forget 后台更新
-        network.catch(() => {})
-        return cached
+      try {
+        const fresh = await fetch(req)
+        // 只缓存成功的同源响应。
+        if (fresh && fresh.ok && fresh.type === 'basic') {
+          cache.put(req, fresh.clone()).catch(() => {})
+        }
+        return fresh
+      } catch {
+        // 离线：回退缓存。
+        const cached = await cache.match(req)
+        if (cached) return cached
+        return new Response('offline', { status: 503 })
       }
-      const fresh = await network
-      if (fresh) return fresh
-      // 网络失败且无缓存：透明失败（让浏览器报错，不伪造内容）。
-      return new Response('offline', { status: 503 })
     })(),
   )
 })

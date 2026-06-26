@@ -38,7 +38,15 @@ contextBridge.exposeInMainWorld('api', {
   },
   projects: {
     get: () => ipcRenderer.invoke('projects:get'),
-    save: (snap: any) => ipcRenderer.invoke('projects:save', snap)
+    save: (snap: any) => ipcRenderer.invoke('projects:save', snap),
+    // 主→渲染：远程控制（手机新建/归档会话）改变了 projects.json，渲染端据此重新 HYDRATE 同步。
+    // 远程控制是独立数据通路（直读写快照，绕过 renderer reducer），故需主动通知避免数据分叉。
+    onWorkspaceChanged: (cb: () => void) => {
+      const channel = 'workspace:changed'
+      const handler = () => cb()
+      ipcRenderer.on(channel, handler)
+      return () => ipcRenderer.removeListener(channel, handler)
+    },
   },
   cc: {
     mcp: {

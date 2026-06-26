@@ -39,6 +39,20 @@ describe('remote-protocol 信封与签名', () => {
   })
 })
 
+describe('remote-protocol 会话管理消息类型', () => {
+  it('session.created（桌面→手机）是合法消息类型，可签名可验签', () => {
+    const env = makeEnvelope(KEY, 'session.created', 'device-D', { localSessionId: 's1', projectId: 'p1', title: '新会话' })
+    expect(env.type).toBe('session.created')
+    expect(verifySig(KEY, env)).toBe(true)
+  })
+
+  it('session.archive（手机→桌面）是合法消息类型，可签名可验签', () => {
+    const env = makeEnvelope(KEY, 'session.archive', 'device-M', { localSessionId: 's1' })
+    expect(env.type).toBe('session.archive')
+    expect(verifySig(KEY, env)).toBe(true)
+  })
+})
+
 describe('remote-protocol 防重放', () => {
   it('isStale：超过 60s 容差判过期', () => {
     const now = Date.now()

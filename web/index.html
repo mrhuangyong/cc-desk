@@ -21,13 +21,27 @@
     <script type="module" src="/src/main.tsx"></script>
     <!-- Service Worker 注册：scope='/' 同源根；生产构建下才有 sw.js（dev 下 vite 不复制 public）。
          注册逻辑放主入口（而非单独 main.ts），避免额外网络请求与启动时序问题。
-         try/catch 兜底：SW 注册失败绝不阻塞应用渲染（远程控制核心是 WebSocket，PWA 只是壳）。 -->
+         try/catch 兜底：SW 注册失败绝不阻塞应用渲染（远程控制核心是 WebSocket，PWA 只是壳）。
+         updateViaCache:'none' + 注册后 update：每次加载都检查 sw.js 是否有新版本，
+         配合 SW 内 skipWaiting + controllerchange 重载，让部署后用户刷新即拿新版。 -->
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', function () {
-          navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function (err) {
-            console.warn('[cc-desk] SW register failed:', err)
-          })
+          navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' })
+            .then(function (reg) {
+              // 主动触发更新检查（绕过浏览器默认的保守缓存）
+              reg.update().catch(function () {})
+              // 新 SW 接管后立即重载，确保用户拿到最新 bundle
+              navigator.serviceWorker.addEventListener('controllerchange', function () {
+                if (!window.__ccReloading) {
+                  window.__ccReloading = true
+                  window.location.reload()
+                }
+              })
+            })
+            .catch(function (err) {
+              console.warn('[cc-desk] SW register failed:', err)
+            })
         })
       }
     </script>

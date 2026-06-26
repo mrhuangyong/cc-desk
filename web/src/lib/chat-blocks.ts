@@ -22,8 +22,9 @@ export interface ChatMessage {
 
 /** 渲染块（从 session.blocks 归一化而来）。 */
 export interface ChatBlock {
-  kind: 'tool_use' | 'tool_result' | 'plan' | 'assistant'
+  kind: 'tool_use' | 'tool_result' | 'plan' | 'assistant' | 'text'
   label: string
+  text?: string  // text 块的文本内容
   raw: unknown
 }
 
@@ -68,6 +69,10 @@ export function isPlanCard(raw: any): boolean {
  */
 export function classifyBlock(raw: any): ChatBlock | null {
   if (!raw || typeof raw !== 'object') return null
+  // assistant_blocks 中的 text 块（{type:'text', text:'...'}）：提取文本内容
+  if (raw.type === 'text' && typeof raw.text === 'string') {
+    return { kind: 'text', label: '', text: raw.text, raw }
+  }
   const kind = raw.kind
   // 计划卡片优先识别（挂在 tool_result.payload.plan）
   if (kind === 'tool_result' && isPlanCard(raw)) {

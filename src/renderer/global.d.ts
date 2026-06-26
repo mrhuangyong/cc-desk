@@ -63,6 +63,8 @@ interface ProjectsSnapshot {
 interface ProjectsAPI {
   get(): Promise<ProjectsSnapshot & { lastSeq: number; savedAt: number }>
   save(snap: ProjectsSnapshot): Promise<void>
+  /** 远程控制改变了 projects.json，渲染端据此重新 HYDRATE 同步。返回 unsubscribe。 */
+  onWorkspaceChanged(cb: () => void): () => void
 }
 
 interface FsAPI {
