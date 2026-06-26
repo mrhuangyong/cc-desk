@@ -7,6 +7,7 @@ import { PromptEditor } from '../editor/PromptEditor'
 import { serializeForPrompt } from '../editor/serialize'
 import { runBuiltin } from './builtinCommands'
 import { Tooltip } from './Tooltip'
+import { ContextUsageRing, parseContextLength } from './ContextUsageRing'
 import type { SlashMenuItem } from '../editor/types'
 import type { DraftAttachment } from '../types'
 
@@ -15,9 +16,12 @@ type MenuId = 'permission' | 'model' | 'thinking' | 'project' | 'add'
 const PERMISSIONS = ['变更前确认', '自动编辑', '计划模式', '完全访问']
 const THINKINGS: Array<'low' | 'medium' | 'high'> = ['low', 'medium', 'high']
 
+// 把文本类附件（网页元素/文件路径）拼进 prompt。图片不在此处理——
+// 图片走专门的 images 字段透传到主进程，构造 image content block 给 SDK（见 collectImages）。
 export function buildPromptWithAttachments(prompt: string, attachments: DraftAttachment[]): string {
-  if (attachments.length === 0) return prompt
-  const context = attachments.map((att, index) => {
+  const textAttachments = attachments.filter(a => a.type !== 'image')
+  if (textAttachments.length === 0) return prompt
+  const context = textAttachments.map((att, index) => {
     const n = index + 1
     if (att.type === 'pickedElement') {
       const el = att.el
@@ -30,13 +34,18 @@ export function buildPromptWithAttachments(prompt: string, attachments: DraftAtt
         `HTML: ${el.html}`,
       ].join('\n')
     }
-    if (att.type === 'file') {
-      return [`[文件 ${n}]`, `名称: ${att.name}`, `路径: ${att.path}`].join('\n')
-    }
-    return [`[图片 ${n}]`, `名称: ${att.name}`, `媒体类型: ${att.mediaType}`].join('\n')
+    // file
+    return [`[文件 ${n}]`, `名称: ${att.name}`, `路径: ${att.path}`].join('\n')
   }).join('\n\n')
   const prefix = prompt.trim() ? `${prompt.trim()}\n\n` : ''
   return `${prefix}以下是用户随消息附加的上下文，请一并参考：\n\n${context}`
+}
+
+// 从附件中提取图片，转成发送给主进程的格式（data 为纯 base64）。
+export function collectImages(attachments: DraftAttachment[]): { mediaType: string; data: string; name?: string }[] {
+  return attachments
+    .filter((a): a is Extract<DraftAttachment, { type: 'image' }> => a.type === 'image')
+    .map(a => ({ mediaType: a.mediaType, data: a.base64, name: a.name }))
 }
 
 export function InputBar() {
@@ -105,11 +114,35 @@ export function InputBar() {
   const streaming = state.streamingBySession[state.activeSessionId]
   const isStreaming = !!streaming
 
+  // 拉取当前会话的上下文用量（SDK getContextUsage），刷新进度环。
+  // 查询失败/会话不存在时写入 null（显示「未知」态）。
+  const refreshContextUsage = (sessionId: string) => {
+    const fn = window.api?.claude?.contextUsage
+    if (typeof fn !== 'function') return
+    fn(sessionId).then((u: any) => {
+      dispatch({ type: 'SET_CONTEXT_USAGE', sessionId, usage: u ?? null })
+    }).catch(() => { /* ignore */ })
+  }
+  // 主进程在每轮对话结束（for-await 退出前、control 通道仍活着）主动推送真实 usage，
+  // 订阅它更新 store——这是最准确的数据源（循环外再查 control 命令已不可用）。
+  useEffect(() => {
+    const off = window.api?.claude?.onContextUsage?.((data: any) => {
+      if (data?.localSessionId && data.usage) {
+        dispatch({ type: 'SET_CONTEXT_USAGE', sessionId: data.localSessionId, usage: data.usage })
+      }
+    })
+    return () => { off?.() }
+  }, [])
+  // 会话切换时主动查一次：能立刻显示该会话上次缓存值（若 sq 仍存活），
+  // 否则等用户发消息后主进程推送。
+  useEffect(() => { refreshContextUsage(state.activeSessionId) }, [state.activeSessionId])
+
   // 模型列表来自 cc-desk 多供应商配置（仅 enabled 模型），本地 state 持有
-  const [modelCfg, setModelCfg] = useState<{ models: { id: string; name: string }[]; activeModelId: string } | null>(null)
+  // contextLength 用于上下文进度环的 maxTokens 兜底（SDK getContextUsage 的 maxTokens 缺失时）。
+  const [modelCfg, setModelCfg] = useState<{ models: { id: string; name: string; contextLength?: string }[]; activeModelId: string } | null>(null)
   useEffect(() => {
     window.api?.ccDesk.model.get().then(c => setModelCfg({
-      models: c.models.filter(m => m.enabled).map(m => ({ id: m.id, name: m.sdkModelId })),
+      models: c.models.filter((m: any) => m.enabled).map((m: any) => ({ id: m.id, name: m.sdkModelId, contextLength: m.contextLength })),
       activeModelId: c.activeModelId,
     }))
   }, [])
@@ -163,7 +196,7 @@ export function InputBar() {
     dispatch({ type: 'SEND_MESSAGE' })
     dispatch({ type: 'DEQUEUE_MESSAGE', sessionId: state.activeSessionId, queueId: next.id })
     dispatch({ type: 'STREAM_START', sessionId: state.activeSessionId })
-    window.api?.claude?.send({ prompt: buildPromptWithAttachments(next.prompt, next.attachments), localSessionId: state.activeSessionId, sessionId: claudeSessionId || undefined, cwd, permission, thinking, extraDirs: activeSession?.extraDirs })
+    window.api?.claude?.send({ prompt: buildPromptWithAttachments(next.prompt, next.attachments), images: collectImages(next.attachments), localSessionId: state.activeSessionId, sessionId: claudeSessionId || undefined, cwd, permission, thinking, extraDirs: activeSession?.extraDirs })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isStreaming, queue.length])
 
@@ -184,7 +217,7 @@ export function InputBar() {
       dispatch({ type: 'SET_DRAFT_DOC', doc })
       dispatch({ type: 'SEND_MESSAGE' })
       dispatch({ type: 'STREAM_START', sessionId: state.activeSessionId })
-      window.api?.claude?.send({ prompt: buildPromptWithAttachments(qm.prompt, qm.attachments), localSessionId: state.activeSessionId, sessionId: claudeSessionId || undefined, cwd, permission, thinking, extraDirs: activeSession?.extraDirs })
+      window.api?.claude?.send({ prompt: buildPromptWithAttachments(qm.prompt, qm.attachments), images: collectImages(qm.attachments), localSessionId: state.activeSessionId, sessionId: claudeSessionId || undefined, cwd, permission, thinking, extraDirs: activeSession?.extraDirs })
     }, 200)
   }
 
@@ -219,6 +252,7 @@ export function InputBar() {
     dispatch({ type: 'STREAM_START', sessionId: state.activeSessionId })
     window.api?.claude?.send({
       prompt: buildPromptWithAttachments(prompt, state.draft.attachments),
+      images: collectImages(state.draft.attachments),
       localSessionId: state.activeSessionId,
       sessionId: claudeSessionId || undefined,
       cwd,
@@ -557,7 +591,12 @@ export function InputBar() {
         </div>
 
         {/* 右下组 */}
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+          {/* 上下文用量进度环（模型选择按钮左侧） */}
+          <ContextUsageRing
+            usage={state.contextUsageBySession?.[state.activeSessionId] ?? null}
+            maxContextFallback={parseContextLength(activeModel?.contextLength)}
+          />
           {/* 模型按钮 */}
           <div style={{ position: 'relative' }}>
             <button

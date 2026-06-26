@@ -76,21 +76,6 @@ export class ClaudeService {
   // 集合体量可忽略，强清理反而要在会话销毁链路（manager.closeSession）穿针引线、收益不抵风险。
   private handledBlockingToolUse = new Map<string, Set<string>>()
 
-  // 等待 AskUserQuestion 用户作答期间的 per-session 计数（>0 即门控开启）。
-  // 经第三方代理时 AskUserQuestion 未注册为 SDK 工具，SDK 会自填 dummy tool_result 并立即
-  // 续跑下一轮（无法阻止——SDK 子进程不等 cc-desk 消费 iterable）。门控开启期间，
-  // forwardEvent 入口丢弃 SDK 吐出的全部续跑事件（续跑文本/工具、dummy result、result 终态），
-  // 直到用户答完把答案 pushMessage 回 SDK（在 finally 内计数-1，归 0 放行）。
-  // 用计数而非布尔：一条 assistant 可能含多个 AskUserQuestion block，串行 await 时
-  // 每个进入 +1、退出 -1，全部答完才真正放行，避免中途过早清位漏丢续跑。
-  private askGateCount = new Map<string, number>()
-
-  // 记录每个 session 拦截到的 AskUserQuestion tool_use id（仅 AskUserQuestion，不含 ExitPlanMode）。
-  // 用于 user 分支识别 SDK 自填的 dummy tool_result 并丢弃：经第三方代理时 AskUserQuestion
-  // 未注册为工具，SDK 回填字面 "Answer questions?" 给模型，此结果无意义，不渲染假卡片。
-  // ExitPlanMode 的 tool_result 有用（提取 planFilePath），故不与此集合共用。
-  private askToolUseIds = new Map<string, Set<string>>()
-
   setManager(m: SessionQueryManager): void { this.manager = m }
   setRegistry(r: BackendTaskRegistry): void { this.registry = r }
 
@@ -114,38 +99,6 @@ export class ClaudeService {
     if (!set) {
       set = new Set<string>()
       this.handledBlockingToolUse.set(lsid, set)
-    }
-    set.add(toolUseId)
-  }
-
-  /** 该 lsid 是否处于 AskUserQuestion 作答门控期（需丢弃 SDK 续跑）。 */
-  private isAskGated(lsid: string): boolean {
-    return (this.askGateCount.get(lsid) ?? 0) > 0
-  }
-
-  /** 进入一次 AskUserQuestion 作答等待，计数+1。 */
-  private enterAskGate(lsid: string): void {
-    this.askGateCount.set(lsid, (this.askGateCount.get(lsid) ?? 0) + 1)
-  }
-
-  /** 退出一次 AskUserQuestion 作答等待，计数-1，归 0 删除。 */
-  private exitAskGate(lsid: string): void {
-    const next = (this.askGateCount.get(lsid) ?? 0) - 1
-    if (next <= 0) this.askGateCount.delete(lsid)
-    else this.askGateCount.set(lsid, next)
-  }
-
-  /** 该 lsid 的某个 tool_use id 是否是拦截过的 AskUserQuestion（用于识别 dummy result）。 */
-  private isAskToolUse(lsid: string, toolUseId: string): boolean {
-    return this.askToolUseIds.get(lsid)?.has(toolUseId) ?? false
-  }
-
-  /** 记录该 lsid 拦截到一个 AskUserQuestion tool_use id。 */
-  private markAskToolUse(lsid: string, toolUseId: string): void {
-    let set = this.askToolUseIds.get(lsid)
-    if (!set) {
-      set = new Set<string>()
-      this.askToolUseIds.set(lsid, set)
     }
     set.add(toolUseId)
   }
@@ -218,61 +171,6 @@ export class ClaudeService {
   }
 
   /**
-   * 处理拦截到的 AskUserQuestion tool_use：弹底部面板让用户答，
-   * 答案格式化成文本 pushMessage 回 SDK，让对话续跑（SDK 自动回填的 dummy tool_result 那轮结束，
-   * 新 user turn 触发新一轮 assistant 输出）。
-   */
-  private async handleAskUserQuestion(
-    localSessionId: string,
-    toolUse: { id: string; input: any },
-    webContents: WebContents,
-  ): Promise<void> {
-    const input = toolUse.input || {}
-    const questions: any[] = Array.isArray(input.questions) ? input.questions : []
-    if (questions.length === 0) return
-    // 开门控：在等待用户作答期间，丢弃 SDK 基于 dummy tool_result 的全部续跑。
-    this.enterAskGate(localSessionId)
-    // 记录此 AskUserQuestion 的 tool_use id：后续 user 分支据此识别并丢弃 SDK 自填的
-    // dummy tool_result（"Answer questions?"），不渲染假卡片。
-    if (typeof toolUse.id === 'string') this.markAskToolUse(localSessionId, toolUse.id)
-    let result: any
-    try {
-      result = await this.askUserViaPanel(webContents, 'ask_user_question', input, toolUse.id, undefined, localSessionId)
-    } catch {
-      result = { behavior: 'cancelled' }
-    } finally {
-      // 关门控（无论答完/取消/异常）：之后 pushMessage 推答案，SDK 新一轮才放行。
-      this.exitAskGate(localSessionId)
-    }
-    if (!this.manager) return
-    // 取消 / 未完成：仍推一条提示，避免模型卡住
-    if (result?.behavior !== 'completed') {
-      this.manager.pushMessage(localSessionId, '（用户取消了这次提问）')
-      return
-    }
-    // 把答案格式化成自然语言文本
-    const answers: any[] = result?.result?.answers ?? []
-    const lines: string[] = []
-    questions.forEach((q, qi) => {
-      const ans = answers.find((a) => a.questionIndex === qi)
-      const label = q.question || `问题 ${qi + 1}`
-      if (!ans) { lines.push(`${label}：（未回答）`); return }
-      if (ans.other !== undefined) {
-        lines.push(`${label}：${ans.other}`)
-      } else if (ans.selected) {
-        // selected 可能是 {index,label}（单选）或数组（多选）
-        const sel = ans.selected
-        const text = Array.isArray(sel)
-          ? sel.map((s: any) => s?.label ?? s).join('、')
-          : (sel?.label ?? String(sel))
-        lines.push(`${label}：${text}`)
-      }
-    })
-    this.manager.pushMessage(localSessionId,
-      `【用户已正式回答你的 AskUserQuestion，以下是用户的真实选择，请以此为准，忽略此前的任何占位/工具返回（如 "Answer questions?"）】\n${lines.join('\n')}`)
-  }
-
-  /**
    * canUseTool 回调的授权弹窗逻辑：default（变更前确认）模式下，对写/执行类工具
    * 弹底部面板让用户批准/拒绝；其余情况直接 allow。
    * 经第三方代理时 SDK 不发 control_request/permission_denied，但会调用 canUseTool
@@ -295,6 +193,60 @@ export class ClaudeService {
     // SDK 自行匹配放行。这是 claude cli 原生的「自动允许」机制，cc-desk 不自己维护规则集。
     const allow = (updatedPermissions?: any[]): { behavior: 'allow'; updatedInput: Record<string, unknown>; updatedPermissions?: any[]; toolUseID?: string } =>
       ({ behavior: 'allow', updatedInput: input, ...(updatedPermissions ? { updatedPermissions } : {}), toolUseID: opts.toolUseID })
+    // ★ 硬阻塞核心：AskUserQuestion / ExitPlanMode 在 canUseTool 内部 await 用户作答，
+    // 全程阻塞 CLI（canUseTool 不返回 CLI 就不动）。不返回 allow——allow 会让 CLI 执行
+    // AskUserQuestion 工具，合成 dummy tool_result（"The user did not answer the questions."）
+    // 污染对话历史，导致模型据此继续往下跑（用户没操作就续跑的根因）。
+    // 改为返回 deny，deny 的 message 作为 tool_result 返给模型——我们把【用户真实答案】
+    // 填进 deny.message，让模型看到真实答案而非 dummy。CLI 全程不执行工具、不合成 dummy。
+    if (toolName === 'AskUserQuestion') {
+      const questions: any[] = Array.isArray(input.questions) ? input.questions : []
+      let result: any
+      try {
+        result = await this.askUserViaPanel(webContents, 'ask_user_question', input, opts.toolUseID, undefined, localSessionId)
+      } catch {
+        result = { behavior: 'cancelled' }
+      }
+      // 格式化真实答案为文本，作为 deny 的 message（= tool_result）返给模型
+      const lines: string[] = []
+      if (result?.behavior === 'completed') {
+        const answers: any[] = result?.result?.answers ?? []
+        questions.forEach((q, qi) => {
+          const ans = answers.find((a) => a.questionIndex === qi)
+          const label = q.question || `问题 ${qi + 1}`
+          if (!ans) { lines.push(`${label}：（未回答）`); return }
+          if (ans.other !== undefined) {
+            lines.push(`${label}：${ans.other}`)
+          } else if (ans.selected) {
+            const sel = ans.selected
+            const text = Array.isArray(sel)
+              ? sel.map((s: any) => s?.label ?? s).join('、')
+              : (sel?.label ?? String(sel))
+            lines.push(`${label}：${text}`)
+          }
+        })
+      }
+      const answerText = result?.behavior === 'completed'
+        ? `【用户已正式回答你的 AskUserQuestion，以下是用户的真实选择，请以此为准，忽略此前的任何占位/工具返回（如 "Answer questions?"）】\n${lines.join('\n')}`
+        : '（用户取消了这次提问）'
+      return { behavior: 'deny', message: answerText, toolUseID: opts.toolUseID }
+    }
+    if (toolName === 'ExitPlanMode') {
+      const plan = typeof input.plan === 'string' ? input.plan : ''
+      const allowedPrompts = Array.isArray(input.allowedPrompts) ? input.allowedPrompts : undefined
+      let result: any
+      try {
+        result = await this.askUserViaPanel(webContents, 'plan_proposed', { plan, allowedPrompts }, opts.toolUseID, undefined, localSessionId)
+      } catch {
+        result = { behavior: 'cancelled' }
+      }
+      if (result?.behavior === 'completed' && result?.result?.permissionMode) {
+        // 用户批准计划并选定授权模式：SDK 端实时切换权限（退出 plan 模式）
+        await this.setPermissionMode(localSessionId, result.result.permissionMode)
+        return { behavior: 'deny', message: '（用户已批准计划，开始执行）', toolUseID: opts.toolUseID }
+      }
+      return { behavior: 'deny', message: '（用户未批准计划，请根据反馈修改计划）', toolUseID: opts.toolUseID }
+    }
     // 非 default 模式（自动编辑/完全访问/计划）或只读工具：直接放行
     if (permissionLabel !== '变更前确认' || !CONFIRM_TOOLS.has(toolName)) {
       return allow()
@@ -328,40 +280,6 @@ export class ClaudeService {
     return { behavior: 'deny', message: '用户拒绝了此操作', toolUseID: opts.toolUseID }
   }
 
-  /**
-   * 处理拦截到的 ExitPlanMode tool_use（计划模式提交计划）。
-   * 走与 AskUserQuestion 相同的阻塞式 dialog 通道：
-   *   ① 发 claude:dialog-request（dialogKind='plan_proposed'），阻塞等待用户选择授权模式
-   *   ② 用户选择后：调 setPermissionMode control request 让 SDK 实时退出 plan 模式，
-   *      并把结果 pushMessage 回 SDK 让模型开始执行计划
-   *   ③ 用户取消/拒绝计划：pushMessage 告知模型保持 plan 模式修改计划
-   */
-  private async handleExitPlanMode(
-    localSessionId: string,
-    toolUse: { id: string; input: any },
-    webContents: WebContents,
-  ): Promise<void> {
-    const input = toolUse.input || {}
-    const plan = typeof input.plan === 'string' ? input.plan : ''
-    const allowedPrompts = Array.isArray(input.allowedPrompts) ? input.allowedPrompts : undefined
-    let result: any
-    try {
-      result = await this.askUserViaPanel(webContents, 'plan_proposed', { plan, allowedPrompts }, toolUse.id, undefined, localSessionId)
-    } catch {
-      result = { behavior: 'cancelled' }
-    }
-    if (!this.manager) return
-    if (result?.behavior === 'completed' && result?.result?.permissionMode) {
-      // 用户批准计划并选定授权模式：SDK 端实时切换权限（退出 plan 模式）
-      const permissionLabel = result.result.permissionMode
-      await this.setPermissionMode(localSessionId, permissionLabel)
-      this.manager.pushMessage(localSessionId, '（用户已批准计划，开始执行）')
-    } else {
-      // 用户拒绝/取消：保持 plan 模式，让模型修改计划
-      this.manager.pushMessage(localSessionId, '（用户未批准计划，请根据反馈修改计划）')
-    }
-  }
-
   async send(opts: {
     prompt: string
     sessionId?: string
@@ -370,9 +288,11 @@ export class ClaudeService {
     permission?: string        // 中文标签，主进程翻译
     thinking?: 'low' | 'medium' | 'high'
     extraDirs?: string[]
+    images?: { mediaType: string; data: string; name?: string }[]  // 用户附加的图片（data 为纯 base64）
     webContents: WebContents
   }): Promise<void> {
-    const { prompt, sessionId, localSessionId, cwd, permission, thinking, extraDirs, webContents } = opts
+    const { prompt, sessionId, localSessionId, cwd, permission, thinking, extraDirs, images, webContents } = opts
+    console.log(`[diag][send] ENTER: lsid=${localSessionId} prompt="${String(prompt).slice(0, 60)}" images=${images?.length ?? 0}`)
     // 本次流绑定的渲染端会话 id。所有事件载荷带上它，渲染端据此路由到正确会话，
     // 避免「在 A 发送后切到 B，A 的流式输出串到 B」。
     const lsid = localSessionId ?? ''
@@ -419,7 +339,9 @@ export class ClaudeService {
     // 则新消息推入旧 controller，但 interrupt() 的 2s 超时后会 ac.abort()，导致
     // AbortError → controller.close() + sessions.delete()，正在执行的新 task 被中断。
     // 故：isIterating 时先 closeSession 强制结束旧循环，再 ensureSession 重建。
-    if (this.manager?.isIterating(lsid)) {
+    const wasIterating = this.manager?.isIterating(lsid)
+    if (wasIterating) {
+      console.log(`[diag][send] isIterating=true → closeSession then rebuild`)
       await this.manager.closeSession(lsid)
     }
     const sessionExisted = this.manager.sessions.has(lsid)
@@ -481,6 +403,22 @@ export class ClaudeService {
           canUseTool: async (toolName: string, input: Record<string, unknown>, opts: any) => {
             return this.handlePermissionRequest(lsid, permission ?? '', toolName, input, opts, webContents)
           },
+          // ★ 硬阻塞核心：PreToolUse hook 对 AskUserQuestion/ExitPlanMode 返回 permissionDecision:'ask'，
+          // 让 CLI 子进程在【执行工具之前】硬停（发 can_use_tool 控制请求等宿主回复）。
+          // canUseTool（handlePermissionRequest）对这两个工具 await 用户作答后返回 deny(真实答案)——
+          // deny 让 CLI 不执行工具（不合成 dummy tool_result），deny.message 作为 tool_result 返给模型，
+          // 模型看到的是真实答案而非 "did not answer"。根治「用户没操作就继续往下执行」。
+          hooks: {
+            PreToolUse: [{
+              matcher: 'AskUserQuestion|ExitPlanMode',
+              hooks: [async () => ({
+                hookSpecificOutput: {
+                  hookEventName: 'PreToolUse' as const,
+                  permissionDecision: 'ask' as const,
+                },
+              })],
+            }],
+          },
         },
       })
       }
@@ -492,18 +430,14 @@ export class ClaudeService {
       await this.setPermissionMode(lsid, permission)
     }
 
-    this.manager.pushMessage(lsid, prompt)
+    console.log(`[diag][send] calling pushMessage: lsid=${lsid} sessionExisted=${sessionExisted} wasIterating=${!!wasIterating} sessions.has=${this.manager.sessions.has(lsid)}`)
+    this.manager.pushMessage(lsid, prompt, images)
+    console.log(`[diag][send] pushMessage done`)
   }
 
   // SDK message → IPC 转发。逻辑与原 claude-service 的 for-await case 一致。
   private async forwardEvent(message: any, lsid: string, webContents: WebContents): Promise<void> {
     const mtype: string = message.type
-    // 门控：等待 AskUserQuestion 作答期间，SDK 会基于自填 dummy tool_result 续跑下一轮
-    // （无法阻止），这些续跑事件一律丢弃——否则用户还没答完，对话就基于 dummy 答案
-    // 自顾自跑下去了。置位发生在 handleAskUserQuestion（由本条 assistant 消息触发），
-    // 而 await handleAskUserQuestion 在本条 forwardEvent 内执行，故置位时本条已处理完，
-    // 后续 SDK 消息进这里才会被吞掉，不会误吞 AskUserQuestion 那条本身。
-    if (this.isAskGated(lsid)) return
     switch (mtype) {
       case 'system': {
         const sys = message
@@ -514,6 +448,19 @@ export class ClaudeService {
           webContents.send('claude:notice', { ...mkNotice('permission_denied', `权限拒绝：${sys.tool_name}`, 'warn'), localSessionId: lsid })
         } else if (subtype === 'compact' || (subtype && subtype.startsWith('compact') && sys.compact_result === 'failed')) {
           webContents.send('claude:notice', { ...mkNotice('compact', `上下文压缩失败：${sys.compact_error ?? subtype}`, 'warn'), localSessionId: lsid })
+        } else if (subtype === 'compact_boundary') {
+          // 压缩完成：SDK 真实摘要了历史并替换内部上下文（区别于 cc-desk 手写 /compact 只压缩 UI）。
+          // compact_metadata 带 pre_tokens/post_tokens/duration_ms/trigger(manual|auto)。
+          // 告知用户压缩发生，并联动上下文进度环刷新（渲染端 onNotice 后可主动拉 context-usage）。
+          const meta = sys.compact_metadata || {}
+          const pre = typeof meta.pre_tokens === 'number' ? meta.pre_tokens : null
+          const post = typeof meta.post_tokens === 'number' ? meta.post_tokens : null
+          const trigger = meta.trigger === 'manual' ? '手动' : '自动'
+          const tokenPart = (pre != null || post != null) ? `：${pre ?? '?'} → ${post ?? '?'} tokens` : ''
+          webContents.send('claude:notice', { ...mkNotice('compact', `已${trigger}压缩上下文${tokenPart}`, 'info'), localSessionId: lsid })
+        } else if (subtype === 'status' && sys.status === 'compacting') {
+          // 压缩进行中：SDK 正在摘要历史。用户此前反馈不知道何时压缩，故改为可见提示。
+          webContents.send('claude:notice', { ...mkNotice('compact', '正在压缩上下文…', 'info'), localSessionId: lsid })
         } else if (subtype === 'task_started') {
           // SDK 的 task_* 事件顶层 type 都是 'system'，靠 subtype 区分。
           // 此前误写成顶层 case，导致普通 Task 子任务卡片与 local_workflow 后台任务均无法识别。
@@ -531,7 +478,7 @@ export class ClaudeService {
             priority: sys.priority || 'medium',
           })
         }
-        // 其余 system 子类型（status 瞬态、hook 协议进度等）属内部噪声，不打扰用户。
+        // 其余 system 子类型（status 的非 compacting 态、hook 协议进度等）属内部噪声，不打扰用户。
         break
       }
       case 'stream_event': {
@@ -543,9 +490,10 @@ export class ClaudeService {
           const tb = evt.content_block
           // AskUserQuestion / TodoWrite 由专属面板承载，不推主流 tool_use_start（否则会先入
           // streaming blocks 渲染成卡片，assistant_blocks 的过滤此时已太晚）。
-          // TaskCreate/TaskUpdate/TaskList/ExitPlanMode 现改为既做特殊处理（发 claude:task /
-          // handleExitPlanMode，驱动悬浮面板与计划阻塞），又推进主流 tool_use_start，
-          // 让对话流用 MetaToolCard 卡片完整记录这些规划类操作。
+          // AskUserQuestion/ExitPlanMode 的用户交互由 PreToolUse hook→canUseTool 硬阻塞处理
+          // （见 handlePermissionRequest），不走 forwardEvent 本地拦截。
+          // TaskCreate/TaskUpdate 做特殊处理（发 claude:task 驱动悬浮面板），又推进主流
+          // tool_use_start，让对话流用 MetaToolCard 卡片完整记录这些规划类操作。
           if (tb.name === 'AskUserQuestion' || tb.name === 'TodoWrite') {
             break
           }
@@ -602,9 +550,9 @@ export class ClaudeService {
         // 注意：TaskList 是查询操作（tool_result 返回 tasks 列表），不是清空。
         // 其任务同步在 user 阶段从 tool_result 解析（见 handleTaskListResult），不在此处理。
         const blocks = normalizeBetaBlocks(aContent)
-          // 仅过滤由专属面板承载的 tool_use：AskUserQuestion（底部面板）/ TodoWrite（悬浮面板）。
-          // TaskCreate/TaskUpdate/TaskList/ExitPlanMode 保留进对话流，由 MetaToolCard 渲染：
-          // 既驱动悬浮面板/计划阻塞，又在主流留下可回看的记录（plan 可点开抽屉）。
+          // 过滤由专属面板承载的 tool_use：AskUserQuestion（底部内联面板，由 canUseTool 弹窗）。
+          // ExitPlanMode 保留进对话流由 PlanCard 渲染（计划卡片）。
+          .filter((b: any) => !(b.type === 'tool_use' && b.name === 'AskUserQuestion'))
         // assistant 阶段 input 完整：拦截 TaskUpdate 推 claude:task；TaskCreate 仅记录 input
         // （真实 taskId 来自后续 tool_result，见 handleTaskCreateResult）。
         if (Array.isArray(aContent)) {
@@ -632,41 +580,15 @@ export class ClaudeService {
         }
         webContents.send('claude:blocks', { localSessionId: lsid, op: 'assistant_blocks', blocks, uuid: message.uuid })
 
-        // 阻塞式交互：先推完本轮内容，再等待用户决策。
-        // forwardEvent 是 async，runIterate 的 for-await 会 await 它，
-        // SDK 事件循环在此暂停，不会在用户回答前继续执行后续步骤。
-        if (Array.isArray(aContent)) {
-          const askBlocks = aContent.filter((ab: any) => ab?.type === 'tool_use' && ab.name === 'AskUserQuestion')
-          for (const ab of askBlocks) {
-            // 按 tool_use.id 去重：SDK 在 includePartialMessages / resume 场景会重放同一
-            // assistant 消息，若不查重，同一问题会被弹多次并 pushMessage 多条答案回 SDK。
-            if (typeof ab.id === 'string' && this.isBlockingHandled(lsid, ab.id)) continue
-            if (typeof ab.id === 'string') this.markBlockingHandled(lsid, ab.id)
-            await this.handleAskUserQuestion(lsid, ab, webContents)
-          }
-          // ExitPlanMode：计划模式下模型提交计划。阻塞式——必须等用户在计划卡片上
-          // 选择授权模式后才继续，否则 SDK 自动回填 dummy tool_result 后会继续往下走（BUG）。
-          const planBlocks = aContent.filter((ab: any) => ab?.type === 'tool_use' && ab.name === 'ExitPlanMode')
-          for (const pb of planBlocks) {
-            if (typeof pb.id === 'string' && this.isBlockingHandled(lsid, pb.id)) continue
-            if (typeof pb.id === 'string') this.markBlockingHandled(lsid, pb.id)
-            await this.handleExitPlanMode(lsid, pb, webContents)
-          }
-        }
+        // AskUserQuestion / ExitPlanMode 的用户作答已由 canUseTool 统一处理（PreToolUse hook
+        // 返回 'ask' → CLI 发 can_use_tool → handlePermissionRequest 在 canUseTool 内 await 弹窗
+        // → 返回 deny(真实答案) 作为 tool_result）。CLI 全程阻塞，不合成 dummy。
+        // 此处不再本地拦截——否则会与 canUseTool 并发弹两次同一问题。
         break
       }
       case 'user': {
         const results = extractToolResults(message.message?.content || [])
         for (const r of results) {
-          // AskUserQuestion 经第三方代理未注册为工具，SDK 会自填 dummy tool_result
-          // （字面 "Answer questions?"）回给模型。此结果无意义且会污染上下文，
-          // 不推主流 tool_result（不渲染假卡片）。模型侧的误导由 handleAskUserQuestion
-          // pushMessage 的强化答案文本盖过（见 verdict 后的答案格式化）。
-          // 注意：只识别 AskUserQuestion，ExitPlanMode 的 tool_result 有用（提取 planFilePath），
-          // 故用专用集合 askToolUseIds 而非共用的 handledBlockingToolUse。
-          if (typeof r.toolUseId === 'string' && this.isAskToolUse(lsid, r.toolUseId)) {
-            continue
-          }
           // subagent 内部工具的结果：回填进对应 subagent 的输出（抽屉可见），
           // 不推主流 tool_result（subagent 工具不在主流 blocks，推了也找不到归属）。
           const subParent = this.subagentToolUseParent.get(r.toolUseId)
@@ -750,6 +672,16 @@ export class ClaudeService {
           isError: isUserAbort ? false : !!r.is_error,
           costUSD: r.total_cost_usd, durationMs: r.duration_ms, turns: r.num_turns,
         })
+        // 在 for-await 循环退出前（本 forwardEvent 仍 await 中、control 通道仍活着）查询本轮
+        // 真实上下文用量并推给渲染端缓存。这是拿到准确 usage 的唯一可靠时机——循环退出后
+        // control 命令不可用（SDK 限制），切回存量会话也无法重查。故每轮结束都缓存最后一次值。
+        // 用户主动 interrupt 跳过（上下文未稳定，查到的值无意义）。
+        if (!isUserAbort) {
+          try {
+            const usage = await this.manager?.getContextUsage(lsid)
+            if (usage) webContents.send('claude:context-usage', { localSessionId: lsid, usage })
+          } catch { /* control 查询失败不阻塞收尾 */ }
+        }
         if (r.is_error && !isUserAbort) {
           webContents.send('claude:notice', { ...mkNotice('error', `任务出错（${r.subtype}）`, 'error'), localSessionId: lsid })
         }
@@ -1042,12 +974,15 @@ export class ClaudeService {
     }, 2000)
   }
 
+  /** 查询当前会话上下文用量，供输入框进度环展示。委托 manager.getContextUsage。 */
+  async getContextUsage(localSessionId: string): Promise<any> {
+    if (!this.manager) return null
+    return this.manager.getContextUsage(localSessionId)
+  }
+
   /** 关闭会话：关闭 controller + query.return()，删除 session。委托 manager.closeSession。 */
   closeSession(localSessionId: string): Promise<void> {
     this.abortControllers.delete(localSessionId)
-    // 清门控计数，防异常残留导致该会话后续消息被永久丢弃。
-    this.askGateCount.delete(localSessionId)
-    this.askToolUseIds.delete(localSessionId)
     this.dialogChain.delete(localSessionId)
     return this.manager?.closeSession(localSessionId) ?? Promise.resolve()
   }

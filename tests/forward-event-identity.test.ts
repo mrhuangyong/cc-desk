@@ -102,10 +102,11 @@ describe('forwardEvent 能力识别', () => {
 
   // ===== Plan：ExitPlanMode =====
 
-  it('assistant 含 ExitPlanMode tool_use → claude:dialog-request（plan_proposed，阻塞式）', async () => {
+  it('assistant 含 ExitPlanMode tool_use → forwardEvent 不阻塞、不发 dialog-request（阻塞已移至 canUseTool）', async () => {
     const svc = new ClaudeService()
     const { wc, calls } = mockWebContents()
-    // forwardEvent 遇到 ExitPlanMode 现在阻塞（走 dialog 通道），返回未 resolve 的 Promise
+    // 新架构：ExitPlanMode 的用户交互由 PreToolUse hook→canUseTool 硬阻塞处理，
+    // forwardEvent 不再本地拦截——调用立即返回（不阻塞），不发 dialog-request。
     const fwdPromise = (svc as any).forwardEvent({
       type: 'assistant',
       uuid: 'u7', session_id: 's1',
@@ -117,24 +118,12 @@ describe('forwardEvent 能力识别', () => {
         ],
       },
     }, 'sess1', wc)
+    await fwdPromise
     await new Promise(r => setTimeout(r, 0))
 
-    // 应发 dialog-request（dialogKind='plan_proposed'），而非旧的 claude:plan
+    // forwardEvent 不应发 dialog-request（阻塞在 canUseTool）
     const dialogs = calls.filter(c => c.channel === 'claude:dialog-request')
-    expect(dialogs.length).toBe(1)
-    expect(dialogs[0].data.dialogKind).toBe('plan_proposed')
-    expect(String(dialogs[0].data.payload?.plan)).toContain('重构方案')
-
-    // 用户选择前 Promise 应保持 pending
-    let resolved = false
-    fwdPromise.then(() => { resolved = true })
-    await new Promise(r => setTimeout(r, 10))
-    expect(resolved).toBe(false)
-
-    // 用户批准：dialogResponse 回复
-    svc.resolveDialog(dialogs[0].data.reqId, { behavior: 'completed', result: { permissionMode: '自动编辑' } })
-    await new Promise(r => setTimeout(r, 10))
-    expect(resolved).toBe(true)
+    expect(dialogs.length).toBe(0)
   })
 
   it('ExitPlanMode 保留进 assistant_blocks（用 MetaToolCard 渲染，提供持久入口）', async () => {
@@ -168,12 +157,13 @@ describe('forwardEvent 能力识别', () => {
     await new Promise(r => setTimeout(r, 0))
   })
 
-  // ===== AskUserQuestion（阻塞式交互，确认 BUG 1 修复） =====
+  // ===== AskUserQuestion（阻塞式交互已移至 canUseTool） =====
 
-  it('assistant 含 AskUserQuestion tool_use → claude:dialog-request', async () => {
+  it('assistant 含 AskUserQuestion tool_use → forwardEvent 不发 dialog-request（阻塞在 canUseTool）', async () => {
     const svc = new ClaudeService()
     const { wc, calls } = mockWebContents()
-    // forwardEvent 现在是 async, 返回未 resolve 的 Promise（等待用户回答）
+    // 新架构：AskUserQuestion 由 PreToolUse hook→canUseTool 硬阻塞，
+    // forwardEvent 不本地拦截、不发 dialog-request。
     fwd(svc, {
       type: 'assistant',
       uuid: 'u9', session_id: 's1',
@@ -184,18 +174,16 @@ describe('forwardEvent 能力识别', () => {
         ],
       },
     }, wc)
-    // dialog-request 在微任务中发出
     await new Promise(r => setTimeout(r, 0))
 
     const dialogs = calls.filter(c => c.channel === 'claude:dialog-request')
-    expect(dialogs.length).toBe(1)
-    expect(dialogs[0].data.dialogKind).toBe('ask_user_question')
+    expect(dialogs.length).toBe(0)
   })
 
-  it('forwardEvent 遇到 AskUserQuestion 时阻塞：用户回答前 Promise 不 resolve', async () => {
+  it('forwardEvent 不再因 AskUserQuestion 阻塞（立即返回，阻塞职责在 canUseTool）', async () => {
     const svc = new ClaudeService()
-    const { wc, calls } = mockWebContents()
-    // forwardEvent 返回 Promise; 在用户回答前应保持 pending
+    const { wc } = mockWebContents()
+    // forwardEvent 不再 await 用户作答——调用应立即 resolve
     const fwdPromise = (svc as any).forwardEvent({
       type: 'assistant',
       uuid: 'u-block', session_id: 's1',
@@ -206,18 +194,10 @@ describe('forwardEvent 能力识别', () => {
         ],
       },
     }, 'sess1', wc)
-    await new Promise(r => setTimeout(r, 10))
-    // dialog-request 已发出，但 forwardEvent Promise 仍 pending（用户未回答）
-    expect(calls.some(c => c.channel === 'claude:dialog-request')).toBe(true)
     let resolved = false
     fwdPromise.then(() => { resolved = true })
     await new Promise(r => setTimeout(r, 10))
-    expect(resolved).toBe(false)
-
-    // 模拟用户回答：通过 resolveDialog 结算
-    const reqId = calls.find(c => c.channel === 'claude:dialog-request')!.data.reqId
-    svc.resolveDialog(reqId, { behavior: 'completed', result: { answers: [{ questionIndex: 0, selected: { index: 0, label: 'A' } }] } })
-    await new Promise(r => setTimeout(r, 10))
+    // 新架构：forwardEvent 不阻塞，立即 resolve
     expect(resolved).toBe(true)
   })
 })

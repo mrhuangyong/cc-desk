@@ -3,9 +3,18 @@ import type { WebContents } from 'electron'
 
 export interface SDKUserMessage {
   type: 'user'
-  message: { role: 'user'; content: string }
+  // content 既可以是纯文本字符串，也可以是 ContentBlock 数组（携带 image 等）。
+  // Anthropic Messages API 的 message.content 支持两种形式；图片走数组形式的 image block。
+  message: { role: 'user'; content: string | SDKContentBlock[] }
   parent_tool_use_id: string | null
 }
+
+// 注入 SDK 的用户消息 content block。text 与 image 是用户发送消息会用到的两种。
+// image.source 用 base64 编码（data 为纯 base64，不含 data: 前缀）。
+// media_type 用 SDK 要求的字面量联合（image/jpeg|png|gif|webp）。
+export type SDKContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'image'; source: { type: 'base64'; media_type: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'; data: string } }
 
 export interface SessionQuery {
   localSessionId: string
@@ -112,23 +121,38 @@ export class SessionQueryManager {
     return sq
   }
 
-  pushMessage(localSessionId: string, prompt: string): void {
+  /**
+   * 向持久 query 注入一条 user turn。
+   * prompt 为文本；images 为可选的图片附件（{mediaType, data}，data 为纯 base64）。
+   * 有图片时 message.content 组成数组（text + image blocks），否则退回纯字符串形式。
+   */
+  pushMessage(localSessionId: string, prompt: string, images?: { mediaType: string; data: string }[]): void {
     const sq = this.sessions.get(localSessionId)
-    if (!sq) return
+    if (!sq) { console.log(`[diag][pushMessage] NO SESSION: lsid=${localSessionId}`); return }
+    console.log(`[diag][pushMessage] pushing to controller: lsid=${localSessionId} isIterating=${sq.isIterating} isClosed=${sq.controller.isClosed()} queueLen=${(sq.controller as any).queue?.length}`)
+    const content: string | SDKContentBlock[] = images && images.length > 0
+      ? [
+          ...(prompt ? [{ type: 'text' as const, text: prompt }] : []),
+          ...images.map(i => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: i.mediaType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp', data: i.data } })),
+        ]
+      : prompt
     sq.controller.push({
       type: 'user',
-      message: { role: 'user', content: prompt },
+      message: { role: 'user', content },
       parent_tool_use_id: null,
     })
   }
 
   private async runIterate(localSessionId: string, sq: SessionQuery): Promise<void> {
     sq.isIterating = true
+    console.log(`[diag][runIterate] START: lsid=${localSessionId}`)
     try {
       for await (const message of sq.query) {
         await sq.onEvent(message)
       }
+      console.log(`[diag][runIterate] for-await EXITED normally: lsid=${localSessionId}`)
     } catch (err) {
+      console.log(`[diag][runIterate] for-await THREW: lsid=${localSessionId} err=${err instanceof Error ? err.message : err}`)
       // 用户主动 abort（interrupt 超时后强制中止）:不报错、不触发 onError,
       // 仅清理 session。用户再发消息时 ensureSession 会用 resumeId 续接。
       const isAbort = err instanceof Error && (err.name === 'AbortError' || /abort/i.test(err.message))
@@ -142,6 +166,7 @@ export class SessionQueryManager {
       }
     } finally {
       sq.isIterating = false
+      console.log(`[diag][runIterate] END: lsid=${localSessionId} isIterating=false`)
     }
   }
 
@@ -169,6 +194,17 @@ export class SessionQueryManager {
     const sq = this.sessions.get(localSessionId)
     if (!sq) return
     try { await (sq.query as any).interrupt() } catch (err) { console.error('[session-query] interrupt failed', err) }
+  }
+
+  /**
+   * 查询当前上下文用量（SDK getContextUsage control request）。
+   * 返回 { totalTokens, maxTokens, percentage, categories:[{name,tokens,color,isDeferred}] }。
+   * 会话不存在或调用失败返回 null（渲染端据此显示「未知」态）。
+   */
+  async getContextUsage(localSessionId: string): Promise<any> {
+    const sq = this.sessions.get(localSessionId)
+    if (!sq) return null
+    try { return await (sq.query as any).getContextUsage() } catch (err) { console.error('[session-query] getContextUsage failed', err); return null }
   }
 
   async closeSession(localSessionId: string): Promise<void> {

@@ -26,6 +26,11 @@ const dict: Record<Lang, Record<string, string>> = {
     'input.thinking': '思考',
     'input.model': '模型',
     'input.attach': '附件',
+    // 上下文用量进度环（输入框内）
+    'contextUsage.title': '上下文用量',
+    'contextUsage.unknown': '上下文用量未知',
+    'contextUsage.compacting': '正在压缩上下文…',
+    'contextUsage.capacity': '上下文容量',
     // 聊天区
     'chat.empty': '开始新的对话',
     'chat.noSession': '无选中会话',
@@ -151,6 +156,10 @@ const dict: Record<Lang, Record<string, string>> = {
     'input.thinking': 'Thinking',
     'input.model': 'Model',
     'input.attach': 'Attach',
+    'contextUsage.title': 'Context usage',
+    'contextUsage.unknown': 'Context usage unknown',
+    'contextUsage.compacting': 'Compacting context…',
+    'contextUsage.capacity': 'Context capacity',
     'chat.empty': 'Start a new conversation',
     'chat.noSession': 'No session selected',
     'chat.taskDone': 'Task complete',

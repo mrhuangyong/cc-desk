@@ -76,6 +76,8 @@ function registerIpcHandlers(): void {
   ipcMain.handle('claude:set-permission-mode', (_e, { localSessionId, permission }) => {
     return claude.setPermissionMode(localSessionId, permission)
   })
+  // 查询当前会话上下文用量（SDK getContextUsage control request），供输入框进度环展示。
+  ipcMain.handle('claude:context-usage', (_e, localSessionId: string) => claude.getContextUsage(localSessionId))
   ipcMain.handle('cc:builtin:compact', (_e, localSessionId: string) => claude.compactSession(localSessionId, getActiveWin()!.webContents))
   ipcMain.handle('cc:builtin:init', (_e, opts: { cwd: string }) => claude.initProject(opts.cwd, getActiveWin()!.webContents))
   ipcMain.handle('cc:builtin:export', (_e, localSessionId: string) => claude.exportSession(localSessionId, getActiveWin()!.webContents))
