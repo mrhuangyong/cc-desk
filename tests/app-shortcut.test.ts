@@ -32,7 +32,7 @@ function makeState(): AppState {
     panelFold: { root: false }, panelPosition: { x: 0, y: 0 },
     subagentOutputBySession: {},
     planBySession: {},
-    abortedBySession: {}, editingMessageId: null, editingQueueId: null,
+    abortedBySession: {}, contextUsageBySession: {}, editingMessageId: null, editingQueueId: null,
     updateStatus: { state: 'idle' },
     reviewByProject: {},
   }

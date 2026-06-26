@@ -16,13 +16,20 @@ contextBridge.exposeInMainWorld('api', {
     onError: (cb: (data: { error: string }) => void) => { ipcRenderer.on('claude:error', (_, data) => cb(data)) },
     onAborted: (cb: (data: any) => void) => { ipcRenderer.on('claude:aborted', (_, data) => cb(data)) },
     onDialogRequest: (cb: (data: any) => void) => { ipcRenderer.on('claude:dialog-request', (_, data) => cb(data)) },
+    onContextUsage: (cb: (data: any) => void) => {
+      const handler = (_: unknown, data: any) => cb(data)
+      ipcRenderer.on('claude:context-usage', handler)
+      // 返回 unsubscribe，供 useEffect cleanup 调用，避免组件重 mount 时监听器累加泄漏
+      return () => ipcRenderer.removeListener('claude:context-usage', handler)
+    },
     onBuiltinResult: (cb: (data: any) => void) => { ipcRenderer.on('claude:builtin-result', (_, data) => cb(data)) },
     onSubagentOutput: (cb: (data: any) => void) => { ipcRenderer.on('claude:subagent-output', (_, data) => cb(data)) },
     onNotification: (cb: (data: any) => void) => { ipcRenderer.on('claude:notification', (_, data) => cb(data)) },
     dialogResponse: (payload: { reqId: string; result: any }) => ipcRenderer.invoke('claude:dialog-response', payload),
     setPermissionMode: (opts: { localSessionId: string; permission: string }) => ipcRenderer.invoke('claude:set-permission-mode', opts),
+    contextUsage: (localSessionId: string) => ipcRenderer.invoke('claude:context-usage', localSessionId),
     removeAllListeners: () => {
-      ['claude:system', 'claude:delta', 'claude:blocks', 'claude:notice', 'claude:task', 'claude:result', 'claude:error', 'claude:aborted', 'claude:dialog-request', 'claude:backend-task', 'claude:builtin-result', 'claude:subagent-output', 'claude:notification', 'update:state']
+      ['claude:system', 'claude:delta', 'claude:blocks', 'claude:notice', 'claude:task', 'claude:result', 'claude:error', 'claude:aborted', 'claude:dialog-request', 'claude:context-usage', 'claude:backend-task', 'claude:builtin-result', 'claude:subagent-output', 'claude:notification', 'update:state']
         .forEach(ch => ipcRenderer.removeAllListeners(ch))
     },
   },

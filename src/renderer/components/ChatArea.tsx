@@ -7,6 +7,8 @@ import { BackendTaskPanel } from './BackendTaskPanel'
 import { PlanCard } from './PlanCard'
 import { InputBar } from './InputBar'
 import { InputDock } from './InputDock'
+import { AnswerPanel } from './AnswerPanel'
+import { PermissionPanel } from './PermissionPanel'
 import { PromptEditor } from '../editor/PromptEditor'
 import { serializeForPrompt } from '../editor/serialize'
 import { renderBlocks } from './blocks/BlockRenderer'
@@ -162,6 +164,18 @@ export function ChatArea() {
     scrollToBottom('auto')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.activeSessionId])
+
+  // AskUserQuestion / 权限授权面板弹出时自动滚到底：面板浮在输入框上方会遮挡对话区底部，
+  // 滚到底让「触发该提问的最近消息」尽可能可见，而非被面板盖住。
+  useEffect(() => {
+    const dlg = state.pendingDialog
+    if (dlg && dlg.sessionId === state.activeSessionId &&
+        (dlg.dialogKind === 'ask_user_question' || dlg.dialogKind === 'permission_request')) {
+      // 延迟一帧，等面板渲染撑高布局后再滚，确保滚到真实底部
+      requestAnimationFrame(() => scrollToBottom('smooth'))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.pendingDialog, state.activeSessionId])
 
   // 监听器只在挂载时注册一次，回调内需要的"会变值"通过 ref 取最新值，
   // settings 用 ref 在挂载一次的监听器闭包里取最新值（taskNotify/notifySound）。
@@ -473,6 +487,14 @@ export function ChatArea() {
               <Sparkles size={14} className="cc-pulse" style={{ color: 'var(--accent)' }} />
               <span className="cc-pulse">思考中</span>
             </div>
+          </div>
+        )}
+        {/* AskUserQuestion / 权限授权面板：作为对话区内联块（非浮层），占据对话区空间把
+            消息往上推，永不遮挡对话内容。限宽居中，与消息气泡对齐。 */}
+        {state.pendingDialog && state.pendingDialog.sessionId === state.activeSessionId &&
+          (state.pendingDialog.dialogKind === 'ask_user_question' || state.pendingDialog.dialogKind === 'permission_request') && (
+          <div style={{ width: '100%', maxWidth: 'var(--chat-max-width)', margin: '0 auto', padding: '0 28px' }}>
+            {state.pendingDialog.dialogKind === 'permission_request' ? <PermissionPanel /> : <AnswerPanel />}
           </div>
         )}
       </div>

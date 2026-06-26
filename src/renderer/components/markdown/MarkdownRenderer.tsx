@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type Dispatch } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
+import remarkBreaks from 'remark-breaks'
 import rehypeKatex from 'rehype-katex'
 import { ChevronDown, ExternalLink, FileText, Globe2 } from 'lucide-react'
 import { URL_RE, cleanUrl } from '../../utils/url'
@@ -349,11 +350,14 @@ function useCwd(state: any): string {
 
 // 对话区 Markdown 渲染：GFM + 数学公式 + shiki 代码高亮 + mermaid 图表。
 // 自动识别 bare URL 与文件路径为可点击链接。
+// remarkBreaks：让单个 \n 渲染成 <br>（软换行硬换行化）。
+// 用户输入框里的多行（同段落内的硬换行）经 serializeForPrompt 序列化为单个 \n，
+// 默认 markdown 会把单 \n 折叠成空格导致换行丢失；加 remark-breaks 后与输入态一致。
 export function MarkdownRenderer({ text }: { text: string }) {
   return (
     <div className="md">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath, remarkLinkifyAndPaths]}
+        remarkPlugins={[remarkGfm, remarkMath, remarkLinkifyAndPaths, remarkBreaks]}
         rehypePlugins={[rehypeKatex]}
         components={{
           code({ className, children, ...props }) {

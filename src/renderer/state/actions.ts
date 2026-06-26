@@ -110,3 +110,5 @@ export type Action =
   | { type: 'REVIEW_SET_NOTICE'; projectId: string; notice: { kind: 'success' | 'error'; text: string } | null }
   | { type: 'REVIEW_CLEAR_DIFF_CACHE'; projectId: string }
   | { type: 'REVIEW_CLEAR'; projectId: string }
+  // 上下文用量（SDK getContextUsage）：更新指定会话的进度环数据
+  | { type: 'SET_CONTEXT_USAGE'; sessionId: string; usage: import('./reducer').ContextUsageInfo | null }
