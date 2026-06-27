@@ -375,3 +375,76 @@ describe('ChatPage - 进入会话自动滚动', () => {
     expect(scrollTo).toHaveBeenCalled()
   })
 })
+
+describe('ChatPage - 发送参数控件(权限/思考)', () => {
+  const baseProps = {
+    title: 't', messages: [], running: false,
+    inputValue: '', onInputChange: () => {}, onSend: () => {},
+    onInterrupt: () => {}, onBack: () => {},
+  }
+
+  it('传入 setter 时渲染权限/思考两个 select,选中值正确', () => {
+    render(
+      <ChatPage
+        {...baseProps}
+        currentPermission="计划模式"
+        currentThinking="high"
+        onPermissionChange={() => {}}
+        onThinkingChange={() => {}}
+      />,
+    )
+    const permSelect = screen.getByLabelText('权限模式') as HTMLSelectElement
+    const thinkSelect = screen.getByLabelText('思考强度') as HTMLSelectElement
+    expect(permSelect.value).toBe('计划模式')
+    expect(thinkSelect.value).toBe('high')
+    // 选项齐全
+    expect(permSelect.options.length).toBe(4)
+    expect(thinkSelect.options.length).toBe(3)
+  })
+
+  it('未传 currentPermission/currentThinking 时 select 用默认值(变更前确认/medium)', () => {
+    render(
+      <ChatPage
+        {...baseProps}
+        onPermissionChange={() => {}}
+        onThinkingChange={() => {}}
+      />,
+    )
+    expect((screen.getByLabelText('权限模式') as HTMLSelectElement).value).toBe('变更前确认')
+    expect((screen.getByLabelText('思考强度') as HTMLSelectElement).value).toBe('medium')
+  })
+
+  it('改权限 select → 触发 onPermissionChange(新值)', () => {
+    const onPermissionChange = vi.fn()
+    render(
+      <ChatPage
+        {...baseProps}
+        currentPermission="变更前确认"
+        onPermissionChange={onPermissionChange}
+        onThinkingChange={() => {}}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText('权限模式'), { target: { value: '完全访问' } })
+    expect(onPermissionChange).toHaveBeenCalledWith('完全访问')
+  })
+
+  it('改思考 select → 触发 onThinkingChange(新值)', () => {
+    const onThinkingChange = vi.fn()
+    render(
+      <ChatPage
+        {...baseProps}
+        currentThinking="medium"
+        onPermissionChange={() => {}}
+        onThinkingChange={onThinkingChange}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText('思考强度'), { target: { value: 'low' } })
+    expect(onThinkingChange).toHaveBeenCalledWith('low')
+  })
+
+  it('未传任何 setter 时不渲染控件栏(向后兼容)', () => {
+    render(<ChatPage {...baseProps} />)
+    expect(screen.queryByLabelText('权限模式')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('思考强度')).not.toBeInTheDocument()
+  })
+})
