@@ -73,6 +73,8 @@ export type Action =
   | { type: 'UPSERT_TASK'; sessionId: string; task: import('../types').TaskItem }
   | { type: 'SET_TASKS'; sessionId: string; tasks: import('../types').TaskItem[] }
   | { type: 'CLEAR_TASKS'; sessionId: string }
+  // 手动清除已结束任务（completed/failed/killed），保留 running/pending
+  | { type: 'CLEAR_FINISHED_TASKS'; sessionId: string }
   // 用户主动停止时，把该会话所有未结束（pending/running）的 TaskItem 置为 killed，让其停转
   | { type: 'KILL_RUNNING_TASKS'; sessionId: string }
   // 后台任务（悬浮面板）

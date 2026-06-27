@@ -847,4 +847,18 @@ describe('reviewByProject 分片', () => {
     s = reducer(s, { type: 'REVIEW_CLEAR', projectId: 'p1' })
     expect(s.reviewByProject.p1).toBeUndefined()
   })
+
+  it('CLEAR_FINISHED_TASKS 清除已结束任务，保留 running/pending', () => {
+    let s = initialState()
+    const mk = (id: string, status: any) => ({ id, status, description: id, taskType: 'todo' as const })
+    s = reducer(s, { type: 'UPSERT_TASK', sessionId: 's1', task: mk('t1', 'completed') })
+    s = reducer(s, { type: 'UPSERT_TASK', sessionId: 's1', task: mk('t2', 'running') })
+    s = reducer(s, { type: 'UPSERT_TASK', sessionId: 's1', task: mk('t3', 'failed') })
+    s = reducer(s, { type: 'UPSERT_TASK', sessionId: 's1', task: mk('t4', 'pending') })
+    s = reducer(s, { type: 'UPSERT_TASK', sessionId: 's1', task: mk('t5', 'killed') })
+    const next = reducer(s, { type: 'CLEAR_FINISHED_TASKS', sessionId: 's1' })
+    const ids = next.tasksBySession.s1.map(t => t.id)
+    // 保留 running/pending，清除 completed/failed/killed
+    expect(ids).toEqual(['t2', 't4'])
+  })
 })

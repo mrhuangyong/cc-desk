@@ -823,6 +823,12 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'CLEAR_TASKS': {
       return { ...state, tasksBySession: { ...state.tasksBySession, [action.sessionId]: [] } }
     }
+    case 'CLEAR_FINISHED_TASKS': {
+      // 手动清除已结束任务（completed/failed/killed），保留 running/pending/paused
+      const list = state.tasksBySession[action.sessionId] ?? []
+      const kept = list.filter(t => t.status === 'running' || t.status === 'pending' || t.status === 'paused')
+      return { ...state, tasksBySession: { ...state.tasksBySession, [action.sessionId]: kept } }
+    }
     case 'KILL_RUNNING_TASKS': {
       // 停止 claude 时：把该会话所有未结束（pending/running）的 TaskItem 置为 killed。
       // 主进程 interrupt() 不持有 tasksBySession，故由渲染端在 onAborted 时补齐。
