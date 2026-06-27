@@ -1,6 +1,6 @@
 {
   "name": "cc-desk",
-  "version": "1.18.0",
+  "version": "1.19.0",
   "description": "",
   "main": "out/main/index.js",
   "scripts": {
@@ -61,6 +61,7 @@
     "mermaid": "^11.15.0",
     "monaco-editor": "^0.55.1",
     "node-pty": "^1.1.0",
+    "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^10.1.0",
@@ -69,14 +70,17 @@
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
     "shell-env": "^4.0.3",
-    "shiki": "^4.2.0"
+    "shiki": "^4.2.0",
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^25.9.3",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^6.0.2",
     "@vitest/coverage-v8": "^4.1.9",
     "electron": "^42.4.0",

@@ -1,5 +1,7 @@
 import { app, BrowserWindow, shell, ipcMain, dialog, Menu } from 'electron'
 import { join } from 'path'
+import { WebSocket } from 'ws'
+import QRCode from 'qrcode'
 import { ClaudeService } from './claude-service'
 import { SessionQueryManager } from './session-query-manager'
 import { PtyManager } from './pty-manager'
@@ -7,7 +9,7 @@ import { readDirTree, readFileContent, searchFiles, writeFileContent, pathExists
 import { getSettings, saveSettings } from './settings-store'
 import { menuT } from './menu-i18n'
 import { getModelProvidersConfig, saveModelProvidersConfig } from './cc-desk-store'
-import { getProjectsSnapshot, saveProjectsSnapshot } from './projects-store'
+import { getProjectsSnapshot, saveProjectsSnapshot, addSessionToProject, archiveSessionInStore } from './projects-store'
 import * as cc from './claude-config'
 import * as mkt from './marketplace-manager'
 import * as gitSvc from './git-service'
@@ -17,6 +19,20 @@ import { ensureClaudeConfigDir } from './paths'
 import { migrateFromClaude } from './migrate-from-claude'
 import { UpdateManager } from './update-manager'
 import { fixEnvSync } from './fix-env'
+import {
+  getRemoteConfig, saveRemoteConfig, ensureDeviceIdentity,
+  shouldRecordPaired, markUnpaired, clearUnpaired, type RemoteConfig,
+} from './remote-config'
+import {
+  createRemoteBridge, createDispatcher, createDialogReplayer, createEventForwarder,
+  buildSessionListPayload, toHistoryMessages, buildModelsPayload,
+  type RemoteBridge, type DialogReplayer,
+} from './remote-bridge'
+import { makeEnvelope, type Envelope, type MessageType } from '../shared/remote-protocol'
+import {
+  buildPairCodeRequest, buildPairUrl, isPairCodeResponse, isPairErrorResponse,
+  isPairRequestEnvelope,
+} from './remote-pair'
 
 // 启动第一件事：修正 PATH/env。打包成 .app 后 GUI 不执行用户 shell 启动脚本，
 // process.env.PATH 只有 /usr/bin:/bin:...，SDK 子进程（继承 process.env）会找不到
@@ -46,6 +62,399 @@ const sessionQueryManager = new SessionQueryManager()
 claude.setManager(sessionQueryManager)
 const ptyManager = new PtyManager()
 const updateManager = new UpdateManager({ repo: 'mrhuangyong/cc-desk' })
+
+
+// ===== 远程控制 bridge 生命周期 =====
+//
+// 关键设计决策（不确定点 1：webContents 能否监听自身 send 的事件）：
+// Electron 的 webContents.send 是单向出口（主→渲染），主进程无法用 wc.on('claude:xxx')
+// 监听自身发出的 IPC 事件——webContents 作为 EventEmitter 只发渲染侧事件（did-finish-load 等），
+// 不会回放它自己 send 的消息。简报里的 `wc.on('claude:dialog-request', ...)` 旁路监听方案不可行。
+//
+// 采用「包装 webContents.send」方案（拼多多式去中间层，不新增事件总线、不改 ClaudeService 一行）：
+// 启动 bridge 时，把当前 webContents.send 替换为一个代理：先喂给 forwarder，再调用原 send。
+// 这样 ClaudeService 内所有 webContents.send('claude:*') 自动被 forwarder 捕获并转发给手机端。
+// 停止 bridge 时还原原 send，零侵入、可逆。
+//
+// 注意：仅包装「业务事件」通道（claude:delta/blocks/notice/result/dialog-request），
+// 其他通道（update:state 等）不进 forwarder，避免噪音。
+
+type ForwarderHandle = {
+  onClaudeDelta(data: any): void
+  onClaudeBlocks(data: any): void
+  onNotice(data: any): void
+  onResult(data: any): void
+  onDialogRequest(data: any): void
+  sendSessionList(payload: { sessions: any[]; projectsMeta: any[] }): void
+  sendHistory(payload: { localSessionId: string; items: any[]; hasMore: boolean }): void
+  sendModels(payload: { models: any[]; activeModelId: string; thinking: string }): void
+  sendSessionCreated(payload: { localSessionId: string; projectId?: string; title?: string; cwd?: string }): void
+}
+
+/** 需要旁路转发给手机端的 claude:* 业务事件通道白名单。 */
+const REMOTE_FORWARD_CHANNELS = new Set([
+  'claude:delta', 'claude:blocks', 'claude:notice', 'claude:result', 'claude:dialog-request',
+])
+
+let remoteBridge: RemoteBridge | null = null
+let remoteReplayer: DialogReplayer | null = null
+/** 原始 webContents.send 的引用，停止 bridge 时还原。 */
+let originalSend: ((channel: string, ...args: any[]) => void) | null = null
+/** 当前已包装 send 的 webContents，用于判断是否需要重新包装（窗口刷新时 webContents 对象不变）。 */
+let wrappedWebContents: Electron.WebContents | null = null
+/** 配对事件订阅者：手机配对成功时通知渲染端刷新已配对列表。 */
+let pairTimer: NodeJS.Timeout | null = null
+
+function emitRemoteState(connected: boolean) {
+  const wc = getActiveWin()?.webContents
+  if (wc) {
+    try { wc.send('remote:state', { connected }) } catch { /* 窗口可能已销毁 */ }
+  }
+}
+
+function emitPairEvent(data: unknown) {
+  const wc = getActiveWin()?.webContents
+  if (wc) {
+    try { wc.send('remote:pair-event', data) } catch { /* noop */ }
+  }
+}
+
+/**
+ * 启动远程 bridge：建立到中继的长连接、包装 webContents.send 接管出站事件、
+ * 装配 dispatcher（入站分发）+ replayer（dialog 断线补发）+ forwarder（出站转发）。
+ *
+ * 幂等：重复调用会先停掉旧实例。
+ */
+function startRemoteBridge(cfg: RemoteConfig): void {
+  if (!cfg.enabled || !cfg.deviceId || !cfg.deviceKey) return
+  if (remoteBridge) return // 已启动
+
+  const win = getActiveWin()
+  if (!win) return
+  const wc = win.webContents
+
+  // replayer 补发的是 forwarder 早先 enqueue 的「占位信封」（sig 为空），
+  // 必须和 forwarder 的 sendFn 一样用 makeEnvelope 重签后发给中继，
+  // 否则中继会以 bad_sig 拒收，手机重连后永远看不到挂起的批准请求。
+  remoteReplayer = createDialogReplayer((env) => {
+    const signed = makeEnvelope(cfg.deviceKey, env.type as MessageType, cfg.deviceId, env.payload)
+    remoteBridge?.send(signed)
+  })
+
+  // 重推会话列表：读 projects-store 快照 + runningIds，经 forwarder 下发。
+  // 被两处调用：① 桌面 bridge 连上中继（轮询 false→true）；② 手机 session.sync（上线/刷新）。
+  // 抽出来是因为「web 刷新后桌面 bridge 连接未断、lastState 不变 → 轮询不触发」，
+  // 需要由手机主动 sync 触发重推（修复「刷新拿不到列表」bug）。
+  const pushSessionList = () => {
+    try {
+      const snap = getProjectsSnapshot()
+      const runningIds = claude.runningSessionIds()
+      forwarder?.sendSessionList(buildSessionListPayload(snap.projects, runningIds))
+    } catch { /* 读快照失败不影响其他逻辑 */ }
+  }
+  // 下发可用模型列表（和 session.list 一起，手机同步时下发）。
+  const pushModels = () => {
+    try {
+      const cfg = getModelProvidersConfig()
+      const payload = buildModelsPayload({
+        models: cfg.models,
+        activeModelId: cfg.activeModelId,
+      })
+      forwarder?.sendModels(payload)
+    } catch { /* 读配置失败不影响其他逻辑 */ }
+  }
+
+  // 远程写操作（新建/归档）改变了 projects.json，但 renderer reducer 不知情
+  // （远程控制是独立数据通路，绕过 reducer 直读写快照）。通过本事件通知渲染端，
+  // 触发 projects:get → HYDRATE 重新同步（HYDRATE 幂等，含存活会话挑选与孤儿清理）。
+  // 避免桌面 UI 与远程操作数据分叉。
+  const notifyRendererWorkspaceChanged = () => {
+    try {
+      wc.send('workspace:changed', {})
+    } catch { /* webContents 可能已销毁，忽略 */ }
+  }
+
+  const dispatcher = createDispatcher({
+    send: (opts) => claude.send({ ...opts, webContents: wc }),
+    interrupt: (lsid) => { void claude.interrupt(lsid, wc) },
+    resolveDialog: (reqId, result) => claude.resolveDialog(reqId, result),
+    // 拉取会话历史：从 projects-store 读该会话 messages，转换后下发（真实数据，非 mock）。
+    onHistoryRequest: (localSessionId, limit) => {
+      try {
+        const snap = getProjectsSnapshot()
+        const messages: any[] = []
+        for (const p of snap.projects) {
+          if (p.sessions) {
+            const sess = p.sessions.find((s: any) => s.id === localSessionId)
+            if (sess?.messages) { messages.push(...sess.messages); break }
+          }
+        }
+        const { items, hasMore } = toHistoryMessages(messages as any, limit)
+        forwarder?.sendHistory({ localSessionId, items, hasMore })
+      } catch {
+        // 读历史失败不报错（手机端拿不到历史，显示空）
+      }
+    },
+    // 手机上线/刷新后重推列表（修复刷新拿不到列表）
+    onSync: () => {
+      pushSessionList()
+      pushModels()
+    },
+    // 手机切换激活模型：改 cc-desk-store 的 activeModelId，之后所有 send 自然用新模型。
+    onSetActiveModel: (modelId) => {
+      try {
+        saveModelProvidersConfig({ activeModelId: modelId })
+        // 推一次模型列表让手机确认切换成功
+        pushModels()
+      } catch {
+        // 保存失败不抛异常，手机端超时/缺省处理
+      }
+    },
+    // 手机请求新建会话：在 projects-store 指定项目下创建空会话。
+    // 返回 { sessionId, projectId, title, cwd }（dispatcher 据此调 onSessionCreated 回告手机）。
+    // 用对象返回避免 dispatcher 难以反查项目 title/path（addSessionToProject 只返回 sessionId/cwd）。
+    onSessionCreate: (projectId) => {
+      try {
+        const r = addSessionToProject(projectId ?? '')
+        if (!r) return undefined
+        const snap = getProjectsSnapshot()
+        const p = snap.projects.find((p) => p.id === projectId)
+        return {
+          localSessionId: r.sessionId,
+          projectId: projectId ?? '',
+          title: '新会话',
+          cwd: r.cwd,
+          projectName: p?.name,
+        }
+      } catch {
+        return undefined
+      }
+    },
+    // 新建成功后回告手机（session.created），手机端据此自动进入该会话。
+    onSessionCreated: (info) => {
+      forwarder?.sendSessionCreated(info)
+      // 远程新建改变了 projects.json，通知桌面渲染端同步（避免桌面 UI 看不到远程新建的会话）。
+      notifyRendererWorkspaceChanged()
+    },
+    // 手机请求归档会话：关 SDK query + 清后台任务 + 标记 archived + 落盘 +
+    // 通知桌面渲染端 + 推更新后的列表给手机。与桌面 session:archive IPC 语义一致。
+    onArchive: async (localSessionId) => {
+      try {
+        await claude.closeSession(localSessionId)
+      } catch { /* 会话可能未在跑，忽略 */ }
+      try {
+        backendTaskRegistry.clearBySession(localSessionId)
+      } catch { /* 忽略 */ }
+      archiveSessionInStore(localSessionId)
+      notifyRendererWorkspaceChanged()
+      pushSessionList()
+    },
+    // 反查会话所属项目的 cwd：从 projects-store 找该会话在哪个项目下，返回项目 path。
+    // 用于 session.message 时让 SDK 在正确目录运行（如 cc-webui 项目，而非默认 /Users/mrhua）。
+    resolveCwd: (localSessionId) => {
+      try {
+        const snap = getProjectsSnapshot()
+        for (const p of snap.projects) {
+          if (p.sessions?.some((s: any) => s.id === localSessionId)) {
+            return p.path
+          }
+        }
+      } catch {
+        // 读快照失败回退 undefined（send 用默认 process.cwd()）
+      }
+      return undefined
+    },
+  })
+
+  // 出站转发：把 forwarder 产出的占位信封用 deviceKey 重签后发中继。
+  const forwarder = createEventForwarder(
+    (env) => {
+      const signed = makeEnvelope(cfg.deviceKey, env.type as MessageType, cfg.deviceId, env.payload)
+      remoteBridge?.send(signed)
+    },
+    { enqueueDialog: (reqId, env) => remoteReplayer?.enqueue(reqId, env) },
+  ) as ForwarderHandle
+
+  // 配对设备增补：中继把手机的业务信封转发过来时，env.deviceId 即手机设备 ID。
+  // 收到任意业务信封说明该设备已配对上线，补进 pairedDevices（去重）并通知渲染端刷新。
+  const recordPairedDevice = (mobileId: string) => {
+    const cur = getRemoteConfig()
+    if (!shouldRecordPaired(cur, mobileId)) return
+    saveRemoteConfig({ pairedDevices: [...cur.pairedDevices, mobileId] })
+    emitPairEvent({ kind: 'paired', deviceId: mobileId })
+  }
+
+  // 入站：手机→桌面的业务信封 + bind.ok 后重连补发挂起 dialog。
+  remoteBridge = createRemoteBridge({
+    relayUrl: cfg.relayUrl,
+    deviceId: cfg.deviceId,
+    deviceKey: cfg.deviceKey,
+    onInbound: (env) => {
+      // pair.request（手机请求配对，当前中继 v1 不发，协议预留）：弹原生 dialog 让用户确认。
+      if (isPairRequestEnvelope(env)) {
+        void handlePairRequest(env, cfg)
+        return
+      }
+      // 业务信封：发送方为已配对手机，补进 pairedDevices。
+      recordPairedDevice(env.deviceId)
+      void dispatcher(env)
+      // bind.ok 不走 onInbound（remote-bridge 在握手处拦截），这里收到的均为业务信封；
+      // bind 成功后补发挂起 dialog（手机可能在 dialog 挂起期间掉线）。
+      remoteReplayer?.replayFor('mobile')
+    },
+  })
+
+  // 状态轮询：bridge.isConnected() 在握手成功后变 true。每 2s 探测一次推给渲染端。
+  // 用轮询而非回调：remote-bridge 未暴露 onConnect 回调，轮询最简且零侵入。
+  if (pairTimer) clearInterval(pairTimer)
+  let lastState = false
+  pairTimer = setInterval(() => {
+    if (!remoteBridge) return
+    const cur = remoteBridge.isConnected()
+    if (cur !== lastState) {
+      lastState = cur
+      emitRemoteState(cur)
+      // I2：连上中继（false→true）后下发当前会话清单。
+      // 注：手机端刷新后还会主动发 session.sync 触发重推（见 dispatcher.onSync），
+      // 避免桌面连接未断、lastState 不变时不推 list 的 bug。
+      if (cur) { pushSessionList(); pushModels() }
+    }
+  }, 2000)
+
+  // 包装 webContents.send：仅对业务事件通道旁路转发，其余直接放行。
+  // 防御：若已包装同一 webContents（窗口刷新后对象不变），不重复包装。
+  if (wrappedWebContents !== wc) {
+    originalSend = wc.send.bind(wc)
+    wrappedWebContents = wc
+    wc.send = ((channel: string, ...args: any[]) => {
+      try {
+        if (REMOTE_FORWARD_CHANNELS.has(channel)) {
+          // 调试：确认 wc.send 包装拦截到了 claude 事件，打日志到控制台
+          try { console.warn('[remote-fwd]', channel, typeof args[0] === 'object' ? Object.keys(args[0] || {}) : typeof args[0]) } catch {}
+          switch (channel) {
+            case 'claude:delta': forwarder.onClaudeDelta(args[0]); break
+            case 'claude:blocks': forwarder.onClaudeBlocks(args[0]); break
+            case 'claude:notice': forwarder.onNotice(args[0]); break
+            case 'claude:result': forwarder.onResult(args[0]); break
+            case 'claude:dialog-request': forwarder.onDialogRequest(args[0]); break
+          }
+        }
+      } catch {
+        // forwarder 异常不影响主进程渲染通道
+      }
+      return originalSend!(channel, ...args)
+    }) as typeof wc.send
+  }
+
+  void remoteBridge.start()
+  console.log('[remote] bridge started for device', cfg.deviceId)
+}
+
+/** 停止 bridge 并还原 webContents.send。 */
+function stopRemoteBridge(): void {
+  if (pairTimer) { clearInterval(pairTimer); pairTimer = null }
+  if (remoteBridge) {
+    void remoteBridge.stop()
+    remoteBridge = null
+  }
+  remoteReplayer = null
+  // 还原 send：仅当当前 wc 仍是被包装的那个（窗口可能已销毁重建）。
+  if (wrappedWebContents && originalSend) {
+    try {
+      wrappedWebContents.send = originalSend as typeof wrappedWebContents.send
+    } catch { /* noop */ }
+    wrappedWebContents = null
+    originalSend = null
+  }
+  emitRemoteState(false)
+}
+
+/**
+ * 处理手机的配对请求（pair.request）：弹原生 dialog 让桌面用户确认。
+ * 确认后向中继发 pair.approve；拒绝则不发（手机侧超时即视为拒绝）。
+ * 注：当前中继 v1 配对走手机单方 consume，不主动发 pair.request；此为协议预留的防御性实现。
+ */
+async function handlePairRequest(env: Envelope, cfg: RemoteConfig): Promise<void> {
+  const win = getActiveWin()
+  if (!win) return
+  const mobileId = (env.payload as any)?.deviceId ?? env.deviceId
+  const choice = await dialog.showMessageBox(win, {
+    type: 'question',
+    title: '远程控制配对',
+    message: '有设备请求配对本机',
+    detail: `设备 ID：${mobileId}\n\n是否同意该设备远程控制？`,
+    buttons: ['拒绝', '同意'],
+    defaultId: 0,
+    cancelId: 0,
+  })
+  if (choice.response === 1) {
+    const approve = makeEnvelope(cfg.deviceKey, 'pair.approve', cfg.deviceId, { mobileId })
+    remoteBridge?.send(approve)
+  }
+}
+
+/**
+ * 经中继 /pair 端点申请配对码：起一条临时 ws 连接，发 pair.code，等回包即关。
+ * 返回 { code, qr, expiresAt }；失败返回 { error }。
+ *
+ * 注：pair 阶段桌面尚未与手机建立绑定，不能走 /ws（需已 bind）；
+ * 中继的 /pair 端点接受明文 {type,deviceId,deviceKey}（pair 阶段无对端，无需签名信封）。
+ */
+async function requestPairCode(cfg: RemoteConfig): Promise<{ code: string; qr: string; expiresAt: number } | { error: string }> {
+  return new Promise((resolve) => {
+    const base = cfg.relayUrl.replace(/^http/, 'ws').replace(/\/+$/, '')
+    const url = `${base}/pair`
+    let settled = false
+    let ws: WebSocket | null = null
+    const cleanup = () => {
+      try { ws?.close() } catch { /* noop */ }
+      try { ws?.terminate() } catch { /* noop */ }
+    }
+    const fail = (err: string) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      resolve({ error: err })
+    }
+    try {
+      ws = new WebSocket(url)
+    } catch (e) {
+      fail(`无法连接中继：${String(e)}`)
+      return
+    }
+    // 10s 超时兜底
+    const timer = setTimeout(() => fail('配对超时，请确认中继地址可达'), 10_000)
+    ws.on('open', () => {
+      const req = buildPairCodeRequest(cfg.deviceId, cfg.deviceKey)
+      ws!.send(JSON.stringify(req))
+    })
+    ws.on('message', (raw) => {
+      if (settled) return
+      let msg: unknown
+      try { msg = JSON.parse(raw.toString()) } catch { return }
+      if (isPairCodeResponse(msg)) {
+        settled = true
+        clearTimeout(timer)
+        const code = msg.payload.code
+        const pairUrl = buildPairUrl(cfg.relayUrl, code)
+        QRCode.toDataURL(pairUrl).then((qr) => {
+          cleanup()
+          resolve({ code, qr, expiresAt: msg.payload.expiresAt })
+        }).catch((e) => {
+          cleanup()
+          resolve({ error: `二维码生成失败：${String(e)}` })
+        })
+        return
+      }
+      if (isPairErrorResponse(msg)) {
+        fail(`中继拒绝：${msg.payload.code}`)
+        return
+      }
+      // 其他消息忽略
+    })
+    ws.on('error', (e) => fail(`连接中继失败：${String(e)}`))
+  })
+}
 
 
 // 获取当前活动窗口（IPC handler 在窗口重建后需要拿到最新 webContents）
@@ -235,6 +644,51 @@ function registerIpcHandlers(): void {
     // 重建菜单让「开发者工具」项可见性跟随设置
     Menu.setApplicationMenu(buildAppMenu(updateManager))
   })
+
+  // 远程控制：配置读写 + bridge 启停 + 配对 + 解绑
+  ipcMain.handle('remote:get-config', () => getRemoteConfig())
+  ipcMain.handle('remote:save-config', (_e, patch) => {
+    const prev = getRemoteConfig()
+    saveRemoteConfig(patch)
+    const next = getRemoteConfig()
+    // enabled 切换 → 启停 bridge
+    if (patch.enabled !== undefined && patch.enabled !== prev.enabled) {
+      if (next.enabled) {
+        // 首次启用：生成设备身份（幂等），再启动
+        ensureDeviceIdentity()
+        startRemoteBridge(getRemoteConfig())
+      } else {
+        stopRemoteBridge()
+      }
+    }
+    // relayUrl 变更时重建 bridge（若当前在跑）
+    if (next.enabled && patch.relayUrl !== undefined && patch.relayUrl !== prev.relayUrl) {
+      stopRemoteBridge()
+      startRemoteBridge(next)
+    }
+    return next
+  })
+  ipcMain.handle('remote:pair', async () => {
+    const cfg = getRemoteConfig()
+    if (!cfg.enabled || !cfg.deviceId || !cfg.deviceKey) {
+      return { error: '请先启用远程控制' }
+    }
+    // 用户主动重新发起配对：清空解绑名单，允许被解绑设备重新登记。
+    clearUnpaired()
+    return requestPairCode(cfg)
+  })
+  ipcMain.handle('remote:cancel-pair', () => {
+    // v1：配对码在中继侧 60s 自动过期，桌面端无状态可清，返回 ok 让 UI 清展示态
+    return { ok: true }
+  })
+  ipcMain.handle('remote:unpair', (_e, deviceId: string) => {
+    const cfg = getRemoteConfig()
+    saveRemoteConfig({ pairedDevices: cfg.pairedDevices.filter(d => d !== deviceId) })
+    // 标记为「最近解绑」：防止该设备仍在中继 binding 里时，收到其业务信封被自动加回。
+    markUnpaired(deviceId)
+    emitPairEvent({ kind: 'unpaired', deviceId })
+    return { ok: true }
+  })
 }
 
 function createWindow() {
@@ -320,6 +774,15 @@ app.whenReady().then(() => {
   if (!isDev) updateManager.startAutoCheck()
   // 注册原生应用菜单（mac 补 Edit 菜单避免 Cmd+C 失效；各平台加「检查更新」）
   Menu.setApplicationMenu(buildAppMenu(updateManager))
+  // 应用启动时若远程控制已启用且身份就绪，自动建立 bridge。
+  // 延迟到首个窗口 did-finish-load 后再起：包装 webContents.send 需要窗口已就绪。
+  const firstWin = BrowserWindow.getAllWindows()[0]
+  if (firstWin) {
+    const cfg = getRemoteConfig()
+    if (cfg.enabled && cfg.deviceId && cfg.deviceKey) {
+      firstWin.webContents.once('did-finish-load', () => startRemoteBridge(getRemoteConfig()))
+    }
+  }
 })
 
 // 自动归档定时器：autoArchive 开启时，每 30 分钟向渲染端发一次归档信号，
@@ -344,6 +807,7 @@ function startArchiveTimer() {
 app.on('before-quit', async () => {
   // Cmd+Q（macOS）走 before-quit，window-all-closed 此时未必触发；
   // 这里统一清理 PTY 子进程 + SDK 持久 query + 后台任务记录，避免孤儿进程与泄漏。
+  stopRemoteBridge()
   ptyManager.killAll()
   backendTaskRegistry.clearAll()
   updateManager.dispose()

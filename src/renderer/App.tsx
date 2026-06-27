@@ -212,6 +212,20 @@ export function App() {
     return () => { unsubscribe?.() }
   }, [dispatch])
 
+  // 远程控制同步：手机在远程新建/归档会话时，主进程直接改了 projects.json（绕过 reducer）。
+  // 收到 workspace:changed 后重新拉快照并 HYDRATE，让桌面 UI 与远程操作保持一致。
+  // HYDRATE 幂等（含存活会话挑选与孤儿清理）；不重跑 running session 恢复（远程增删不影响在跑会话态）。
+  useEffect(() => {
+    const unsubscribe = window.api?.projects?.onWorkspaceChanged?.(() => {
+      window.api?.projects.get().then(snap => {
+        if (snap && snap.projects?.length >= 0) {
+          dispatch({ type: 'HYDRATE', snapshot: snap })
+        }
+      })
+    })
+    return () => { unsubscribe?.() }
+  }, [dispatch])
+
   // 应用更新状态：订阅主进程状态机推送（单次挂载，cleanup 取消订阅防泄漏）
   useEffect(() => {
     const unsubscribe = window.api?.update?.onState?.((status) => {

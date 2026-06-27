@@ -168,6 +168,7 @@ export interface FileNode {
 export type SettingsSection =
   | 'general' | 'code-preview' | 'model' | 'memory' | 'skills'
   | 'mcp' | 'plugins' | 'commands' | 'hooks' | 'archived' | 'about'
+  | 'remote'
 
 // 应用更新状态机（全局单例，非按 session 分片）
 export type UpdateStatus =

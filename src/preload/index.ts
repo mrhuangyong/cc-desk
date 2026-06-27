@@ -45,7 +45,15 @@ contextBridge.exposeInMainWorld('api', {
   },
   projects: {
     get: () => ipcRenderer.invoke('projects:get'),
-    save: (snap: any) => ipcRenderer.invoke('projects:save', snap)
+    save: (snap: any) => ipcRenderer.invoke('projects:save', snap),
+    // 主→渲染：远程控制（手机新建/归档会话）改变了 projects.json，渲染端据此重新 HYDRATE 同步。
+    // 远程控制是独立数据通路（直读写快照，绕过 renderer reducer），故需主动通知避免数据分叉。
+    onWorkspaceChanged: (cb: () => void) => {
+      const channel = 'workspace:changed'
+      const handler = () => cb()
+      ipcRenderer.on(channel, handler)
+      return () => ipcRenderer.removeListener(channel, handler)
+    },
   },
   cc: {
     mcp: {
@@ -177,4 +185,32 @@ contextBridge.exposeInMainWorld('api', {
     get: () => ipcRenderer.invoke('app:version'),
   },
   setDevTools: (enabled: boolean) => ipcRenderer.invoke('app:set-devtools', enabled),
+  remote: {
+    getConfig: () => ipcRenderer.invoke('remote:get-config'),
+    saveConfig: (patch: any) => ipcRenderer.invoke('remote:save-config', patch),
+    // 生成配对码 + 二维码（返回 { code, qr, expiresAt } 或 { error }）
+    pair: () => ipcRenderer.invoke('remote:pair'),
+    // 取消尚未被消费的配对码（v1：码在中继侧 60s 自动过期，桌面端仅清本地展示态）
+    cancelPair: () => ipcRenderer.invoke('remote:cancel-pair'),
+    // 解绑设备：通知中继删绑定 + 清本地 pairedDevices
+    unpair: (deviceId: string) => ipcRenderer.invoke('remote:unpair', deviceId),
+    // 主→渲染：配对相关事件（如手机配对成功通知，刷新已配对列表）
+    onPairEvent: (cb: (data: any) => void) => {
+      const channel = 'remote:pair-event'
+      const handler = (_: any, data: any) => cb(data)
+      ipcRenderer.on(channel, handler)
+      // 返回 unsubscribe，防监听器累加（沿用 onArchiveTick 模式）
+      return () => ipcRenderer.removeListener(channel, handler)
+    },
+    // 主→渲染：bridge 连接状态变更（connected: boolean）
+    onState: (cb: (s: { connected: boolean }) => void) => {
+      const channel = 'remote:state'
+      const handler = (_: any, s: any) => cb(s)
+      ipcRenderer.on(channel, handler)
+      return () => ipcRenderer.removeListener(channel, handler)
+    },
+    removeAllListeners: () => {
+      ['remote:pair-event', 'remote:state'].forEach(ch => ipcRenderer.removeAllListeners(ch))
+    },
+  },
 })

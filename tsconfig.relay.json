@@ -1,0 +1,27 @@
+{
+  // 中继服务独立编译配置（Docker 部署用）。
+  // 把 relay/*.ts + 依赖的 src/shared/remote-protocol*.ts 编译为 ESM JS，
+  // 输出到 dist/，供容器内 `node dist/relay/main.js` 独立运行（不依赖 electron）。
+  // 与根 tsconfig.json（electron-vite 用）分离，避免互相干扰。
+  // 用法：tsc -p tsconfig.relay.json
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "ignoreDeprecations": "6.0",
+    "outDir": "dist",
+    "rootDir": ".",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "declaration": false,
+    "sourceMap": false,
+    "types": ["node", "ws"]
+  },
+  "include": [
+    "relay/**/*.ts",
+    "src/shared/remote-protocol.ts",
+    "src/shared/remote-protocol-types.ts"
+  ]
+}

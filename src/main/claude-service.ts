@@ -287,11 +287,12 @@ export class ClaudeService {
     cwd?: string
     permission?: string        // 中文标签，主进程翻译
     thinking?: 'low' | 'medium' | 'high'
+    modelId?: string           // 远程切换模型：覆盖 cc-desk-store 的 activeModelId（不传则用默认）
     extraDirs?: string[]
     images?: { mediaType: string; data: string; name?: string }[]  // 用户附加的图片（data 为纯 base64）
     webContents: WebContents
   }): Promise<void> {
-    const { prompt, sessionId, localSessionId, cwd, permission, thinking, extraDirs, images, webContents } = opts
+    const { prompt, sessionId, localSessionId, cwd, permission, thinking, modelId, extraDirs, images, webContents } = opts
     console.log(`[diag][send] ENTER: lsid=${localSessionId} prompt="${String(prompt).slice(0, 60)}" images=${images?.length ?? 0}`)
     // 本次流绑定的渲染端会话 id。所有事件载荷带上它，渲染端据此路由到正确会话，
     // 避免「在 A 发送后切到 B，A 的流式输出串到 B」。
@@ -309,7 +310,14 @@ export class ClaudeService {
       webContents.send('claude:error', { localSessionId: lsid, error: '请先在「设置 → 模型设置」中添加并启用供应商与模型' })
       return
     }
-    const { sdkEnv, executable: claudeCodeExecutable, modelId } = active
+    const { sdkEnv, executable: claudeCodeExecutable, modelId: defaultModelId } = active
+    // 注：手机端切换模型走 session.setActiveModel（改 cc-desk-store 的 activeModelId），
+    // send 时 resolveActiveModel 会读最新的 activeModelId，从而 sdkEnv（apiKey/baseUrl）+
+    // modelId 一起用新 provider 的，三者一致。故 send 不再接受 modelId 参数覆盖——
+    // 单独覆盖 model 会导致 model 名与 sdkEnv（apiKey/baseUrl）来自不同 provider 的不一致。
+    if (process.env.CC_REMOTE_DEBUG !== '0') {
+      console.warn('[claude] send with model:', defaultModelId)
+    }
     // 代理环境变量（来自 cc-desk 自有常规设置 ~/.cc-desk/settings.json）。
     // 不再读 ~/.claude/settings.json：CLAUDE_CONFIG_DIR 已隔离到 ~/.cc-desk/claude。
     const proxyEnv: Record<string, string> = settings.proxy
@@ -363,7 +371,7 @@ export class ClaudeService {
           // env REPLACES process.env，故先铺底再覆盖。注入激活供应商的 apiKey/baseUrl
           // 与各角色模型映射（来自 ~/.cc-desk/config.json）。
           env: { ...process.env, ...proxyEnv, ...sdkEnv },
-          model: modelId,
+          model: defaultModelId,
           cwd: cwd || settings.cwd || process.cwd(),
           resume: sessionId,
           permissionMode: getPermissionMode(permission),   // 中文标签 → SDK permissionMode（未知回退 'default'）
@@ -438,6 +446,12 @@ export class ClaudeService {
   // SDK message → IPC 转发。逻辑与原 claude-service 的 for-await case 一致。
   private async forwardEvent(message: any, lsid: string, webContents: WebContents): Promise<void> {
     const mtype: string = message.type
+    // 调试：确认 forwardEvent 被调用且对 webContents 做 delta 事件发送
+    if (process.env.CC_REMOTE_DEBUG !== '0') {
+      console.warn('[claude-fwd]', mtype, '→ wc.send(claude:', mtype === 'stream_event' ? message.event?.type || '?' : mtype, ')')
+    }
+    // AskUserQuestion/ExitPlanMode 的用户交互由 PreToolUse hook→canUseTool 硬阻塞处理，
+    // forwardEvent 不再本地拦截、不再需要门控（旧 isAskGated 已随硬阻塞重构移除）。
     switch (mtype) {
       case 'system': {
         const sys = message
