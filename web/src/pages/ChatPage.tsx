@@ -14,6 +14,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import type { AnyMessage } from '../hooks/useSessionChat'
 import type { DialogRequest } from '../lib/dialog-queue'
 import type { ChatBlock } from '../lib/chat-blocks'
+import type { ImageAttachment } from '../lib/read-image'
 import EdgeSwipeBack from '../components/EdgeSwipeBack'
 import {
   ArrowLeftIcon,
@@ -63,6 +64,12 @@ export interface ChatPageProps {
   onPermissionChange?: (permission: string) => void
   /** 切换思考强度。B 子项目控件触发。 */
   onThinkingChange?: (thinking: 'low' | 'medium' | 'high') => void
+  /** 已选图片附件(App 状态)。渲染缩略图 chip。 */
+  attachments?: ImageAttachment[]
+  /** 选图回调(App 的 addImages)。 */
+  onAddImages?: (files: File[]) => void
+  /** 删除指定 index 的附件(App 的 removeImage)。 */
+  onRemoveImage?: (index: number) => void
   /** header 右侧额外控件(主题切换等)。 */
   headerExtra?: React.ReactNode
 }
@@ -132,9 +139,23 @@ export default function ChatPage(props: ChatPageProps) {
     currentThinking,
     onPermissionChange,
     onThinkingChange,
+    attachments,
+    onAddImages,
+    onRemoveImage,
   } = props
 
   const canSend = inputValue.trim().length > 0
+
+  // 图片附件菜单(拍照/相册)开合态 + 两个隐藏 file input ref
+  const [showAttachMenu, setShowAttachMenu] = useState(false)
+  const cameraInputRef = useRef<HTMLInputElement | null>(null)  // capture=environment,调相机
+  const albumInputRef = useRef<HTMLInputElement | null>(null)   // 普通相册选择
+  const handleFilePick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? [])
+    if (files.length) onAddImages?.(files)
+    e.target.value = ''  // 重置,允许重复选同一文件
+    setShowAttachMenu(false)
+  }
 
   // 自动滚动到底部。
   // 关键时序：进入会话时 messages 为空（历史异步加载），所以不能只在「messages 变化」时滚——
@@ -331,7 +352,47 @@ export default function ChatPage(props: ChatPageProps) {
             )}
           </div>
         )}
+        {attachments && attachments.length > 0 && (
+          <div className="attach-chips">
+            {attachments.map((att, i) => (
+              <div className="attach-chip" key={i}>
+                <img src={`data:${att.mediaType};base64,${att.data}`} alt={att.name || '附件'} />
+                {onRemoveImage && (
+                  <button
+                    className="attach-chip-remove"
+                    onClick={() => onRemoveImage(i)}
+                    aria-label="删除附件"
+                  >×</button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
         <div className="chat-input-wrap">
+          {onAddImages && (
+            <>
+              <button
+                className="attach-add-btn"
+                onClick={() => setShowAttachMenu((v) => !v)}
+                aria-label="添加图片"
+              >＋</button>
+              {showAttachMenu && (
+                <div className="attach-menu">
+                  <button onClick={() => cameraInputRef.current?.click()}>拍照</button>
+                  <button onClick={() => albumInputRef.current?.click()}>从相册选</button>
+                </div>
+              )}
+              {/* 拍照:capture=environment 调起相机;相册:普通选择 */}
+              <input
+                ref={cameraInputRef} type="file" accept="image/*" capture="environment"
+                style={{ display: 'none' }} onChange={handleFilePick}
+              />
+              <input
+                ref={albumInputRef} type="file" accept="image/*"
+                style={{ display: 'none' }} onChange={handleFilePick}
+              />
+            </>
+          )}
           <textarea
             className="chat-input"
             placeholder="输入消息…"

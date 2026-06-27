@@ -448,3 +448,65 @@ describe('ChatPage - 发送参数控件(权限/思考)', () => {
     expect(screen.queryByLabelText('思考强度')).not.toBeInTheDocument()
   })
 })
+
+describe('ChatPage - 图片附件', () => {
+  const baseProps = {
+    title: 't', messages: [], running: false,
+    inputValue: '', onInputChange: () => {}, onSend: () => {},
+    onInterrupt: () => {}, onBack: () => {},
+  }
+
+  it('传入 attachments → 渲染对应数量的缩略图 chip + 删除按钮', () => {
+    const attachments = [
+      { mediaType: 'image/png', data: 'aaa', name: 'a.png' },
+      { mediaType: 'image/jpeg', data: 'bbb', name: 'b.jpg' },
+    ]
+    render(
+      <ChatPage
+        {...baseProps}
+        attachments={attachments}
+        onAddImages={() => {}}
+        onRemoveImage={() => {}}
+      />,
+    )
+    // 两张缩略图(data URL 形式)
+    const imgs = screen.getAllByRole('img') as HTMLImageElement[]
+    expect(imgs.length).toBe(2)
+    expect(imgs[0].src).toContain('data:image/png;base64,aaa')
+    // 两个删除按钮
+    expect(screen.getAllByLabelText(/删除|移除/).length).toBe(2)
+  })
+
+  it('点 chip 的删除按钮 → onRemoveImage(index)', () => {
+    const onRemoveImage = vi.fn()
+    render(
+      <ChatPage
+        {...baseProps}
+        attachments={[{ mediaType: 'image/png', data: 'aaa' }]}
+        onAddImages={() => {}}
+        onRemoveImage={onRemoveImage}
+      />,
+    )
+    fireEvent.click(screen.getAllByLabelText(/删除|移除/)[0])
+    expect(onRemoveImage).toHaveBeenCalledWith(0)
+  })
+
+  it('点「＋」→ 弹出拍照/相册菜单', () => {
+    render(
+      <ChatPage
+        {...baseProps}
+        attachments={[]}
+        onAddImages={() => {}}
+        onRemoveImage={() => {}}
+      />,
+    )
+    fireEvent.click(screen.getByLabelText(/添加|附件|图片/))
+    expect(screen.getByText(/拍照/)).toBeInTheDocument()
+    expect(screen.getByText(/相册/)).toBeInTheDocument()
+  })
+
+  it('未传 onAddImages 时不渲染「＋」按钮(向后兼容)', () => {
+    render(<ChatPage {...baseProps} />)
+    expect(screen.queryByLabelText(/添加|附件|图片/)).not.toBeInTheDocument()
+  })
+})
