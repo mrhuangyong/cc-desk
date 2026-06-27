@@ -1,6 +1,10 @@
 .superpowers/
 # 本地记忆文件（含服务器/凭据等敏感信息，仅本地，不提交）
 CLAUDE.local.md
+# IDE / 工具临时目录（不提交个人配置与调试产物）
+.idea/
+.vscode/
+.playwright-mcp/
 node_modules/
 dist/
 out/
