@@ -80,6 +80,10 @@ function RemoteShell({
   const [projectsMeta, setProjectsMeta] = useState<ProjectMeta[]>([])
   const [models, setModels] = useState<{ id: string; name: string }[]>([])
   const [activeModelId, setActiveModelId] = useState<string>('')
+  // 输入框发送参数(对齐桌面端):权限模式 + 思考强度。默认与桌面一致。
+  // UI 控件(下拉)留给子项目 B,A 阶段用默认值随消息透传,验证协议层。
+  const [currentPermission, setCurrentPermission] = useState<string>('变更前确认')
+  const [currentThinking, setCurrentThinking] = useState<'low' | 'medium' | 'high'>('medium')
   const [view, setView] = useState<View>({ kind: 'list' })
   const [inputValue, setInputValue] = useState('')
 
@@ -228,8 +232,11 @@ function RemoteShell({
     if (view.kind !== 'chat') return
     const text = inputValue
     setInputValue('')
-    void chat.sendMessage(view.localSessionId, text)
-  }, [view, inputValue, chat])
+    void chat.sendMessage(view.localSessionId, text, {
+      permission: currentPermission,
+      thinking: currentThinking,
+    })
+  }, [view, inputValue, chat, currentPermission, currentThinking])
 
   const handleInterrupt = useCallback(() => {
     if (view.kind !== 'chat') return
@@ -278,6 +285,10 @@ function RemoteShell({
           currentDialog={dialog.current}
           onApprove={(reqId) => void dialog.approve(reqId)}
           onDeny={(reqId) => void dialog.deny(reqId)}
+          currentPermission={currentPermission}
+          currentThinking={currentThinking}
+          onPermissionChange={setCurrentPermission}
+          onThinkingChange={setCurrentThinking}
           headerExtra={themeToggle}
         />
         {exitToast}
