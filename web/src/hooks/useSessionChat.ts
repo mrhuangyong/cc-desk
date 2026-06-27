@@ -61,8 +61,18 @@ export interface UseSessionChatHandle {
   /** 入站信封处理器：挂在 useRelay 的 onInbound。处理 session.delta/blocks/result/history。 */
   onInbound(env: Envelope): void
   /** 发送用户消息：本地 echo user 消息 + 发 session.message + 进入 running。
-   *  模型切换走 session.setActiveModel（改桌面 activeModelId，sdkEnv+model 一起切换，保证一致）。 */
-  sendMessage(localSessionId: string, text: string): Promise<void>
+   *  模型切换走 session.setActiveModel（改桌面 activeModelId，sdkEnv+model 一起切换，保证一致）。
+   *  opts 透传 permission/thinking/extraDirs/images（不传则向后兼容，只发 localSessionId/text）。 */
+  sendMessage(
+    localSessionId: string,
+    text: string,
+    opts?: {
+      permission?: string
+      thinking?: 'low' | 'medium' | 'high'
+      extraDirs?: string[]
+      images?: { mediaType: string; data: string; name?: string }[]
+    },
+  ): Promise<void>
   /** 中断当前 query。 */
   interrupt(localSessionId: string): Promise<void>
   /** 拉取历史对话（attach 后调；hasMore=true 时可继续上拉）。 */
@@ -193,14 +203,23 @@ export function useSessionChat(opts: UseSessionChatOptions): UseSessionChatHandl
   )
 
   const sendMessage = useCallback(
-    async (localSessionId: string, text: string) => {
+    async (
+      localSessionId: string,
+      text: string,
+      opts?: {
+        permission?: string
+        thinking?: 'low' | 'medium' | 'high'
+        extraDirs?: string[]
+        images?: { mediaType: string; data: string; name?: string }[]
+      },
+    ) => {
       const trimmed = text.trim()
       if (!trimmed) return
       // 本地 echo user 消息 + 开新 assistant 轮次（下一条 delta 续到这条 assistant）
       setMessages((prev) => [...prev, { role: 'user' as const, text: trimmed }, mkMessage()])
       finishedRef.current = false // 新 assistant 已就位，delta 续写它
       setRunning(true)
-      await send('session.message', { localSessionId, text: trimmed })
+      await send('session.message', { localSessionId, text: trimmed, ...opts })
     },
     [send],
   )
