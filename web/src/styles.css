@@ -381,6 +381,18 @@ body {
   max-width: 120px; overflow: hidden; text-overflow: ellipsis;
   flex-shrink: 0; outline: none;
 }
+/* 发送参数控件栏(权限/思考 select)——在输入框上方,横排、可换行 */
+.chat-input-controls {
+  display: flex; gap: 8px; align-items: center;
+  padding: 0 0 6px 0; flex-wrap: wrap;
+}
+.param-select {
+  font-size: 11px; padding: 3px 8px; border-radius: var(--r-sm);
+  background: var(--bg-sunken); color: var(--text-muted);
+  border: 1px solid var(--border); cursor: pointer;
+  font-family: var(--font-mono);
+  flex-shrink: 0; outline: none;
+}
 .icon-btn {
   background: transparent; border: 0; color: var(--text-muted);
   padding: 7px 8px; cursor: pointer; border-radius: var(--r-sm);

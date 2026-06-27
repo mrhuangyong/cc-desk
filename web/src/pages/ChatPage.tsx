@@ -27,6 +27,11 @@ import {
   QuestionIcon,
 } from '../components/icons'
 
+/** 权限模式选项(对齐桌面 InputBar.tsx:16,中文标签经主进程 getPermissionMode 翻译)。 */
+const PERMISSIONS = ['变更前确认', '自动编辑', '计划模式', '完全访问'] as const
+/** 思考强度选项(对齐桌面 InputBar.tsx:17)。 */
+const THINKINGS = ['low', 'medium', 'high'] as const
+
 export interface ChatPageProps {
   title: string
   /** 当前会话的 localSessionId（协议路由键）。会话切换的可靠判据（title 可能重复，如多个"新会话"）。 */
@@ -123,6 +128,10 @@ export default function ChatPage(props: ChatPageProps) {
     models,
     activeModelId,
     onSetActiveModel,
+    currentPermission,
+    currentThinking,
+    onPermissionChange,
+    onThinkingChange,
   } = props
 
   const canSend = inputValue.trim().length > 0
@@ -298,6 +307,30 @@ export default function ChatPage(props: ChatPageProps) {
       )}
 
       <footer className="chat-input-bar">
+        {(onPermissionChange || onThinkingChange) && (
+          <div className="chat-input-controls">
+            {onPermissionChange && (
+              <select
+                className="param-select"
+                value={currentPermission || '变更前确认'}
+                onChange={(e) => onPermissionChange(e.target.value)}
+                aria-label="权限模式"
+              >
+                {PERMISSIONS.map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+            )}
+            {onThinkingChange && (
+              <select
+                className="param-select"
+                value={currentThinking || 'medium'}
+                onChange={(e) => onThinkingChange(e.target.value as 'low' | 'medium' | 'high')}
+                aria-label="思考强度"
+              >
+                {THINKINGS.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            )}
+          </div>
+        )}
         <div className="chat-input-wrap">
           <textarea
             className="chat-input"
