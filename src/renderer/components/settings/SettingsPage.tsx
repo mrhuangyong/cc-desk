@@ -12,6 +12,7 @@ import { CommandSettings } from './CommandSettings'
 import { HooksSettings } from './HooksSettings'
 import { ArchivedSessionsSettings } from './ArchivedSessionsSettings'
 import { AboutSettings } from './AboutSettings'
+import { RemoteSettings } from './RemoteSettings'
 
 // WebkitAppRegion 是 Electron/WebKit CSS 属性，React CSSProperties 未收录，定义局部超集
 type DragStyle = CSSProperties & { WebkitAppRegion?: 'drag' | 'no-drag' }
@@ -37,6 +38,7 @@ export function SettingsPage() {
       case 'hooks': return <HooksSettings />
       case 'archived': return <ArchivedSessionsSettings projects={state.projects} dispatch={dispatch as any} />
       case 'about': return <AboutSettings />
+      case 'remote': return <RemoteSettings />
     }
   }
 

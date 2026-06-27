@@ -159,6 +159,54 @@ describe('projects-store 真实读写', () => {
     expect(s1!.messages).toEqual([])                        // 旧格式 → 清空
     expect(s2!.messages.length).toBe(1)                     // 新格式 → 保留
   })
+
+  it('addSessionToProject 在指定项目下创建空会话并落盘', async () => {
+    const { fakeHome } = await withFakeHome()
+    const { saveProjectsSnapshot, addSessionToProject, getProjectsSnapshot } = await import('../src/main/projects-store')
+    saveProjectsSnapshot({
+      projects: [{ id: 'p1', name: 'proj1', path: '/code/x', sessions: [] }],
+      activeSessionId: '', tabsBySession: {}, activeTabIdBySession: {}, claudeSessionMap: {},
+    })
+    const r = addSessionToProject('p1')
+    expect(r).not.toBeNull()
+    expect(r!.sessionId).toBeTruthy()
+    expect(r!.cwd).toBe('/code/x')
+    const snap = getProjectsSnapshot()
+    expect(snap.projects[0].sessions.length).toBe(1)
+    expect(snap.projects[0].sessions[0].id).toBe(r!.sessionId)
+  })
+
+  it('archiveSessionInStore 标记指定会话 archived 并落盘，保留其他会话与未知字段', async () => {
+    const { fakeHome } = await withFakeHome()
+    const { saveProjectsSnapshot, archiveSessionInStore, getProjectsSnapshot } = await import('../src/main/projects-store')
+    saveProjectsSnapshot({
+      projects: [{ id: 'p1', name: 'proj1', sessions: [
+        { id: 's1', title: '会话1', messages: [] },
+        { id: 's2', title: '会话2', messages: [], ...( { customField: 'keep-me' } as any ) },  // 未知字段须保留
+      ] }],
+      activeSessionId: 's2', tabsBySession: {}, activeTabIdBySession: {}, claudeSessionMap: {},
+    })
+    archiveSessionInStore('s1')
+    const snap = getProjectsSnapshot()
+    const s1 = snap.projects[0].sessions.find(x => x.id === 's1')
+    const s2 = snap.projects[0].sessions.find(x => x.id === 's2')
+    expect(s1!.archived).toBe(true)
+    expect(s1!.archivedAt).toBeGreaterThan(0)
+    expect(s2!.archived).not.toBe(true)                 // 未归档的不受影响
+    expect((s2 as any).customField).toBe('keep-me')      // 未知字段保留（深合并约定）
+  })
+
+  it('archiveSessionInStore 对不存在的会话不报错（静默）', async () => {
+    const { fakeHome } = await withFakeHome()
+    const { saveProjectsSnapshot, archiveSessionInStore, getProjectsSnapshot } = await import('../src/main/projects-store')
+    saveProjectsSnapshot({
+      projects: [{ id: 'p1', name: 'proj1', sessions: [{ id: 's1', title: '会话1', messages: [] }] }],
+      activeSessionId: 's1', tabsBySession: {}, activeTabIdBySession: {}, claudeSessionMap: {},
+    })
+    expect(() => archiveSessionInStore('nope')).not.toThrow()
+    const snap = getProjectsSnapshot()
+    expect(snap.projects[0].sessions[0].archived).not.toBe(true)  // 不影响已有会话
+  })
 })
 
 describe('hooks 后端读写', () => {

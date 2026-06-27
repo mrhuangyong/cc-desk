@@ -1,0 +1,15 @@
+node_modules
+**/node_modules
+.git
+.github
+out
+dist
+docs
+tests
+web/node_modules
+relay/public
+relay/data
+*.log
+.DS_Store
+.vscode
+.idea

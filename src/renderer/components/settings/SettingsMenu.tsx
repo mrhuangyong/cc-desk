@@ -16,6 +16,7 @@ const ITEMS: MenuItem[] = [
   { id: 'commands', labelKey: 'settings.commands' },
   { id: 'hooks', labelKey: 'settings.hooks' },
   { id: 'archived', labelKey: 'settings.archived' },
+  { id: 'remote', labelKey: 'settings.remote' },
   { id: 'about', labelKey: 'settings.about' },
 ]
 
