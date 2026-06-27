@@ -50,7 +50,15 @@ export interface ChatPageProps {
   currentDialog?: DialogRequest | null
   onApprove?: (reqId: string) => void
   onDeny?: (reqId: string) => void
-  /** header 右侧额外控件（主题切换等）。 */
+  /** 当前权限模式(对齐桌面)。B 子项目渲染下拉控件用。 */
+  currentPermission?: string
+  /** 当前思考强度。B 子项目渲染下拉控件用。 */
+  currentThinking?: 'low' | 'medium' | 'high'
+  /** 切换权限模式。B 子项目控件触发。 */
+  onPermissionChange?: (permission: string) => void
+  /** 切换思考强度。B 子项目控件触发。 */
+  onThinkingChange?: (thinking: 'low' | 'medium' | 'high') => void
+  /** header 右侧额外控件(主题切换等)。 */
   headerExtra?: React.ReactNode
 }
 
