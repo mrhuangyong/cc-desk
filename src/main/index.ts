@@ -284,9 +284,10 @@ function startRemoteBridge(cfg: RemoteConfig): void {
     // 「手机问的问题」（修复桌面看不到移动端消息）。
     notifyRemoteUserMessage: (localSessionId, text) => {
       try {
+        console.warn('[remote-user-msg] 推给桌面:', localSessionId, String(text).slice(0, 50))
         wc.send('claude:remote-user-message', { localSessionId, text })
-      } catch {
-        // webContents 可能已销毁，忽略
+      } catch (e) {
+        console.warn('[remote-user-msg] 推送失败:', e)
       }
     },
   })

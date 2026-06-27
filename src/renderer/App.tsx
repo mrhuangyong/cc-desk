@@ -217,6 +217,7 @@ export function App() {
   // HYDRATE 幂等（含存活会话挑选与孤儿清理）；不重跑 running session 恢复（远程增删不影响在跑会话态）。
   useEffect(() => {
     const unsubscribe = window.api?.projects?.onWorkspaceChanged?.(() => {
+      console.warn('[workspace-changed] 触发 HYDRATE')
       window.api?.projects.get().then(snap => {
         if (snap && snap.projects?.length >= 0) {
           dispatch({ type: 'HYDRATE', snapshot: snap })
@@ -232,6 +233,7 @@ export function App() {
   // 目标会话节点不存在时 reducer 静默（等 HYDRATE 校正），不报错。
   useEffect(() => {
     const unsubscribe = window.api?.claude?.onRemoteUserMessage?.((data) => {
+      console.warn('[remote-user-msg] renderer 收到:', data?.localSessionId, String(data?.text ?? '').slice(0, 50))
       if (data?.localSessionId && typeof data.text === 'string') {
         dispatch({ type: 'REMOTE_USER_MESSAGE', sessionId: data.localSessionId, text: data.text })
       }

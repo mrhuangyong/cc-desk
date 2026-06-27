@@ -97,6 +97,46 @@ describe('useSessionChat - blocks', () => {
     const m = result.current.messages[0] as any
     expect(m.blocks).toHaveLength(1)
   })
+
+  it('delta 流式拼接后，assistant_blocks 的 text 权威版到来不重复（修复消息重复）', () => {
+    const send = vi.fn().mockResolvedValue(true)
+    const { result } = renderHook(() => useSessionChat({ send }))
+    act(() => {
+      // 1) delta 流式拼出完整文本
+      result.current.onInbound(deltaEnv('你好！有什么我可以帮你的吗？'))
+      // 2) assistant_blocks 带同一段文本的权威版（claude:blocks 透传，type:'text'）
+      result.current.onInbound(blocksEnv({ type: 'text', text: '你好！有什么我可以帮你的吗？' }))
+    })
+    const m = result.current.messages[0] as any
+    // 权威版应替换流式草稿，而非追加——否则同一段文本显示两次
+    expect(m.text).toBe('你好！有什么我可以帮你的吗？')
+    expect(m.text.includes('你好！有什么我可以帮你的吗？你好')).toBe(false)
+  })
+
+  it('text 块带前导换行时不显示为顶部空行（修复输出空行）', () => {
+    const send = vi.fn().mockResolvedValue(true)
+    const { result } = renderHook(() => useSessionChat({ send }))
+    act(() => {
+      // SDK 的 assistant text 块常以换行开头（移动端 CSS pre-wrap 会渲染成空行）
+      result.current.onInbound(blocksEnv({ type: 'text', text: '\n你好！有什么我可以帮你的吗？' }))
+    })
+    const m = result.current.messages[0] as any
+    // 规范化后首部不应有换行（中间换行保留）
+    expect(m.text).toBe('你好！有什么我可以帮你的吗？')
+    expect(m.text.startsWith('\n')).toBe(false)
+  })
+
+  it('delta 增量带前导换行时，最终 text 不以换行开头', () => {
+    const send = vi.fn().mockResolvedValue(true)
+    const { result } = renderHook(() => useSessionChat({ send }))
+    act(() => {
+      result.current.onInbound(deltaEnv('\n你好'))
+      result.current.onInbound(deltaEnv('世界'))
+    })
+    const m = result.current.messages[0] as any
+    expect(m.text).toBe('你好世界')
+    expect(m.text.startsWith('\n')).toBe(false)
+  })
 })
 
 describe('useSessionChat - 输入与中断', () => {

@@ -57,6 +57,33 @@ describe('reducer', () => {
     expect(() => reducer(state, { type: 'REMOTE_USER_MESSAGE', sessionId: 'not-exist', text: 'x' })).not.toThrow()
   })
 
+  it('REMOTE_USER_MESSAGE 加的 user 消息，不应被随后不含该消息的 HYDRATE 覆盖丢失（竞态根因）', () => {
+    // 复现：移动端发消息 → REMOTE_USER_MESSAGE 加入 user 文本 → 紧接着远程操作触发
+    // workspace:changed → HYDRATE 用「尚未 save 该 user 消息的磁盘快照」整体替换 projects → user 消息丢失。
+    // 期望：HYDRATE 应保留内存里比快照更新的 user 消息（按 sessionId 合并 messages，而非整体替换）。
+    const state = initialState()
+    // 1) 移动端发消息，user 文本进入 s1
+    const afterRemote = reducer(state, { type: 'REMOTE_USER_MESSAGE', sessionId: 's1', text: '手机的问题' })
+    const s1After = afterRemote.projects.flatMap(p => p.sessions).find(s => s.id === 's1')!
+    expect(s1After.messages.some(m => m.role === 'user' && JSON.stringify(m.content).includes('手机的问题'))).toBe(true)
+
+    // 2) 磁盘快照（模拟 save 尚未落盘）：s1 还是旧 messages（无 user 文本）
+    const staleSnapshot = {
+      projects: structuredClone(seedProjects),
+      activeSessionId: 's1',
+      tabsBySession: { s1: [] },
+      activeTabIdBySession: { s1: null },
+      claudeSessionMap: {},
+      lastSeq: 100,
+    }
+    const afterHydrate = reducer(afterRemote, { type: 'HYDRATE', snapshot: staleSnapshot as any })
+
+    // 3) 期望：HYDRATE 后 user 消息仍在（不被旧快照覆盖）
+    const s1Final = afterHydrate.projects.flatMap(p => p.sessions).find(s => s.id === 's1')!
+    const stillThere = s1Final.messages.some(m => m.role === 'user' && JSON.stringify(m.content).includes('手机的问题'))
+    expect(stillThere).toBe(true)
+  })
+
   it('DELETE_SESSION 删除指定会话', () => {
     const state = initialState()
     const next = reducer(state, { type: 'DELETE_SESSION', projectId: 'p1', sessionId: 's2' })

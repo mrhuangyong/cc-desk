@@ -741,9 +741,32 @@ export function reducer(state: AppState, action: Action): AppState {
       const liveSessionIds = new Set(s.projects.flatMap(p => p.sessions.filter(sess => !sess.archived).map(sess => sess.id)))
       const survivingActive = (s.activeSessionId && liveSessionIds.has(s.activeSessionId) ? s.activeSessionId : null)
         ?? pickSurvivingSessionId(s.projects, '')
+      // 竞态修复：HYDRATE 用磁盘快照整体替换 projects，但内存里可能有比快照更新的消息
+      // （远程 user 消息刚 dispatch 进内存、renderer 防抖 save 尚未落盘时，远程新建/归档会话
+      // 触发 workspace:changed → HYDRATE 用旧快照覆盖 → user 消息丢失，表现为「桌面只看到
+      // claude 回复、看不到手机发的消息」）。
+      // 策略：按 sessionId 建内存 messages 索引，HYDRATE 时若内存该 session 的消息更多（更新），
+      // 保留内存 messages，仅用快照同步其余字段（标题/归档态/会话列表等）。
+      const memMessagesBySession = new Map<string, import('../types').Message[]>()
+      for (const p of state.projects) {
+        for (const sess of p.sessions) {
+          if (sess.messages?.length) memMessagesBySession.set(sess.id, sess.messages)
+        }
+      }
+      const mergedProjects = s.projects.map(p => ({
+        ...p,
+        sessions: p.sessions.map(sess => {
+          const mem = memMessagesBySession.get(sess.id)
+          // 内存版本更长 → 内存更新，保留内存 messages（避免覆盖远程刚加的 user 消息）
+          if (mem && mem.length > (sess.messages?.length ?? 0)) {
+            return { ...sess, messages: mem }
+          }
+          return sess
+        }),
+      }))
       const base: AppState = {
         ...state,
-        projects: s.projects,
+        projects: mergedProjects,
         activeSessionId: survivingActive ?? '',
         tabsBySession,
         activeTabIdBySession,
@@ -753,7 +776,7 @@ export function reducer(state: AppState, action: Action): AppState {
       // 快照里没有任何存活会话（全新用户 / 会话全归档）→ 补建空会话到第一个 project，
       // 让启动后对话区直接是新会话状态，而非「无选中会话」空占位。
       if (!survivingActive) {
-        const ensured = ensureAliveSession(s.projects, null, state.tabsBySession, state.activeTabIdBySession)
+        const ensured = ensureAliveSession(mergedProjects, null, state.tabsBySession, state.activeTabIdBySession)
         if (ensured) return { ...base, ...ensured }
       }
       return base

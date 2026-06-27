@@ -55,16 +55,54 @@ describe('buildSessionListPayload', () => {
     expect(r.sessions.find((s) => s.localSessionId === 's2')?.status).toBe('idle')
   })
 
-  it('projectsMeta 带项目路径，按首次出现顺序，只含活跃会话的项目', async () => {
+  it('projectsMeta 带项目路径，按首次出现顺序；有 path 的项目即使全归档也保留（用户还要建新会话）', async () => {
     const { buildSessionListPayload } = await import('../src/main/remote-bridge')
     const r = buildSessionListPayload([
       { id: 'p1', name: 'proj-1', path: '/Users/x/proj-1', sessions: [{ id: 's1', title: 'a' }] },
-      { id: 'p2', name: 'proj-2', path: '/Users/x/proj-2', sessions: [{ id: 's2', title: 'b', archived: true }] }, // 全归档
-      { id: 'p3', name: 'proj-3', sessions: [{ id: 's3', title: 'c' }] }, // 无 path
+      { id: 'p2', name: 'proj-2', path: '/Users/x/proj-2', sessions: [{ id: 's2', title: 'b', archived: true }] }, // 全归档但有 path：保留
+      { id: 'p3', name: 'proj-3', sessions: [{ id: 's3', title: 'c' }] }, // 无 path 但有活跃会话：保留
+      { id: 'p-junk', name: '占位', sessions: [{ id: 's4', title: 'd', archived: true }] }, // 无 path 且全归档：排除
     ])
-    expect(r.projectsMeta.map((m) => m.projectId)).toEqual(['p1', 'p3']) // p2 全归档被排除
+    // p2 全归档但仍是真实工作目录，必须保留（否则用户归档最后一条会话后项目消失、无法新建会话）
+    expect(r.projectsMeta.map((m) => m.projectId)).toEqual(['p1', 'p2', 'p3'])
     expect(r.projectsMeta[0]).toMatchObject({ projectName: 'proj-1', projectPath: '/Users/x/proj-1' })
-    expect(r.projectsMeta[1].projectPath).toBeUndefined()
+    expect(r.projectsMeta[1]).toMatchObject({ projectName: 'proj-2', projectPath: '/Users/x/proj-2' })
+    expect(r.projectsMeta[2].projectPath).toBeUndefined()
+  })
+
+  it('移动端归档最后一条会话后，项目仍在 projectsMeta（修复：删除最后会话项目消失）', async () => {
+    const { buildSessionListPayload } = await import('../src/main/remote-bridge')
+    // 场景：项目原本有一条会话，移动端把它归档（archived=true）→ 项目无活跃会话
+    const r = buildSessionListPayload([
+      { id: 'p1', name: 'my-proj', path: '/code/my-proj', sessions: [{ id: 's1', title: '唯一的会话', archived: true }] },
+    ])
+    // 项目必须仍在，用户才能在它下面新建会话（否则删除最后一条会话后项目凭空消失）
+    expect(r.projectsMeta.map((m) => m.projectId)).toContain('p1')
+    expect(r.sessions).toEqual([]) // 归档的会话不出现在会话列表
+  })
+
+  it('projectsMeta 包含无会话的空项目（修复：桌面新增工作目录后移动端刷新看不到）', async () => {
+    const { buildSessionListPayload } = await import('../src/main/remote-bridge')
+    const r = buildSessionListPayload([
+      { id: 'p1', name: 'proj-1', path: '/Users/x/proj-1', sessions: [{ id: 's1', title: 'a' }] },
+      { id: 'p-new', name: '新增工作目录', path: '/Users/x/new', sessions: [] }, // 桌面新加的项目，暂无会话
+    ])
+    // 空项目必须进入 projectsMeta，否则移动端刷新拿不到这个新项目、无法在它下面建会话
+    const ids = r.projectsMeta.map((m) => m.projectId)
+    expect(ids).toContain('p1')
+    expect(ids).toContain('p-new')
+    expect(r.projectsMeta.find((m) => m.projectId === 'p-new')).toMatchObject({ projectName: '新增工作目录', projectPath: '/Users/x/new' })
+  })
+
+  it('projectsMeta 不包含无 path 的占位空项目（避免无意义项目刷屏）', async () => {
+    const { buildSessionListPayload } = await import('../src/main/remote-bridge')
+    const r = buildSessionListPayload([
+      { id: 'p1', name: 'real', path: '/Users/x/real', sessions: [] }, // 有 path 的真实空项目：保留
+      { id: 'p-junk', name: '占位', sessions: [] }, // 无 path 无会话：排除
+    ])
+    const ids = r.projectsMeta.map((m) => m.projectId)
+    expect(ids).toContain('p1')
+    expect(ids).not.toContain('p-junk')
   })
 
   it('updatedAt 取会话的 updatedAt，缺失时回退 lastUserSentAt', async () => {
