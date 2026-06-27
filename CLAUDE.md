@@ -66,7 +66,16 @@ SDK 的 `onUserDialog`（阻塞式）和被 cc-desk 拦截的 `AskUserQuestion` 
 
 ### 持久化：三个独立存储，别混
 
-应用数据全部收敛到 **`~/.cc-desk/`**（`src/main/paths.ts` 的 `CC_DESK_DIR`）：
+应用数据全部收敛到 **`~/.cc-desk/`**（`src/main/paths.ts` 的 `CC_DESK_DIR`）。
+
+**dev 版数据隔离**：边用边开发场景下 dev 版与正式版同时运行，若共用 `~/.cc-desk` 会导致
+① 中继 `router.register` 同 deviceId 互相覆盖（连接被挤掉）② projects.json 并发写丢数据。
+故 `paths.ts` 按 `app.isPackaged` 区分：**dev 版用 `~/.cc-desk-dev/`，正式版用 `~/.cc-desk/`**。
+dev 版首次启动由 `migrate-dev.ts` 从正式版拷一份作起点（projects/settings/config），但**剥掉
+config.json 的 remote 段**——dev 版要生成独立 relay deviceId，否则隔离就没意义。环境变量
+`CC_DESK_DEV=1/0` 可强制覆盖判定；`CC_DESK_DIR` 仍优先（测试隔离）。
+判定口径见 `paths.ts` 的 `detectDevBuild`（必须先确认 `process.versions.electron` 才信 app.isPackaged，
+否则 vitest 桩对象会误判）。
 
 | 文件 | 内容 | 模块 |
 |------|------|------|
@@ -103,36 +112,8 @@ SDK 的 `onUserDialog`（阻塞式）和被 cc-desk 拦截的 `AskUserQuestion` 
 - **打包版的 PATH 与 dev 不同**：分发版由 `fix-env.ts` 注入 env，不继承终端 PATH（见上「其他重要子系统」）。本地 `pnpm dev` 能跑、打包后子进程报「命令找不到」时，先排查 env 注入而非业务逻辑。
 - 代码有大量中文注释解释「为什么这么写」（含历史坑修复），改动前先读周边注释，很多反直觉的设计是为绕开 SDK/Electron 的具体 bug。
 
-## 部署：cc-relay 中继服务（PWA + WebSocket）
+## 部署
 
-`web/` PWA 与 `relay/` 中继**一同部署为单个 Docker 容器 `cc-relay`**：容器内 `node dist/relay/main.js`，单进程同时托管 PWA 静态资源（`/app/public`）+ WebSocket（`/pair` 配对、`/ws` 转发）。不依赖 electron/node-pty。
+服务器信息、SSH 凭据、端口/卷映射、构建更新流程等**敏感信息**存于本地 `CLAUDE.local.md`（已 gitignore，不提交）。Claude Code 自动加载该文件。
 
-### 服务器与运行态
-- **SSH**：`/usr/bin/ssh -p 4022 root@SERVER_HOST`（zsh 有 `ssh` 函数别名会劫持，必须用 `/usr/bin/ssh` 绝对路径）。
-- **容器**：`cc-relay`（镜像 `cc-relay:latest`，`docker run -d --restart unless-stopped -p 32768:8080 -v cc-relay-data:/app/data`）。
-- **端口**：宿主 `32768` → 容器 `8080`。**更新时必须保持此映射不变**，nginx 反代依赖它。
-- **数据卷 `cc-relay-data`** → `/app/data`：存 `bindings.json`（设备绑定关系）+ `keys.json`（设备密钥）。**这是已配对设备的唯一信任来源，绝不能丢**——丢了所有手机都要重新配对。容器替换不删卷。
-- **公网入口**：`https://ccdesk.mrhua.top/`，经 1Panel 的 openresty 反代到 `127.0.0.1:32768`（配置 `NGINX_PROXY_CONF`，已正确传递 `Upgrade`/`Connection` header 支持 WS）。
-
-### 构建与更新流程（无损更新，不停 nginx）
-1. **本地构建**（服务器是 x86_64，arm64 本机必须指定 platform）：
-   ```bash
-   docker build -t cc-relay:latest --platform linux/amd64 -f Dockerfile .
-   ```
-   `Dockerfile` 多阶段：builder 编译 relay（`tsc -p tsconfig.relay.json`）+ 构建 web（`web/` 内 `tsc -b && vite build`，产物落 `relay/public`）；runtime 用 `node:20-alpine` 仅装 `ws`。
-2. **传镜像**（流式，不落地大文件）：
-   ```bash
-   docker save cc-relay:latest | /usr/bin/ssh -p 4022 root@SERVER_HOST 'docker load'
-   ```
-3. **替换容器**（保持端口/卷/重启策略；旧容器先备份镜像为 `cc-relay:prev` 供回滚）：
-   ```bash
-   /usr/bin/ssh -p 4022 root@SERVER_HOST '
-     OLD=$(docker inspect cc-relay --format "{{.Image}}"); docker tag $OLD cc-relay:prev;
-     docker stop cc-relay && docker rm cc-relay;
-     docker run -d --name cc-relay --restart unless-stopped -p 32768:8080 -v cc-relay-data:/app/data cc-relay:latest'
-   ```
-4. **回滚**：把上面 `cc-relay:latest` 换成 `cc-relay:prev` 重跑第 3 步。
-5. **验证**：`curl -s -o /dev/null -w "%{http_code}" -L https://ccdesk.mrhua.top/` 应 200；查 `docker logs cc-relay` 应有 `[cc-relay] listening on :8080`。
-
-### 改 web/ 后必须重新部署
-`web/` 的产物只在 `docker build` 时进入镜像（构建期 `vite build` → `relay/public`）。改完 PWA 想让线上生效，必须走上面的「构建 → 传镜像 → 替换容器」全流程，光 push 代码不会更新线上。
+为什么不放这里：本仓库为 public，服务器 IP/路径/卷名不应进 git。`web/` PWA 与 `relay/` 中继一同部署为单个 Docker 容器（`Dockerfile` 在仓库根，多阶段构建），具体运行态见本地记忆。
