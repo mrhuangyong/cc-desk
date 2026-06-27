@@ -24,6 +24,7 @@ import { useTheme } from './hooks/useTheme'
 import { SunIcon, MoonIcon } from './components/icons'
 import { parseSessionListFull, type SessionListItem, type ProjectMeta } from './lib/session-list'
 import { readImageAsAttachment, type ImageAttachment } from './lib/read-image'
+import { loadDraft, saveDraft, clearDraft } from './lib/draft-storage'
 import type { Envelope } from '@shared/remote-protocol-types'
 
 type View = { kind: 'list' } | { kind: 'chat'; localSessionId: string; title: string }
@@ -194,6 +195,14 @@ function RemoteShell({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // 进会话时恢复该会话的草稿(view.localSessionId 变化时触发)。
+  // 切会话/退出后回来都能看到上次未发送的输入。
+  useEffect(() => {
+    if (view.kind === 'chat') {
+      setInputValue(loadDraft(view.localSessionId))
+    }
+  }, [view.kind, view.kind === 'chat' ? view.localSessionId : null])
+
   const handleAttach = useCallback(
     (localSessionId: string) => {
       const s = sessions.find((x) => x.localSessionId === localSessionId)
@@ -219,6 +228,7 @@ function RemoteShell({
   // 桌面端标记 archived 后会重推 session.list，这里乐观移除让 UI 立即响应。
   const handleArchive = useCallback(
     (localSessionId: string) => {
+      clearDraft(localSessionId)  // 归档后清草稿
       setSessions((prev) => prev.filter((s) => s.localSessionId !== localSessionId))
       setView((prev) => {
         if (prev.kind === 'chat' && prev.localSessionId === localSessionId) {
@@ -241,10 +251,17 @@ function RemoteShell({
     setAttachments((prev) => prev.filter((_, i) => i !== index))
   }, [])
 
+  // 输入时同步保存草稿到 localStorage(按会话)。每次按键直接写(文本小)。
+  const handleInputChange = useCallback((v: string) => {
+    setInputValue(v)
+    if (view.kind === 'chat') saveDraft(view.localSessionId, v)
+  }, [view])
+
   const handleSend = useCallback(() => {
     if (view.kind !== 'chat') return
     const text = inputValue
     setInputValue('')
+    clearDraft(view.localSessionId)  // 发送后清草稿
     const imagesToSend = attachments.length ? attachments : undefined
     void chat.sendMessage(view.localSessionId, text, {
       permission: currentPermission,
@@ -291,7 +308,7 @@ function RemoteShell({
           activeModelId={activeModelId}
           onSetActiveModel={handleSetActiveModel}
           inputValue={inputValue}
-          onInputChange={setInputValue}
+          onInputChange={handleInputChange}
           onSend={handleSend}
           onInterrupt={handleInterrupt}
           onBack={() => {
