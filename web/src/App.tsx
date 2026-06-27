@@ -19,7 +19,9 @@ import ChatPage from './pages/ChatPage'
 import { useRelay } from './hooks/useRelay'
 import { useSessionChat } from './hooks/useSessionChat'
 import { useDialogQueue } from './hooks/useDialogQueue'
+import { usePwaBack } from './hooks/usePwaBack'
 import { useTheme } from './hooks/useTheme'
+import { SunIcon, MoonIcon } from './components/icons'
 import { parseSessionListFull, type SessionListItem, type ProjectMeta } from './lib/session-list'
 import type { Envelope } from '@shared/remote-protocol-types'
 
@@ -41,7 +43,7 @@ export default function App() {
       aria-label={theme === 'light' ? '切换到暗色' : '切换到亮色'}
       title={theme === 'light' ? '暗色' : '亮色'}
     >
-      {theme === 'light' ? '☾' : '☀'}
+      {theme === 'light' ? <MoonIcon /> : <SunIcon />}
     </button>
   )
 
@@ -81,6 +83,11 @@ function RemoteShell({
   const [view, setView] = useState<View>({ kind: 'list' })
   const [inputValue, setInputValue] = useState('')
 
+  // PWA 系统返回键接管：对话页返回 → 回列表；列表页 → 「再按一次退出」。
+  // 注意 onNavigateBack 在 chat.reset 之后定义（见下），用 ref 桥接避免 TDZ；
+  // 这里先声明 navigateBackRef，hook 内部读 ref。
+  const navigateBackRef = useRef<() => void>(() => {})
+
   // 顺序耦合：useRelay 需要 onInbound，onInbound 需要 chat/dialog，
   // chat/dialog 的 send 又需要 relay.send —— 形成循环。
   // 解法：用 sendRef 桥接，hook 的 send 读 ref（运行时已就绪），
@@ -90,6 +97,17 @@ function RemoteShell({
 
   const chat = useSessionChat({ send: sendViaRef as any })
   const dialog = useDialogQueue({ send: sendViaRef as any })
+
+  // PWA 系统返回键：对话页返回回列表（用 chat.reset 清状态）。
+  const pwaBack = usePwaBack({
+    inInnerView: view.kind === 'chat',
+    onNavigateBack: () => navigateBackRef.current(),
+  })
+  // 回填 navigateBackRef：实际「回列表」逻辑（chat.reset 在此可用）。
+  navigateBackRef.current = () => {
+    setView({ kind: 'list' })
+    chat.reset()
+  }
 
   const onInbound = useCallback(
     (env: Envelope) => {
@@ -232,42 +250,54 @@ function RemoteShell({
     [relay],
   )
 
+  // toast：列表页「再按一次退出」提示
+  const exitToast = pwaBack.showExitToast ? (
+    <div className="exit-toast" role="status">再按一次退出</div>
+  ) : null
+
   if (view.kind === 'chat') {
     return (
-      <ChatPage
-        title={view.title || '新会话'}
-        localSessionId={view.localSessionId}
-        messages={chat.messages}
-        running={chat.running}
-        historyVersion={chat.historyVersion}
-        models={models}
-        activeModelId={activeModelId}
-        onSetActiveModel={handleSetActiveModel}
-        inputValue={inputValue}
-        onInputChange={setInputValue}
-        onSend={handleSend}
-        onInterrupt={handleInterrupt}
-        onBack={() => {
-          setView({ kind: 'list' })
-          chat.reset()
-        }}
-        currentDialog={dialog.current}
-        onApprove={(reqId) => void dialog.approve(reqId)}
-        onDeny={(reqId) => void dialog.deny(reqId)}
-        headerExtra={themeToggle}
-      />
+      <>
+        <ChatPage
+          title={view.title || '新会话'}
+          localSessionId={view.localSessionId}
+          messages={chat.messages}
+          running={chat.running}
+          historyVersion={chat.historyVersion}
+          models={models}
+          activeModelId={activeModelId}
+          onSetActiveModel={handleSetActiveModel}
+          inputValue={inputValue}
+          onInputChange={setInputValue}
+          onSend={handleSend}
+          onInterrupt={handleInterrupt}
+          onBack={() => {
+            setView({ kind: 'list' })
+            chat.reset()
+          }}
+          currentDialog={dialog.current}
+          onApprove={(reqId) => void dialog.approve(reqId)}
+          onDeny={(reqId) => void dialog.deny(reqId)}
+          headerExtra={themeToggle}
+        />
+        {exitToast}
+      </>
     )
   }
 
   return (
-    <ProjectListPage
-      connected={relay.connected}
-      sessions={sessions}
-      projectsMeta={projectsMeta}
-      onAttach={handleAttach}
-      onCreateInProject={(projectId) => void handleCreateInProject(projectId)}
-      onArchive={handleArchive}
-      headerExtra={themeToggle}
-    />
+    <>
+      <ProjectListPage
+        connected={relay.connected}
+        sessions={sessions}
+        projectsMeta={projectsMeta}
+        onAttach={handleAttach}
+        onCreateInProject={(projectId) => void handleCreateInProject(projectId)}
+        onArchive={handleArchive}
+        headerExtra={themeToggle}
+      />
+      {exitToast}
+    </>
   )
 }
+

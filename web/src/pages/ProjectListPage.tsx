@@ -16,6 +16,7 @@ import {
   relativeTime,
   shortPath,
 } from '../lib/session-list'
+import { FolderIcon, ChevronDownIcon, ChevronRightIcon, PlusIcon, TrashIcon } from '../components/icons'
 
 export interface ProjectListPageProps {
   /** 中继是否已连接（bind 握手完成）。 */
@@ -110,7 +111,7 @@ export default function ProjectListPage(props: ProjectListPageProps) {
                     onClick={() => toggle(g.projectId)}
                     aria-expanded={isOpen}
                   >
-                    <span className="project-icon">📁</span>
+                    <span className="project-icon"><FolderIcon /></span>
                     <div className="project-info">
                       <div className="project-name-row">
                         <span className="project-name">{g.projectName}</span>
@@ -122,7 +123,7 @@ export default function ProjectListPage(props: ProjectListPageProps) {
                     <span className="project-count-pill">
                       {g.sessions.length}{runningCount > 0 && <em className="running-dot">·{runningCount}运行</em>}
                     </span>
-                    <span className={`caret ${isOpen ? 'open' : ''}`}>›</span>
+                    <span className={`caret ${isOpen ? 'open' : ''}`}><ChevronDownIcon /></span>
                   </button>
                   <button
                     className="project-add-btn"
@@ -130,7 +131,7 @@ export default function ProjectListPage(props: ProjectListPageProps) {
                     disabled={!connected}
                     aria-label="新建会话"
                   >
-                    ＋
+                    <PlusIcon />
                   </button>
                 </div>
 
@@ -155,7 +156,7 @@ export default function ProjectListPage(props: ProjectListPageProps) {
                               <div className="session-time">{relativeTime(s.updatedAt)}</div>
                             )}
                           </div>
-                          <span className="chevron-right">›</span>
+                          <span className="chevron-right"><ChevronRightIcon /></span>
                         </button>
                         {onArchive && (
                           <button
@@ -172,7 +173,7 @@ export default function ProjectListPage(props: ProjectListPageProps) {
                             aria-label="归档"
                             aria-expanded={pendingArchive === s.localSessionId}
                           >
-                            {pendingArchive === s.localSessionId ? '确认删除' : '🗑'}
+                            {pendingArchive === s.localSessionId ? '确认删除' : <TrashIcon />}
                           </button>
                         )}
                       </li>

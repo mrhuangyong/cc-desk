@@ -96,12 +96,18 @@ export function createRouter(
       counters.set(env.deviceId, c)
       if (c.count > rateLimit) return { ok: false, delivered: false, reason: 'rate_limited' }
 
-      // 6. 找对端并转发
-      const peer = bindings.getPeer(env.deviceId)
-      const send = peer ? conns.get(peer) : undefined
-      if (!send) return { ok: true, delivered: false, reason: 'peer_offline' }
-      send(env)
-      return { ok: true, delivered: true }
+      // 6. 找对端并转发（一对多广播：桌面绑多个手机时，桌面→手机的消息投递给所有在线手机）
+      const peers = bindings.getPeers(env.deviceId)
+      let delivered = false
+      if (peers.size > 0) {
+        for (const peer of peers) {
+          const send = conns.get(peer)
+          if (send) { send(env); delivered = true }
+        }
+      }
+      return delivered
+        ? { ok: true, delivered: true }
+        : { ok: true, delivered: false, reason: 'peer_offline' }
     },
   }
 }

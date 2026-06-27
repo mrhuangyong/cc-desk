@@ -29,6 +29,7 @@ import {
   saveDesktopIdentity,
   loadDeviceIdentity,
 } from '../lib/pair'
+import { CommandMarkIcon, CheckIcon } from '../components/icons'
 
 export type PairStatus = 'idle' | 'pairing' | 'success' | 'error'
 
@@ -181,7 +182,7 @@ export default function PairPage(props: PairPageProps) {
         </div>
       )}
       <header className="pair-header">
-        <div className="pair-logo">⌘</div>
+        <div className="pair-logo"><CommandMarkIcon /></div>
         <h1>cc-desk</h1>
         <p className="pair-subtitle">远程控制配对</p>
       </header>
@@ -211,14 +212,14 @@ export default function PairPage(props: PairPageProps) {
       </form>
 
       {status === 'success' && (
-        <p className="pair-tip ok">配对成功，正在跳转…</p>
+        <p className="pair-tip ok"><CheckIcon />配对成功，正在跳转…</p>
       )}
       {status === 'error' && errMsg && (
-        <p className="pair-tip err">{errMsg}</p>
+        <p className="pair-tip err"><span aria-hidden="true">!</span>{errMsg}</p>
       )}
 
       <p className="pair-hint">
-        打开桌面端 cc-desk → 设置 → 远程控制，点击「生成配对码」后扫码或手动输入。
+        在桌面端 cc-desk 打开 设置 → 远程控制，点击「生成配对码」，然后扫码或在此输入 6 位码。
       </p>
     </div>
   )

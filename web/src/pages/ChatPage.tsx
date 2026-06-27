@@ -14,6 +14,18 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import type { AnyMessage } from '../hooks/useSessionChat'
 import type { DialogRequest } from '../lib/dialog-queue'
 import type { ChatBlock } from '../lib/chat-blocks'
+import EdgeSwipeBack from '../components/EdgeSwipeBack'
+import {
+  ArrowLeftIcon,
+  ArrowDownIcon,
+  SquareIcon,
+  SendIcon,
+  WrenchIcon,
+  CheckIcon,
+  ListIcon,
+  ShieldIcon,
+  QuestionIcon,
+} from '../components/icons'
 
 export interface ChatPageProps {
   title: string
@@ -73,13 +85,13 @@ function renderInline(text: string): React.ReactNode[] {
 
 function BlockView({ block }: { block: ChatBlock }) {
   if (block.kind === 'plan') {
-    return <div className="block plan-card">📋 计划</div>
+    return <div className="block plan-card"><ListIcon />{block.label}</div>
   }
   if (block.kind === 'tool_use') {
-    return <div className="block tool-use">🔧 {block.label}</div>
+    return <div className="block tool-use"><WrenchIcon />{block.label}</div>
   }
   if (block.kind === 'tool_result') {
-    return <div className="block tool-result">✓ 结果</div>
+    return <div className="block tool-result"><CheckIcon />{block.label}</div>
   }
   return null
 }
@@ -189,20 +201,26 @@ export default function ChatPage(props: ChatPageProps) {
     }
   }
 
-  // 批准请求的类型标签（中文化）
-  const dialogKindLabel = (kind?: string): string => {
+  // 批准请求的类型元信息：标签 + 图标 + 主问题文案（按类型差异化）
+  const dialogMeta = (kind?: string): { label: string; icon: React.ReactNode; question: string } => {
     switch (kind) {
-      case 'plan_proposed': return '计划批准'
-      case 'permission_request': return '权限请求'
-      case 'ask_user_question': return '提问'
-      default: return '需要批准'
+      case 'plan_proposed':
+        return { label: '计划批准', icon: <ListIcon />, question: '是否批准此计划？' }
+      case 'permission_request':
+        return { label: '权限请求', icon: <ShieldIcon />, question: '需要你的确认' }
+      case 'ask_user_question':
+        return { label: '提问', icon: <QuestionIcon />, question: '需要你的确认' }
+      default:
+        return { label: '需要批准', icon: <ShieldIcon />, question: '需要你的确认' }
     }
   }
 
   return (
+    <>
+    <EdgeSwipeBack onBack={onBack}>
     <div className="app chat-page">
       <header className="app-header">
-        <button className="icon-btn" onClick={onBack} aria-label="返回">←</button>
+        <button className="icon-btn" onClick={onBack} aria-label="返回"><ArrowLeftIcon /></button>
         <div className="chat-header-title">
           <h1 className="chat-title">{title || '会话'}</h1>
           {models && models.length > 0 && (
@@ -219,34 +237,13 @@ export default function ChatPage(props: ChatPageProps) {
         </div>
         <div className="header-actions">
           {running && (
-            <button className="icon-btn stop" onClick={onInterrupt} aria-label="中断">停止</button>
+            <button className="icon-btn stop" onClick={onInterrupt} aria-label="停止">
+              <SquareIcon />
+            </button>
           )}
           {headerExtra}
         </div>
       </header>
-
-      {currentDialog && (
-        <div className="dialog-card">
-          <div className="dialog-kind">{dialogKindLabel(currentDialog.dialogKind)}</div>
-          <div className="dialog-question">
-            {currentDialog.dialogKind === 'plan_proposed' ? '是否批准此计划？' : '需要你的确认'}
-          </div>
-          <div className="dialog-actions">
-            <button
-              className="dialog-btn approve"
-              onClick={() => onApprove?.(currentDialog.reqId)}
-            >
-              批准
-            </button>
-            <button
-              className="dialog-btn deny"
-              onClick={() => onDeny?.(currentDialog.reqId)}
-            >
-              拒绝
-            </button>
-          </div>
-        </div>
-      )}
 
       <main className="chat-body" ref={bodyRef} onScroll={onBodyScroll}>
         {messages.length === 0 && (
@@ -288,7 +285,7 @@ export default function ChatPage(props: ChatPageProps) {
           onClick={() => scrollToBottom('smooth')}
           aria-label="回到底部"
         >
-          ↓
+          <ArrowDownIcon />
         </button>
       )}
 
@@ -314,14 +311,43 @@ export default function ChatPage(props: ChatPageProps) {
             disabled={!canSend}
             aria-label="发送"
           >
-            {/* 纸飞机图标 */}
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="22" y1="2" x2="11" y2="13" />
-              <polygon points="22 2 15 22 11 13 2 9 22 2" />
-            </svg>
+            <SendIcon />
           </button>
         </div>
       </footer>
     </div>
+    </EdgeSwipeBack>
+
+    {/* 批准/权限请求：底部弹出模态（不挤压对话区） */}
+    {currentDialog && (() => {
+      const meta = dialogMeta(currentDialog.dialogKind)
+      return (
+        <div className="dialog-overlay" role="dialog" aria-modal="true" aria-label={meta.label}>
+          <div className="dialog-sheet">
+            <div className="dialog-grab" aria-hidden="true" />
+            <div className="dialog-sheet-head">
+              <span className="dialog-kind-badge">{meta.icon}</span>
+              <span className="dialog-kind">{meta.label}</span>
+            </div>
+            <div className="dialog-question">{meta.question}</div>
+            <div className="dialog-actions">
+              <button
+                className="dialog-btn deny"
+                onClick={() => onDeny?.(currentDialog.reqId)}
+              >
+                拒绝
+              </button>
+              <button
+                className="dialog-btn approve"
+                onClick={() => onApprove?.(currentDialog.reqId)}
+              >
+                批准
+              </button>
+            </div>
+          </div>
+        </div>
+      )
+    })()}
+    </>
   )
 }

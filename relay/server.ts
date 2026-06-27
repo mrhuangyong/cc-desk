@@ -130,8 +130,10 @@ export async function startRelayServer(opts: {
       if (msg.type === 'pair.code' && msg.deviceId && msg.deviceKey) {
         const { code, expiresAt } = pairing.issueCode(msg.deviceId)
         keyRegistry.register(msg.deviceId, msg.deviceKey) // 首次登记桌面密钥（已存在不覆盖）
+        console.log(`[pair] code issued for ${msg.deviceId}`)
         ws.send(JSON.stringify({ type: 'pair.code', payload: { code, expiresAt } }))
       } else if (msg.type === 'pair.consume' && msg.deviceId && msg.code) {
+        console.log(`[pair] consume from ${msg.deviceId} code=${msg.code} hasKey=${!!msg.deviceKey}`)
         // C1：consume 走 IP 维度限频 + 失败锁定（consumeAttempt）。
         //   限频/锁定命中时也统一回 bad_pair_code：不向攻击者泄露「码错了」还是「被限频了」，
         //   减少信息侧信道（攻击者无法据响应区分限频状态）。
@@ -155,29 +157,31 @@ export async function startRelayServer(opts: {
   wsWss.on('connection', (ws) => {
     stats.wsConnections++
     let boundDeviceId: string | null = null
+    console.log(`[ws] connection opened (total=${stats.wsConnections})`)
     ws.on('message', (raw) => {
       let env: Envelope
-      try { env = JSON.parse(raw.toString()) } catch { return }
+      try { env = JSON.parse(raw.toString()) } catch { console.log('[ws] unparseable message'); return }
       // bind 握手：第一条消息。
-      //   安全要点（Task 5 不变）：bind 不信任/登记客户端上报的 deviceKey。
-      //   身份证明 = 用 keyRegistry 里配对阶段已登记的密钥，验签这条 bind 信封本身。
-      //   - 未绑定 → unbound
-      //   - 密钥未登记（未走完配对流程）→ bad_sig
-      //   - 验签失败 → bad_sig
-      //   （Important-3 后 keyRegistry 持久化，中继重启不丢密钥，已配对设备仍可 bind）
       if (env.type === 'bind' && !boundDeviceId) {
-        if (!bindings.has(env.deviceId)) { ws.send(JSON.stringify({ type: 'error', payload: { code: 'unbound' } })); return }
-        const key = keyRegistry.get(env.deviceId)
-        if (!key || !verifySig(key, env)) { ws.send(JSON.stringify({ type: 'error', payload: { code: 'bad_sig' } })); return }
+        const bound = bindings.has(env.deviceId)
+        const key = bound ? keyRegistry.get(env.deviceId) : null
+        console.log(`[ws] bind from ${env.deviceId} bound=${bound} hasKey=${!!key}`)
+        if (!bound) { ws.send(JSON.stringify({ type: 'error', payload: { code: 'unbound' } })); return }
+        if (!key || !verifySig(key, env)) {
+          console.log(`[ws] bind bad_sig device=${env.deviceId} hasKey=${!!key}`)
+          ws.send(JSON.stringify({ type: 'error', payload: { code: 'bad_sig' } })); return
+        }
         boundDeviceId = env.deviceId
         router.register(env.deviceId, (e) => ws.readyState === WebSocket.OPEN && ws.send(JSON.stringify(e)))
         ws.send(JSON.stringify({ type: 'bind.ok' }))
+        console.log(`[ws] bind.ok device=${env.deviceId}`)
         return
       }
-      if (!boundDeviceId) return // 未 bind 拒收
-      router.route(env) // 转发或拒绝
+      if (!boundDeviceId) { console.log(`[ws] msg before bind: type=${env.type}`); return } // 未 bind 拒收
+      const r = router.route(env) // 转发或拒绝
+      console.log(`[ws] route type=${env.type} from=${env.deviceId} ok=${r.ok} delivered=${r.delivered} reason=${r.reason ?? '-'}`)
     })
-    ws.on('close', () => { if (boundDeviceId) router.unregister(boundDeviceId) })
+    ws.on('close', () => { if (boundDeviceId) router.unregister(boundDeviceId); console.log(`[ws] closed device=${boundDeviceId ?? 'unbound'}`) })
   })
 
   return new Promise((resolve) => {
