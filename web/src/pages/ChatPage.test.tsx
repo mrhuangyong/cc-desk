@@ -622,3 +622,53 @@ describe('ChatPage - 编辑重发', () => {
     expect(screen.queryByLabelText(/编辑/)).not.toBeInTheDocument()
   })
 })
+
+describe('ChatPage - 排队模式', () => {
+  const baseProps = {
+    title: 't', messages: [], running: false,
+    inputValue: '', onInputChange: () => {}, onSend: () => {},
+    onInterrupt: () => {}, onBack: () => {},
+  }
+
+  it('传入 onQueueModeChange 时渲染模式 select,选中值正确', () => {
+    render(
+      <ChatPage
+        {...baseProps}
+        currentQueueMode="guide"
+        onQueueModeChange={() => {}}
+      />,
+    )
+    const select = screen.getByLabelText('排队模式') as HTMLSelectElement
+    expect(select.value).toBe('guide')
+    expect(select.options.length).toBe(2) // queue / guide
+  })
+
+  it('改模式 select → onQueueModeChange(新值)', () => {
+    const onQueueModeChange = vi.fn()
+    render(
+      <ChatPage
+        {...baseProps}
+        currentQueueMode="queue"
+        onQueueModeChange={onQueueModeChange}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText('排队模式'), { target: { value: 'guide' } })
+    expect(onQueueModeChange).toHaveBeenCalledWith('guide')
+  })
+
+  it('queue 非空 → 渲染对应数量的排队 chip', () => {
+    render(
+      <ChatPage
+        {...baseProps}
+        queue={['排队消息1', '排队消息2']}
+      />,
+    )
+    const chips = screen.getAllByText(/排队消息/)
+    expect(chips.length).toBe(2)
+  })
+
+  it('未传 onQueueModeChange 时不渲染模式 select(向后兼容)', () => {
+    render(<ChatPage {...baseProps} />)
+    expect(screen.queryByLabelText('排队模式')).not.toBeInTheDocument()
+  })
+})

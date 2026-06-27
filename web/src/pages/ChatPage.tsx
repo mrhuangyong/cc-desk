@@ -78,6 +78,12 @@ export interface ChatPageProps {
   onCancelEdit?: () => void
   /** 保存编辑并重发(传 index + 新文本)。localSessionId 由 App 绑定。 */
   onEditResend?: (index: number, newText: string) => void
+  /** 当前排队模式(queue=排队/guide=中断立即发)。 */
+  currentQueueMode?: 'queue' | 'guide'
+  /** 切换排队模式。 */
+  onQueueModeChange?: (mode: 'queue' | 'guide') => void
+  /** 排队中的消息文本(流式时 queue 模式发送的,AI 结束后自动发)。 */
+  queue?: string[]
   /** header 右侧额外控件(主题切换等)。 */
   headerExtra?: React.ReactNode
 }
@@ -154,6 +160,9 @@ export default function ChatPage(props: ChatPageProps) {
     onStartEdit,
     onCancelEdit,
     onEditResend,
+    currentQueueMode,
+    onQueueModeChange,
+    queue,
   } = props
 
   const canSend = inputValue.trim().length > 0
@@ -375,7 +384,7 @@ export default function ChatPage(props: ChatPageProps) {
       )}
 
       <footer className="chat-input-bar">
-        {(onPermissionChange || onThinkingChange) && (
+        {(onPermissionChange || onThinkingChange || onQueueModeChange) && (
           <div className="chat-input-controls">
             {onPermissionChange && (
               <select
@@ -397,6 +406,17 @@ export default function ChatPage(props: ChatPageProps) {
                 {THINKINGS.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             )}
+            {onQueueModeChange && (
+              <select
+                className="param-select"
+                value={currentQueueMode || 'queue'}
+                onChange={(e) => onQueueModeChange(e.target.value as 'queue' | 'guide')}
+                aria-label="排队模式"
+              >
+                <option value="queue">排队</option>
+                <option value="guide">中断</option>
+              </select>
+            )}
           </div>
         )}
         {attachments && attachments.length > 0 && (
@@ -412,6 +432,13 @@ export default function ChatPage(props: ChatPageProps) {
                   >×</button>
                 )}
               </div>
+            ))}
+          </div>
+        )}
+        {queue && queue.length > 0 && (
+          <div className="queue-chips">
+            {queue.map((text, i) => (
+              <div className="queue-chip" key={i}>排队中: {text}</div>
             ))}
           </div>
         )}
