@@ -30,6 +30,7 @@ npx vitest run -t "DELETE_SESSION 删除指定会话"
 - **涉及落盘的主进程测试（`claude-config`、`cc-desk-store` 等）必须隔离 `CLAUDE_CONFIG_DIR`**：用 `withFakeConfigDir()` 工厂把它指向 `os.tmpdir()` 下的临时目录 + `vi.resetModules()` 动态重导入模块，绝不落真机 `~/.cc-desk/claude`。参考 `tests/claude-config-write.test.ts`（注意：cc-desk 的 Claude 配置已隔离在 `~/.cc-desk/claude`，不再碰 `~/.claude`，见下文「持久化」）。
 - reducer/组件测试用 `tests/fixtures.ts` 的 `seedProjects`（p1=cc-desk 含 s1..s8，p2 含 s3）作为已知结构种子，不要各自造 mock 数据。
 - 真机 e2e 文件内部用 `// @vitest-environment node` 声明 node 环境（jsdom 不适用），由独立 `vitest.e2e.config.ts` 收集。
+- **测试涉及 `paths.ts` 的 dev/prod 判定时**：可设环境变量 `CC_DESK_DEV=1/0` 强制指定（`detectDevBuild` 优先读它），避免依赖 electron 运行时的 `app.isPackaged`。
 
 ## 发版与提交规范（硬约定）
 
