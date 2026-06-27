@@ -510,3 +510,115 @@ describe('ChatPage - 图片附件', () => {
     expect(screen.queryByLabelText(/添加|附件|图片/)).not.toBeInTheDocument()
   })
 })
+
+describe('ChatPage - 编辑重发', () => {
+  const userMsg = (text: string): AnyMessage => ({ role: 'user', text })
+  const assistantMsg = (text: string): AnyMessage => ({ role: 'assistant', text, thinking: '', blocks: [] })
+  const baseProps = {
+    title: 't', running: false,
+    inputValue: '', onInputChange: () => {}, onSend: () => {},
+    onInterrupt: () => {}, onBack: () => {},
+  }
+
+  it('最后一条 user 消息(非running)显示编辑按钮', () => {
+    render(
+      <ChatPage
+        {...baseProps}
+        messages={[userMsg('问题'), assistantMsg('回复'), userMsg('最后一个问题')]}
+        editingIndex={null}
+        onStartEdit={() => {}}
+        onCancelEdit={() => {}}
+        onEditResend={() => {}}
+      />,
+    )
+    // 只在最后一条 user 消息上有编辑按钮(共1个)
+    expect(screen.getAllByLabelText(/编辑/).length).toBe(1)
+  })
+
+  it('running 时不显示编辑按钮', () => {
+    render(
+      <ChatPage
+        {...baseProps}
+        running={true}
+        messages={[userMsg('问题')]}
+        editingIndex={null}
+        onStartEdit={() => {}}
+        onCancelEdit={() => {}}
+        onEditResend={() => {}}
+      />,
+    )
+    expect(screen.queryByLabelText(/编辑/)).not.toBeInTheDocument()
+  })
+
+  it('editingIndex 命中时,该消息原位变 textarea(初始值=消息文本)+ 保存/取消', () => {
+    render(
+      <ChatPage
+        {...baseProps}
+        messages={[userMsg('待编辑')]}
+        editingIndex={0}
+        onStartEdit={() => {}}
+        onCancelEdit={() => {}}
+        onEditResend={() => {}}
+      />,
+    )
+    const textarea = screen.getByDisplayValue('待编辑') as HTMLTextAreaElement
+    expect(textarea.value).toBe('待编辑')
+    expect(screen.getByRole('button', { name: /保存/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /取消/ })).toBeInTheDocument()
+  })
+
+  it('点保存 → onEditResend(index, 新文本)', () => {
+    const onEditResend = vi.fn()
+    render(
+      <ChatPage
+        {...baseProps}
+        messages={[userMsg('原文')]}
+        editingIndex={0}
+        onStartEdit={() => {}}
+        onCancelEdit={() => {}}
+        onEditResend={onEditResend}
+      />,
+    )
+    const textarea = screen.getByDisplayValue('原文') as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: '改后' } })
+    fireEvent.click(screen.getByRole('button', { name: /保存/ }))
+    expect(onEditResend).toHaveBeenCalledWith(0, '改后')
+  })
+
+  it('点取消 → onCancelEdit', () => {
+    const onCancelEdit = vi.fn()
+    render(
+      <ChatPage
+        {...baseProps}
+        messages={[userMsg('原文')]}
+        editingIndex={0}
+        onStartEdit={() => {}}
+        onCancelEdit={onCancelEdit}
+        onEditResend={() => {}}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /取消/ }))
+    expect(onCancelEdit).toHaveBeenCalled()
+  })
+
+  it('点编辑按钮 → onStartEdit(该消息 index)', () => {
+    const onStartEdit = vi.fn()
+    render(
+      <ChatPage
+        {...baseProps}
+        messages={[userMsg('问题'), assistantMsg('回复'), userMsg('最后')]}
+        editingIndex={null}
+        onStartEdit={onStartEdit}
+        onCancelEdit={() => {}}
+        onEditResend={() => {}}
+      />,
+    )
+    fireEvent.click(screen.getAllByLabelText(/编辑/)[0])
+    expect(onStartEdit).toHaveBeenCalledWith(2) // 最后一条 user 在 index 2
+  })
+
+  it('未传 onEditResend 时不渲染编辑按钮(向后兼容)', () => {
+    render(<ChatPage {...baseProps} messages={[userMsg('x')]} />)
+    expect(screen.queryByLabelText(/编辑/)).not.toBeInTheDocument()
+  })
+})
