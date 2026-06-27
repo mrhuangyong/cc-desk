@@ -346,3 +346,73 @@ describe('useSessionChat - 编辑重发', () => {
     expect(send).not.toHaveBeenCalled()
   })
 })
+
+describe('useSessionChat - 排队模式', () => {
+  it('running + queueMode=queue → 消息进队列,不直接 send', async () => {
+    const send = vi.fn().mockResolvedValue(true)
+    const { result } = renderHook(() => useSessionChat({ send }))
+    // 先进入 running(模拟流式中)
+    act(() => {
+      result.current.onInbound({ v: 1, type: 'session.delta', deviceId: 'd', ts: 1, nonce: 'n', sig: '', payload: { localSessionId: 's1', text: '流式中' } } as any)
+    })
+    expect(result.current.running).toBe(true)
+    const sendCallsBefore = send.mock.calls.length
+    // queue 模式发送
+    await act(async () => {
+      await result.current.sendMessage('s1', '排队消息', { queueMode: 'queue' })
+    })
+    // 进了队列,没有新 session.message 调用
+    expect(result.current.queue).toEqual(['排队消息'])
+    expect(send.mock.calls.length).toBe(sendCallsBefore) // 无新 send
+  })
+
+  it('running + queueMode=guide → interrupt 后 200ms 发', async () => {
+    vi.useFakeTimers()
+    const send = vi.fn().mockResolvedValue(true)
+    const { result } = renderHook(() => useSessionChat({ send }))
+    act(() => {
+      result.current.onInbound({ v: 1, type: 'session.delta', deviceId: 'd', ts: 1, nonce: 'n', sig: '', payload: { localSessionId: 's1', text: '流式中' } } as any)
+    })
+    await act(async () => {
+      await result.current.sendMessage('s1', '立即发', { queueMode: 'guide' })
+    })
+    // 应已 interrupt(session.interrupt 调用)
+    expect(send.mock.calls.some((c) => c[0] === 'session.interrupt')).toBe(true)
+    // 200ms 前还没发 session.message(只有 interrupt)
+    const msgBefore = send.mock.calls.filter((c) => c[0] === 'session.message').length
+    // 推进 200ms
+    act(() => { vi.advanceTimersByTime(200) })
+    const msgAfter = send.mock.calls.filter((c) => c[0] === 'session.message').length
+    expect(msgAfter).toBeGreaterThan(msgBefore) // 200ms 后发了 message
+    vi.useRealTimers()
+  })
+
+  it('!running → 直接发(不受 queueMode 影响)', async () => {
+    const send = vi.fn().mockResolvedValue(true)
+    const { result } = renderHook(() => useSessionChat({ send }))
+    await act(async () => {
+      await result.current.sendMessage('s1', '直接发', { queueMode: 'queue' })
+    })
+    expect(send.mock.calls.some((c) => c[0] === 'session.message')).toBe(true)
+    expect(result.current.queue).toEqual([]) // 没进队列
+  })
+
+  it('running 结束 + queue 非空 → 自动发队首 + 出队', async () => {
+    const send = vi.fn().mockResolvedValue(true)
+    const { result } = renderHook(() => useSessionChat({ send }))
+    act(() => {
+      result.current.onInbound({ v: 1, type: 'session.delta', deviceId: 'd', ts: 1, nonce: 'n', sig: '', payload: { localSessionId: 's1', text: '流式中' } } as any)
+    })
+    await act(async () => {
+      await result.current.sendMessage('s1', '排队1', { queueMode: 'queue' })
+    })
+    expect(result.current.queue).toEqual(['排队1'])
+    // AI 结束(session.result → running:false)
+    act(() => {
+      result.current.onInbound({ v: 1, type: 'session.result', deviceId: 'd', ts: 1, nonce: 'n', sig: '', payload: { localSessionId: 's1' } } as any)
+    })
+    // 自动出队:queue 清空,发了队首
+    expect(result.current.queue).toEqual([])
+    expect(send.mock.calls.some((c) => c[0] === 'session.message' && c[1]?.text === '排队1')).toBe(true)
+  })
+})

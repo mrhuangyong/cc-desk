@@ -14,7 +14,7 @@
 //
 // 消息轮次：一次 user 输入 → 进入 running，后续 delta/blocks 累加到「当前 assistant 消息」；
 //   收到 session.result → running=false，下一次 delta 开新一轮 assistant 消息。
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Envelope, MessageType } from '@shared/remote-protocol-types'
 import {
   type ChatMessage,
@@ -71,6 +71,7 @@ export interface UseSessionChatHandle {
       thinking?: 'low' | 'medium' | 'high'
       extraDirs?: string[]
       images?: { mediaType: string; data: string; name?: string }[]
+      queueMode?: 'queue' | 'guide'
     },
   ): Promise<void>
   /** 中断当前 query。 */
@@ -85,6 +86,8 @@ export interface UseSessionChatHandle {
   setEditing: (index: number | null) => void
   /** 编辑重发:截断 index 及之后消息,用新文本替换该 user + 中断(若在跑)+ 重发。 */
   editAndResend(localSessionId: string, index: number, newText: string): Promise<void>
+  /** 排队中的消息文本(queue 模式流式时发送的消息,AI 结束后自动发)。 */
+  queue: string[]
 }
 
 /** 从 session.blocks payload 取出 blocks 数组（容错）。 */
@@ -110,6 +113,11 @@ export function useSessionChat(opts: UseSessionChatOptions): UseSessionChatHandl
   const [historyVersion, setHistoryVersion] = useState(0)
   // 当前轮次是否已收尾（收到 session.result）。true 时下一条 delta/blocks 强制开新 assistant 消息。
   const finishedRef = useRef(true)
+  // 排队模式:流式中 queue 模式发送的消息暂存队列,AI 结束后自动发队首。
+  const [queue, setQueue] = useState<string[]>([])
+  // 自动出队的 useEffect 需 localSessionId,但 hook 不持有它(sendMessage 参数传入)。
+  // 用 ref 缓存最近一次 sendMessage 的 localSessionId,供出队 useEffect 使用。
+  const localSessionIdRef = useRef<string>('')
 
   const onInbound = useCallback(
     (env: Envelope) => {
@@ -219,18 +227,56 @@ export function useSessionChat(opts: UseSessionChatOptions): UseSessionChatHandl
         thinking?: 'low' | 'medium' | 'high'
         extraDirs?: string[]
         images?: { mediaType: string; data: string; name?: string }[]
+        queueMode?: 'queue' | 'guide'
       },
     ) => {
       const trimmed = text.trim()
       if (!trimmed) return
-      // 本地 echo user 消息 + 开新 assistant 轮次（下一条 delta 续到这条 assistant）
+      localSessionIdRef.current = localSessionId
+      // 剔除 queueMode(协议层不需要,不该透传给 session.message)
+      const { queueMode: _qm, ...sendOpts } = opts ?? {}
+      // 流式中按 queueMode 处理(非流式直接发)
+      if (running) {
+        if (opts?.queueMode === 'queue') {
+          // queue:进队列,不直接发(等 AI 结束自动出队)
+          setQueue((prev) => [...prev, trimmed])
+          return
+        }
+        if (opts?.queueMode === 'guide') {
+          // guide:中断当前 AI,200ms 后立即发(确保 SDK 中断完成)
+          await send('session.interrupt', { localSessionId })
+          setTimeout(() => {
+            setMessages((prev) => [...prev, { role: 'user' as const, text: trimmed }, mkMessage()])
+            finishedRef.current = false
+            setRunning(true)
+            void send('session.message', { localSessionId, text: trimmed })
+          }, 200)
+          return
+        }
+      }
+      // 非流式 / 无 queueMode:直接 echo + 发
       setMessages((prev) => [...prev, { role: 'user' as const, text: trimmed }, mkMessage()])
       finishedRef.current = false // 新 assistant 已就位，delta 续写它
       setRunning(true)
-      await send('session.message', { localSessionId, text: trimmed, ...opts })
+      await send('session.message', { localSessionId, text: trimmed, ...sendOpts })
     },
-    [send],
+    [send, running],
   )
+
+  // 自动出队:AI 结束(running:false)且 queue 非空时,发队首 + 出队。
+  // 用 localSessionIdRef 拿最近的 localSessionId(hook 不持有它)。
+  useEffect(() => {
+    if (!running && queue.length > 0 && localSessionIdRef.current) {
+      const next = queue[0]
+      setQueue((prev) => prev.slice(1))
+      const localSessionId = localSessionIdRef.current
+      // 出队即直接发(echo + send,不再判断 queueMode)
+      setMessages((prev) => [...prev, { role: 'user' as const, text: next }, mkMessage()])
+      finishedRef.current = false
+      setRunning(true)
+      void send('session.message', { localSessionId, text: next })
+    }
+  }, [running, queue, send])
 
   const interrupt = useCallback(
     async (localSessionId: string) => {
@@ -279,5 +325,5 @@ export function useSessionChat(opts: UseSessionChatOptions): UseSessionChatHandl
     finishedRef.current = true
   }, [])
 
-  return { messages, running, hasMoreHistory, historyVersion, onInbound, sendMessage, interrupt, loadHistory, reset, editingIndex, setEditing, editAndResend }
+  return { messages, running, hasMoreHistory, historyVersion, onInbound, sendMessage, interrupt, loadHistory, reset, editingIndex, setEditing, editAndResend, queue }
 }
