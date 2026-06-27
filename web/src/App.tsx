@@ -86,6 +86,8 @@ function RemoteShell({
   // UI 控件(下拉)留给子项目 B,A 阶段用默认值随消息透传,验证协议层。
   const [currentPermission, setCurrentPermission] = useState<string>('变更前确认')
   const [currentThinking, setCurrentThinking] = useState<'low' | 'medium' | 'high'>('medium')
+  // 排队模式(对齐桌面 queueMode):queue=流式时排队AI结束后发,guide=中断立即发。默认 queue。
+  const [currentQueueMode, setCurrentQueueMode] = useState<'queue' | 'guide'>('queue')
   // 图片附件(对齐桌面 store.draft.attachments)。App 持有状态,ChatPage 渲染 chip + 回调。
   // 发送时转成 images 透传(sendMessage opts,协议层 A 阶段已通),发完清空。
   const [attachments, setAttachments] = useState<ImageAttachment[]>([])
@@ -267,9 +269,10 @@ function RemoteShell({
       permission: currentPermission,
       thinking: currentThinking,
       images: imagesToSend,
+      queueMode: currentQueueMode,
     })
     if (attachments.length) setAttachments([])
-  }, [view, inputValue, chat, currentPermission, currentThinking, attachments])
+  }, [view, inputValue, chat, currentPermission, currentThinking, attachments, currentQueueMode])
 
   const handleInterrupt = useCallback(() => {
     if (view.kind !== 'chat') return
@@ -322,6 +325,9 @@ function RemoteShell({
           currentThinking={currentThinking}
           onPermissionChange={setCurrentPermission}
           onThinkingChange={setCurrentThinking}
+          currentQueueMode={currentQueueMode}
+          onQueueModeChange={setCurrentQueueMode}
+          queue={chat.queue}
           attachments={attachments}
           onAddImages={addImages}
           onRemoveImage={removeImage}
