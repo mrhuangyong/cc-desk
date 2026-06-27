@@ -152,6 +152,30 @@ describe('useSessionChat - 输入与中断', () => {
     expect(result.current.running).toBe(true)
   })
 
+  it('sendMessage 带 permission/thinking 时 → session.message payload 含这些字段', async () => {
+    const send = vi.fn().mockResolvedValue(true)
+    const { result } = renderHook(() => useSessionChat({ send }))
+    await act(async () => {
+      await result.current.sendMessage('s1', 'hi', { permission: '计划模式', thinking: 'high' })
+    })
+    expect(send).toHaveBeenCalledWith('session.message', expect.objectContaining({
+      localSessionId: 's1',
+      text: 'hi',
+      permission: '计划模式',
+      thinking: 'high',
+    }))
+  })
+
+  it('sendMessage 不带 opts 时 → payload 只有 localSessionId/text（向后兼容）', async () => {
+    const send = vi.fn().mockResolvedValue(true)
+    const { result } = renderHook(() => useSessionChat({ send }))
+    await act(async () => {
+      await result.current.sendMessage('s1', 'hi')
+    })
+    const payload = send.mock.calls[0][1]
+    expect(payload).toEqual({ localSessionId: 's1', text: 'hi' })
+  })
+
   it('空文本不发送', async () => {
     const send = vi.fn().mockResolvedValue(true)
     const { result } = renderHook(() => useSessionChat({ send }))
