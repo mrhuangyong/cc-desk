@@ -70,6 +70,14 @@ export interface ChatPageProps {
   onAddImages?: (files: File[]) => void
   /** 删除指定 index 的附件(App 的 removeImage)。 */
   onRemoveImage?: (index: number) => void
+  /** 编辑重发:正在编辑的 user 消息 index(null=非编辑态)。 */
+  editingIndex?: number | null
+  /** 点编辑按钮进入编辑态(传该消息 index)。 */
+  onStartEdit?: (index: number) => void
+  /** 取消编辑。 */
+  onCancelEdit?: () => void
+  /** 保存编辑并重发(传 index + 新文本)。localSessionId 由 App 绑定。 */
+  onEditResend?: (index: number, newText: string) => void
   /** header 右侧额外控件(主题切换等)。 */
   headerExtra?: React.ReactNode
 }
@@ -142,9 +150,22 @@ export default function ChatPage(props: ChatPageProps) {
     attachments,
     onAddImages,
     onRemoveImage,
+    editingIndex,
+    onStartEdit,
+    onCancelEdit,
+    onEditResend,
   } = props
 
   const canSend = inputValue.trim().length > 0
+
+  // 原位编辑:正在编辑的文本(初始从被编辑消息取)。保存/取消时清空。
+  const [editValue, setEditValue] = useState('')
+  // editingIndex 变化时(进入编辑),同步 editValue 为该消息文本
+  useEffect(() => {
+    if (editingIndex != null && messages[editingIndex]?.role === 'user') {
+      setEditValue((messages[editingIndex] as any).text || '')
+    }
+  }, [editingIndex, messages])
 
   // 图片附件菜单(拍照/相册)开合态 + 两个隐藏 file input ref
   const [showAttachMenu, setShowAttachMenu] = useState(false)
@@ -289,9 +310,35 @@ export default function ChatPage(props: ChatPageProps) {
         )}
         {messages.map((m, i) => {
           if (m.role === 'user') {
+            // 编辑态:该消息原位变 textarea + 保存/取消
+            if (editingIndex === i) {
+              return (
+                <div key={i} className="msg user editing">
+                  <textarea
+                    className="edit-input"
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    rows={2}
+                  />
+                  <div className="edit-actions">
+                    <button className="edit-save-btn" onClick={() => onEditResend?.(i, editValue)}>保存</button>
+                    <button className="edit-cancel-btn" onClick={() => onCancelEdit?.()}>取消</button>
+                  </div>
+                </div>
+              )
+            }
+            // 找最后一条 user 消息的 index(决定是否显示编辑按钮)
+            const lastUserIndex = (() => {
+              for (let j = messages.length - 1; j >= 0; j--) if (messages[j].role === 'user') return j
+              return -1
+            })()
+            const canEdit = !running && i === lastUserIndex && onEditResend
             return (
               <div key={i} className="msg user">
                 <div className="msg-bubble user-bubble">{m.text}</div>
+                {canEdit && (
+                  <button className="edit-btn" onClick={() => onStartEdit?.(i)} aria-label="编辑">编辑</button>
+                )}
               </div>
             )
           }
