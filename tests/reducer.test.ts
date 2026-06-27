@@ -43,6 +43,20 @@ describe('reducer', () => {
     expect(next.updateStatus).toEqual({ state: 'ready', version: '1.2.0' })
   })
 
+  it('REMOTE_USER_MESSAGE 把手机发的 user 文本加入指定会话（修复桌面看不到）', () => {
+    const state = initialState()
+    const next = reducer(state, { type: 'REMOTE_USER_MESSAGE', sessionId: 's1', text: '从手机发的问题' })
+    const s1 = next.projects.flatMap(p => p.sessions).find(s => s.id === 's1')!
+    const last = s1.messages[s1.messages.length - 1]
+    expect(last.role).toBe('user')
+    expect(JSON.stringify(last.content)).toContain('从手机发的问题')
+  })
+
+  it('REMOTE_USER_MESSAGE 目标会话不存在时不抛错（静默，等 HYDRATE）', () => {
+    const state = initialState()
+    expect(() => reducer(state, { type: 'REMOTE_USER_MESSAGE', sessionId: 'not-exist', text: 'x' })).not.toThrow()
+  })
+
   it('DELETE_SESSION 删除指定会话', () => {
     const state = initialState()
     const next = reducer(state, { type: 'DELETE_SESSION', projectId: 'p1', sessionId: 's2' })

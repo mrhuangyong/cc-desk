@@ -205,7 +205,7 @@ export function createRemoteBridge(deps: BridgeDeps): RemoteBridge {
 }
 
 export interface DispatchDeps {
-  send: (opts: { prompt: string; localSessionId?: string; modelId?: string; thinking?: 'low' | 'medium' | 'high'; cwd?: string; webContents?: any }) => Promise<void>
+  send: (opts: { prompt: string; localSessionId?: string; sessionId?: string; modelId?: string; thinking?: 'low' | 'medium' | 'high'; cwd?: string; webContents?: any }) => Promise<void>
   interrupt: (localSessionId: string) => void
   resolveDialog: (reqId: string, result: any) => void
   /** 手机接管某会话（标记"手机在看"）。可选：当前 forwarder 转发所有会话事件，attach 仅做记录。 */
@@ -235,6 +235,20 @@ export interface DispatchDeps {
    * 用于 session.message 时让 SDK 在正确目录运行（否则回退 process.cwd()）。
    */
   resolveCwd?: (localSessionId: string) => string | undefined
+  /**
+   * 反查 localSessionId 对应的 SDK sessionId（resumeId）：从主进程 projects-store 的
+   * claudeSessionMap 读取。双保险：手机 payload 未带 claudeSessionId 时（旧版 PWA /
+   * 新会话首轮尚未建立映射），用此兜底，保证 claude.send 的 resume 生效，避免移动端失忆。
+   * 由 index.ts 注入；可选，未注入时 sessionId 为 undefined（开新会话）。
+   */
+  resolveClaudeSessionId?: (localSessionId: string) => string | undefined
+  /**
+   * 把手机发送的 user 文本推给桌面 renderer（claude:remote-user-message）。
+   * 由 index.ts 注入：dispatcher 收到 session.message 时调用，让桌面端对话里
+   * 除了 AI 回复也能看到「手机问的问题」（修复桌面看不到移动端消息）。
+   * 可选：未注入时桌面端只看到 assistant 输出、缺 user 这一条。
+   */
+  notifyRemoteUserMessage?: (localSessionId: string, text: string) => void
   /**
    * 手机请求拉取会话历史。由 index.ts 注入：从 projects-store 读该会话 messages，
    * 用 toHistoryMessages 转换后经 forwarder.sendHistory 下发。
@@ -266,11 +280,19 @@ export function createDispatcher(deps: DispatchDeps) {
   return async (env: Envelope) => {
     switch (env.type) {
       case 'session.message': {
-        const p = env.payload as { localSessionId: string; text: string; modelId?: string; thinking?: 'low' | 'medium' | 'high' }
+        const p = env.payload as { localSessionId: string; text: string; modelId?: string; thinking?: 'low' | 'medium' | 'high'; claudeSessionId?: string }
         // 反查会话所属项目的 cwd（让 SDK 在正确目录运行，否则回退到 process.cwd()）
         const cwd = deps.resolveCwd?.(p.localSessionId)
-        console.warn('[remote-disp] session.message → send', p.localSessionId, p.text.slice(0, 50), 'cwd:', cwd)
-        await deps.send({ prompt: p.text, localSessionId: p.localSessionId, cwd, thinking: p.thinking })
+        // sessionId（SDK resumeId）：优先用手机 payload 带的 claudeSessionId，
+        // 没有则反查主进程 projects-store 的 claudeSessionMap 兜底。两者都无则 undefined（开新会话）。
+        // 失忆根因：此前此处从不传 sessionId，claude.send 的 resume 恒为 undefined，
+        // 进程重启 / 该轮 runIterate 结束后下一次消息丢失全部上下文。
+        const sessionId = p.claudeSessionId ?? deps.resolveClaudeSessionId?.(p.localSessionId)
+        console.warn('[remote-disp] session.message → send', p.localSessionId, p.text.slice(0, 50), 'cwd:', cwd, 'sessionId:', sessionId)
+        // 把手机的 user 文本推给桌面 renderer：桌面端对话里除了 AI 回复，
+        // 也要能看到「手机问的问题」。否则桌面只有 assistant 输出、缺 user 这一条（bug2 根因）。
+        deps.notifyRemoteUserMessage?.(p.localSessionId, p.text)
+        await deps.send({ prompt: p.text, localSessionId: p.localSessionId, sessionId, cwd, thinking: p.thinking })
         console.warn('[remote-disp] session.message send done')
         break
       }

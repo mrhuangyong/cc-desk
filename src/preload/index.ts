@@ -16,6 +16,19 @@ contextBridge.exposeInMainWorld('api', {
     onError: (cb: (data: { error: string }) => void) => { ipcRenderer.on('claude:error', (_, data) => cb(data)) },
     onAborted: (cb: (data: any) => void) => { ipcRenderer.on('claude:aborted', (_, data) => cb(data)) },
     onDialogRequest: (cb: (data: any) => void) => { ipcRenderer.on('claude:dialog-request', (_, data) => cb(data)) },
+    // dialog 已被任一端解决（手机或桌面回答）：清桌面端残留面板，避免双端可弹时面板挂着不消失。
+    onDialogResolved: (cb: (data: { reqId: string }) => void) => {
+      const handler = (_: unknown, data: { reqId: string }) => cb(data)
+      ipcRenderer.on('claude:dialog-resolved', handler)
+      return () => ipcRenderer.removeListener('claude:dialog-resolved', handler)
+    },
+    // 远程（手机）发来的 user 文本：dispatcher 收到 session.message 时推给桌面，
+    // 让桌面端对话里除了 AI 回复也能看到「手机问的问题」（修复桌面看不到移动端消息）。
+    onRemoteUserMessage: (cb: (data: { localSessionId: string; text: string }) => void) => {
+      const handler = (_: unknown, data: { localSessionId: string; text: string }) => cb(data)
+      ipcRenderer.on('claude:remote-user-message', handler)
+      return () => ipcRenderer.removeListener('claude:remote-user-message', handler)
+    },
     onContextUsage: (cb: (data: any) => void) => {
       const handler = (_: unknown, data: any) => cb(data)
       ipcRenderer.on('claude:context-usage', handler)
@@ -29,7 +42,7 @@ contextBridge.exposeInMainWorld('api', {
     setPermissionMode: (opts: { localSessionId: string; permission: string }) => ipcRenderer.invoke('claude:set-permission-mode', opts),
     contextUsage: (localSessionId: string) => ipcRenderer.invoke('claude:context-usage', localSessionId),
     removeAllListeners: () => {
-      ['claude:system', 'claude:delta', 'claude:blocks', 'claude:notice', 'claude:task', 'claude:result', 'claude:error', 'claude:aborted', 'claude:dialog-request', 'claude:context-usage', 'claude:backend-task', 'claude:builtin-result', 'claude:subagent-output', 'claude:notification', 'update:state']
+      ['claude:system', 'claude:delta', 'claude:blocks', 'claude:notice', 'claude:task', 'claude:result', 'claude:error', 'claude:aborted', 'claude:dialog-request', 'claude:dialog-resolved', 'claude:remote-user-message', 'claude:context-usage', 'claude:backend-task', 'claude:builtin-result', 'claude:subagent-output', 'claude:notification', 'update:state']
         .forEach(ch => ipcRenderer.removeAllListeners(ch))
     },
   },

@@ -346,6 +346,11 @@ export function ChatArea() {
       }
     })
 
+    // dialog 已被任一端解决（手机/桌面回答）：清桌面端残留面板，避免双端可弹时面板挂着。
+    api.onDialogResolved?.((data) => {
+      dispatch({ type: 'DIALOG_RESOLVED', reqId: data.reqId })
+    })
+
     // SDK notification 事件（如 Claude 需要人类介入/确认）：原生拦截后发桌面通知
     api.onNotification((data: any) => {
       const s = settingsRef.current

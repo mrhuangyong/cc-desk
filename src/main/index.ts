@@ -267,6 +267,28 @@ function startRemoteBridge(cfg: RemoteConfig): void {
       }
       return undefined
     },
+    // 反查 SDK sessionId（resumeId）：从 projects-store 的 claudeSessionMap 兜底。
+    // 移动端 session.message 双保险——payload 未带 claudeSessionId 时用此续接历史，
+    // 避免桌面重启 / 该轮 query 结束后下一次消息丢失上下文（失忆根因）。
+    resolveClaudeSessionId: (localSessionId) => {
+      try {
+        const snap = getProjectsSnapshot()
+        return snap.claudeSessionMap?.[localSessionId]
+      } catch {
+        // 读快照失败回退 undefined（send 开新会话）
+      }
+      return undefined
+    },
+    // 把手机的 user 文本推给桌面 renderer（claude:remote-user-message）。
+    // dispatcher 收到 session.message 时调用，让桌面端对话里除了 AI 回复也能看到
+    // 「手机问的问题」（修复桌面看不到移动端消息）。
+    notifyRemoteUserMessage: (localSessionId, text) => {
+      try {
+        wc.send('claude:remote-user-message', { localSessionId, text })
+      } catch {
+        // webContents 可能已销毁，忽略
+      }
+    },
   })
 
   // 出站转发：把 forwarder 产出的占位信封用 deviceKey 重签后发中继。

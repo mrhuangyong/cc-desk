@@ -55,10 +55,36 @@ export function getProjectsSnapshot(): ProjectsSnapshot {
   return snap
 }
 
-// 整体覆盖写。lastSeq 在写入前由 computeLastSeq 回填，保证恢复后 ID 不冲突。
+// 覆盖写，但合并保留主进程侧新增的远程会话。lastSeq 在写入前由 computeLastSeq 回填，保证恢复后 ID 不冲突。
+//
+// 为什么不是纯整体覆盖：远程控制（手机 session.create）由主进程直接落盘新增会话
+// （addSessionToProject），而 renderer 的防抖 SAVE 用的是自己的内存快照——若两者并发，
+// renderer 的「旧内存」整体覆盖写会把主进程刚新增的远程会话丢掉（bug3：桌面看不到
+// 移动端新建的会话）。故写盘前先读磁盘当前快照，把「磁盘有、传入快照没有」的会话补回
+// （按 session id 去重）。renderer 仍是真相源（消息内容、归档标记等以传入为准），
+// 仅兜底「主进程新增的会话节点不应被覆盖丢失」。
 export function saveProjectsSnapshot(snap: Omit<ProjectsSnapshot, 'lastSeq' | 'savedAt'>): void {
   const lastSeq = computeLastSeq(snap)
-  store.set('snapshot', { ...snap, lastSeq, savedAt: Date.now() })
+  let mergedProjects = snap.projects
+  try {
+    const disk = store.get('snapshot')
+    if (disk?.projects?.length) {
+      const incomingIds = new Set(snap.projects.map(p => p.id))
+      const diskExtra = disk.projects.filter((dp: Project) => !incomingIds.has(dp.id))
+      // 同项目内：补上磁盘有、传入没有的会话 id（远程新增）
+      mergedProjects = snap.projects.map(p => {
+        const dp = disk.projects.find((d: Project) => d.id === p.id)
+        if (!dp?.sessions?.length) return p
+        const incomingSessionIds = new Set(p.sessions.map(s => s.id))
+        const extraSessions = dp.sessions.filter((s: any) => !incomingSessionIds.has(s.id))
+        return extraSessions.length ? { ...p, sessions: [...p.sessions, ...extraSessions] } : p
+      })
+      if (diskExtra.length) mergedProjects = [...mergedProjects, ...diskExtra]
+    }
+  } catch {
+    // 读磁盘失败则按原样覆盖写（不阻塞）
+  }
+  store.set('snapshot', { ...snap, projects: mergedProjects, lastSeq, savedAt: Date.now() })
 }
 
 /**

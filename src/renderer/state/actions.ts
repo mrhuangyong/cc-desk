@@ -20,6 +20,9 @@ export type Action =
   | { type: 'REMOVE_DRAFT_ATTACHMENT'; index: number }
   | { type: 'CLEAR_DRAFT' }
   | { type: 'SEND_MESSAGE' } // 把当前 draft（doc + attachments）序列化后追加到激活会话
+  // 远程（手机）发来的 user 文本：直接按 sessionId 追加一条 user 消息，让桌面端对话
+  // 里除了 AI 回复也能看到「手机问的问题」。与本地 SEND_MESSAGE 区分（不带 draft）。
+  | { type: 'REMOTE_USER_MESSAGE'; sessionId: string; text: string }
   | { type: 'SET_VIEW'; view: AppView }
   | { type: 'SET_SETTINGS_SECTION'; section: SettingsSection }
   // 流式输出：blocks 拼接规约（按会话隔离）
@@ -58,6 +61,10 @@ export type Action =
   // AskUserQuestion 等用户对话：显示/应答
   | { type: 'SHOW_DIALOG'; reqId: string; dialogKind: string; payload: any; toolUseId?: string; sessionId?: string }
   | { type: 'ANSWER_DIALOG' }
+  // 任一端（桌面/手机）解决 dialog 后，主进程广播 claude:dialog-resolved。桌面端据此清
+  // pendingDialog：双端可弹场景下，用户在手机端回答时桌面面板不会自动消失，需此广播清理。
+  // reqId 不匹配当前 pendingDialog 则忽略（可能是更早的已清请求）。
+  | { type: 'DIALOG_RESOLVED'; reqId: string }
   // 消息排队（queue 模式：AI 流式中发送的消息先排队）
   | { type: 'ENQUEUE_MESSAGE'; sessionId: string; prompt: string; attachments: import('../types').DraftAttachment[] }
   | { type: 'DEQUEUE_MESSAGE'; sessionId: string; queueId: string }

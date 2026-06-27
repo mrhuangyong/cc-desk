@@ -475,6 +475,24 @@ export function reducer(state: AppState, action: Action): AppState {
       }).projects
       return { ...state, projects, draft: { doc: null, attachments: [] } }
     }
+    case 'REMOTE_USER_MESSAGE': {
+      // 远程（手机）发来的 user 文本，直接追加到目标会话。与本地 SEND_MESSAGE 不同：
+      // 不走 draft、不切换 activeSessionId（桌面可能正看别的会话），只把这条 user
+      // 消息塞进指定 session，让桌面端对话里除了 AI 回复也能看到「手机问的问题」。
+      // 目标会话不存在时静默（HYDRATE 竞态窗口内可能先于会话节点到达），由后续
+      // STREAM_ASSISTANT_BLOCKS / HYDRATE 校正，不抛错。
+      const newMessage = {
+        id: nextId('m'),
+        role: 'user' as const,
+        content: [{ type: 'text' as const, text: action.text }],
+      }
+      const projects = updateSession(state, action.sessionId, s => ({
+        ...s,
+        messages: [...s.messages, newMessage],
+        lastUserSentAt: Date.now(),
+      })).projects
+      return { ...state, projects }
+    }
     case 'SET_VIEW': {
       return { ...state, currentView: action.view }
     }
@@ -769,6 +787,14 @@ export function reducer(state: AppState, action: Action): AppState {
     }
     case 'ANSWER_DIALOG': {
       return { ...state, pendingDialog: null }
+    }
+    case 'DIALOG_RESOLVED': {
+      // 仅当当前 pendingDialog 是这个 reqId 时才清（避免清掉更新的 dialog）。
+      // 不匹配则忽略。
+      if (state.pendingDialog?.reqId === action.reqId) {
+        return { ...state, pendingDialog: null }
+      }
+      return state
     }
     case 'ENQUEUE_MESSAGE': {
       const q = state.queueBySession[action.sessionId] ?? []

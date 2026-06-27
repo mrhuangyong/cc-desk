@@ -12,6 +12,45 @@ describe('remote-bridge 入站分发', () => {
     expect(send).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'hi', localSessionId: 's1' }))
   })
 
+  it('session.message 带 claudeSessionId 时 → 透传 sessionId 给 send（修复失忆）', async () => {
+    const { createDispatcher } = await import('../src/main/remote-bridge')
+    const send = vi.fn().mockResolvedValue(undefined)
+    const dispatch = createDispatcher({ send, interrupt: vi.fn(), resolveDialog: vi.fn() })
+    await dispatch({ type: 'session.message', deviceId: 'M', payload: { localSessionId: 's1', text: 'hi', claudeSessionId: 'cs-abc' } } as any)
+    // claudeSessionId 必须作为 sessionId 透传，让 claude.send 的 resume 生效，避免失忆
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'hi', localSessionId: 's1', sessionId: 'cs-abc' }))
+  })
+
+  it('session.message 无 claudeSessionId 时 → 回退到 resolveClaudeSessionId 反查（双保险）', async () => {
+    const { createDispatcher } = await import('../src/main/remote-bridge')
+    const send = vi.fn().mockResolvedValue(undefined)
+    // 反查注入：手机未带 sessionId 时，从主进程 projects-store 的 claudeSessionMap 兜底
+    const resolveClaudeSessionId = vi.fn().mockReturnValue('cs-from-store')
+    const dispatch = createDispatcher({ send, interrupt: vi.fn(), resolveDialog: vi.fn(), resolveClaudeSessionId })
+    await dispatch({ type: 'session.message', deviceId: 'M', payload: { localSessionId: 's1', text: 'hi' } } as any)
+    expect(resolveClaudeSessionId).toHaveBeenCalledWith('s1')
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ localSessionId: 's1', sessionId: 'cs-from-store' }))
+  })
+
+  it('session.message payload 和反查都没有 sessionId 时 → sessionId 为 undefined（开新会话）', async () => {
+    const { createDispatcher } = await import('../src/main/remote-bridge')
+    const send = vi.fn().mockResolvedValue(undefined)
+    const resolveClaudeSessionId = vi.fn().mockReturnValue(undefined)
+    const dispatch = createDispatcher({ send, interrupt: vi.fn(), resolveDialog: vi.fn(), resolveClaudeSessionId })
+    await dispatch({ type: 'session.message', deviceId: 'M', payload: { localSessionId: 's1', text: 'hi' } } as any)
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ sessionId: undefined }))
+  })
+
+  it('session.message → 调 notifyRemoteUserMessage 把 user 文本推给桌面（修复桌面看不到）', async () => {
+    const { createDispatcher } = await import('../src/main/remote-bridge')
+    const send = vi.fn().mockResolvedValue(undefined)
+    const notifyRemoteUserMessage = vi.fn()
+    const dispatch = createDispatcher({ send, interrupt: vi.fn(), resolveDialog: vi.fn(), notifyRemoteUserMessage })
+    await dispatch({ type: 'session.message', deviceId: 'M', payload: { localSessionId: 's1', text: '从手机发的问题' } } as any)
+    // user 文本必须被推给桌面 renderer，否则桌面端对话里只有 AI 回复、看不到问题
+    expect(notifyRemoteUserMessage).toHaveBeenCalledWith('s1', '从手机发的问题')
+  })
+
   it('session.interrupt → 调 interrupt(localSessionId)', async () => {
     const { createDispatcher } = await import('../src/main/remote-bridge')
     const interrupt = vi.fn()

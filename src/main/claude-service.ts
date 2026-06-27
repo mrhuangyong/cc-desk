@@ -74,7 +74,11 @@ export class ClaudeService {
   // 去重，同一个问题会被弹多次、pushMessage 多条答案回 SDK。id 全局唯一故可安全去重。
   // 不主动清理：localSessionId 为 uuid 不会复用，单会话内阻塞式提问数量极少，
   // 集合体量可忽略，强清理反而要在会话销毁链路（manager.closeSession）穿针引线、收益不抵风险。
-  private handledBlockingToolUse = new Map<string, Set<string>>()
+  // 阻塞式工具（AskUserQuestion / ExitPlanMode）的已处理结果缓存：按 lsid → toolUseId → 结果。
+  // 防 SDK 在 resume / includePartialMessages 场景重放同一 assistant 消息导致同一 tool_use 被
+  // 多次 canUseTool → 重复弹同一问题（用户看到的「点确认又弹」）。命中缓存时直接返回上次结果，
+  // 不再弹窗。value 缓存 PermissionResult，让重放返回与首次一致的应答（模型行为可预期）。
+  private handledBlockingToolUse = new Map<string, Map<string, { behavior: 'allow'; updatedInput: Record<string, unknown>; updatedPermissions?: any[]; toolUseID?: string } | { behavior: 'deny'; message: string; toolUseID?: string }>>()
 
   setManager(m: SessionQueryManager): void { this.manager = m }
   setRegistry(r: BackendTaskRegistry): void { this.registry = r }
@@ -93,14 +97,19 @@ export class ClaudeService {
     return this.handledBlockingToolUse.get(lsid)?.has(toolUseId) ?? false
   }
 
-  /** 标记该 lsid 的某个阻塞式 tool_use 已处理。 */
-  private markBlockingHandled(lsid: string, toolUseId: string): void {
-    let set = this.handledBlockingToolUse.get(lsid)
-    if (!set) {
-      set = new Set<string>()
-      this.handledBlockingToolUse.set(lsid, set)
+  /** 取该 lsid 某个阻塞式 tool_use 的缓存结果（重放时直接返回，不再弹窗）。 */
+  private getBlockingHandledResult(lsid: string, toolUseId: string): { behavior: 'allow'; updatedInput: Record<string, unknown>; updatedPermissions?: any[]; toolUseID?: string } | { behavior: 'deny'; message: string; toolUseID?: string } | undefined {
+    return this.handledBlockingToolUse.get(lsid)?.get(toolUseId)
+  }
+
+  /** 标记该 lsid 的某个阻塞式 tool_use 已处理，并缓存结果供后续重放返回。 */
+  private markBlockingHandled(lsid: string, toolUseId: string, result: { behavior: 'allow'; updatedInput: Record<string, unknown>; updatedPermissions?: any[]; toolUseID?: string } | { behavior: 'deny'; message: string; toolUseID?: string }): void {
+    let map = this.handledBlockingToolUse.get(lsid)
+    if (!map) {
+      map = new Map()
+      this.handledBlockingToolUse.set(lsid, map)
     }
-    set.add(toolUseId)
+    map.set(toolUseId, result)
   }
 
   /**
@@ -167,6 +176,13 @@ export class ClaudeService {
     } finally {
       // 释放串行锁，让下一个排队 dialog 开始
       releaseChain()
+      // 广播「该 dialog 已被解决」给桌面 renderer：双端可弹场景下，若用户在手机端回答，
+      // 桌面端 pendingDialog 不会自动清除（ANSWER_DIALOG 只在桌面本地回答时触发）。
+      // 桌面端收到 claude:dialog-resolved 后清掉残留面板，避免「点了又一直挂着」。
+      // 该通道不在 REMOTE_FORWARD_CHANNELS，只发桌面；手机端面板由其自身 dialog.response 链路清理。
+      try {
+        webContents.send('claude:dialog-resolved', { reqId })
+      } catch { /* webContents 可能已销毁，忽略 */ }
     }
   }
 
@@ -193,6 +209,14 @@ export class ClaudeService {
     // SDK 自行匹配放行。这是 claude cli 原生的「自动允许」机制，cc-desk 不自己维护规则集。
     const allow = (updatedPermissions?: any[]): { behavior: 'allow'; updatedInput: Record<string, unknown>; updatedPermissions?: any[]; toolUseID?: string } =>
       ({ behavior: 'allow', updatedInput: input, ...(updatedPermissions ? { updatedPermissions } : {}), toolUseID: opts.toolUseID })
+    // ★ 去重防重弹：SDK 在 resume / includePartialMessages 场景会重放同一 assistant 消息，
+    // 同一 tool_use.id 可能被 canUseTool 多次触发。阻塞式工具（AskUserQuestion / ExitPlanMode）
+    // 若每次重放都重新弹窗，用户会看到「点确认又弹」的循环（bug4 根因之一）。
+    // 命中缓存（该 lsid + toolUseId 已处理过）时直接返回上次结果，不重新挂起弹窗。
+    if (opts.toolUseID && (toolName === 'AskUserQuestion' || toolName === 'ExitPlanMode') && this.isBlockingHandled(localSessionId, opts.toolUseID)) {
+      const cached = this.getBlockingHandledResult(localSessionId, opts.toolUseID)
+      if (cached) return cached
+    }
     // ★ 硬阻塞核心：AskUserQuestion / ExitPlanMode 在 canUseTool 内部 await 用户作答，
     // 全程阻塞 CLI（canUseTool 不返回 CLI 就不动）。不返回 allow——allow 会让 CLI 执行
     // AskUserQuestion 工具，合成 dummy tool_result（"The user did not answer the questions."）
@@ -229,7 +253,9 @@ export class ClaudeService {
       const answerText = result?.behavior === 'completed'
         ? `【用户已正式回答你的 AskUserQuestion，以下是用户的真实选择，请以此为准，忽略此前的任何占位/工具返回（如 "Answer questions?"）】\n${lines.join('\n')}`
         : '（用户取消了这次提问）'
-      return { behavior: 'deny', message: answerText, toolUseID: opts.toolUseID }
+      const r = { behavior: 'deny' as const, message: answerText, toolUseID: opts.toolUseID }
+      if (opts.toolUseID) this.markBlockingHandled(localSessionId, opts.toolUseID, r)
+      return r
     }
     if (toolName === 'ExitPlanMode') {
       const plan = typeof input.plan === 'string' ? input.plan : ''
@@ -243,9 +269,13 @@ export class ClaudeService {
       if (result?.behavior === 'completed' && result?.result?.permissionMode) {
         // 用户批准计划并选定授权模式：SDK 端实时切换权限（退出 plan 模式）
         await this.setPermissionMode(localSessionId, result.result.permissionMode)
-        return { behavior: 'deny', message: '（用户已批准计划，开始执行）', toolUseID: opts.toolUseID }
+        const r = { behavior: 'deny' as const, message: '（用户已批准计划，开始执行）', toolUseID: opts.toolUseID }
+        if (opts.toolUseID) this.markBlockingHandled(localSessionId, opts.toolUseID, r)
+        return r
       }
-      return { behavior: 'deny', message: '（用户未批准计划，请根据反馈修改计划）', toolUseID: opts.toolUseID }
+      const r = { behavior: 'deny' as const, message: '（用户未批准计划，请根据反馈修改计划）', toolUseID: opts.toolUseID }
+      if (opts.toolUseID) this.markBlockingHandled(localSessionId, opts.toolUseID, r)
+      return r
     }
     // 非 default 模式（自动编辑/完全访问/计划）或只读工具：直接放行
     if (permissionLabel !== '变更前确认' || !CONFIRM_TOOLS.has(toolName)) {

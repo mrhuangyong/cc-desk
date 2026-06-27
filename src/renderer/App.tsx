@@ -226,6 +226,19 @@ export function App() {
     return () => { unsubscribe?.() }
   }, [dispatch])
 
+  // 远程（手机）发来的 user 文本：dispatcher 收到 session.message 时经
+  // claude:remote-user-message 推来。dispatch REMOTE_USER_MESSAGE 把这条 user 消息
+  // 加入对应会话，让桌面端对话里除了 AI 回复也能看到「手机问的问题」。
+  // 目标会话节点不存在时 reducer 静默（等 HYDRATE 校正），不报错。
+  useEffect(() => {
+    const unsubscribe = window.api?.claude?.onRemoteUserMessage?.((data) => {
+      if (data?.localSessionId && typeof data.text === 'string') {
+        dispatch({ type: 'REMOTE_USER_MESSAGE', sessionId: data.localSessionId, text: data.text })
+      }
+    })
+    return () => { unsubscribe?.() }
+  }, [dispatch])
+
   // 应用更新状态：订阅主进程状态机推送（单次挂载，cleanup 取消订阅防泄漏）
   useEffect(() => {
     const unsubscribe = window.api?.update?.onState?.((status) => {
