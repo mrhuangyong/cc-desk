@@ -693,3 +693,13 @@ body {
 .edit-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .edit-save-btn { padding: 4px 14px; border-radius: var(--r-sm); background: var(--accent); color: #fff; border: 0; cursor: pointer; font-size: 13px; }
 .edit-cancel-btn { padding: 4px 14px; border-radius: var(--r-sm); background: var(--bg-sunken); color: var(--text); border: 1px solid var(--border); cursor: pointer; font-size: 13px; }
+
+/* 排队消息 chip */
+.queue-chips {
+  display: flex; flex-direction: column; gap: 4px; padding: 0 0 6px 0;
+}
+.queue-chip {
+  font-size: 12px; color: var(--text-muted); padding: 4px 8px;
+  background: var(--bg-sunken); border-radius: var(--r-sm);
+  border-left: 2px solid var(--accent);
+}
