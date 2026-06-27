@@ -205,7 +205,18 @@ export function createRemoteBridge(deps: BridgeDeps): RemoteBridge {
 }
 
 export interface DispatchDeps {
-  send: (opts: { prompt: string; localSessionId?: string; sessionId?: string; modelId?: string; thinking?: 'low' | 'medium' | 'high'; cwd?: string; webContents?: any }) => Promise<void>
+  send: (opts: {
+    prompt: string
+    localSessionId?: string
+    sessionId?: string
+    modelId?: string
+    thinking?: 'low' | 'medium' | 'high'
+    cwd?: string
+    permission?: string
+    extraDirs?: string[]
+    images?: { mediaType: string; data: string; name?: string }[]
+    webContents?: any
+  }) => Promise<void>
   interrupt: (localSessionId: string) => void
   resolveDialog: (reqId: string, result: any) => void
   /** 手机接管某会话（标记"手机在看"）。可选：当前 forwarder 转发所有会话事件，attach 仅做记录。 */
@@ -280,7 +291,16 @@ export function createDispatcher(deps: DispatchDeps) {
   return async (env: Envelope) => {
     switch (env.type) {
       case 'session.message': {
-        const p = env.payload as { localSessionId: string; text: string; modelId?: string; thinking?: 'low' | 'medium' | 'high'; claudeSessionId?: string }
+        const p = env.payload as {
+          localSessionId: string
+          text: string
+          modelId?: string
+          thinking?: 'low' | 'medium' | 'high'
+          claudeSessionId?: string
+          permission?: string
+          extraDirs?: string[]
+          images?: { mediaType: string; data: string; name?: string }[]
+        }
         // 反查会话所属项目的 cwd（让 SDK 在正确目录运行，否则回退到 process.cwd()）
         const cwd = deps.resolveCwd?.(p.localSessionId)
         // sessionId（SDK resumeId）：优先用手机 payload 带的 claudeSessionId，
@@ -292,7 +312,16 @@ export function createDispatcher(deps: DispatchDeps) {
         // 把手机的 user 文本推给桌面 renderer：桌面端对话里除了 AI 回复，
         // 也要能看到「手机问的问题」。否则桌面只有 assistant 输出、缺 user 这一条（bug2 根因）。
         deps.notifyRemoteUserMessage?.(p.localSessionId, p.text)
-        await deps.send({ prompt: p.text, localSessionId: p.localSessionId, sessionId, cwd, thinking: p.thinking })
+        await deps.send({
+          prompt: p.text,
+          localSessionId: p.localSessionId,
+          sessionId,
+          cwd,
+          thinking: p.thinking,
+          permission: p.permission,
+          extraDirs: p.extraDirs,
+          images: p.images,
+        })
         console.warn('[remote-disp] session.message send done')
         break
       }

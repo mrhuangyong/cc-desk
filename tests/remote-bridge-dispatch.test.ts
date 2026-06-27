@@ -12,6 +12,42 @@ describe('remote-bridge 入站分发', () => {
     expect(send).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'hi', localSessionId: 's1' }))
   })
 
+  it('session.message 带 permission 时 → 透传给 send（中文权限标签）', async () => {
+    const { createDispatcher } = await import('../src/main/remote-bridge')
+    const send = vi.fn().mockResolvedValue(undefined)
+    const dispatch = createDispatcher({ send, interrupt: vi.fn(), resolveDialog: vi.fn() })
+    await dispatch({ type: 'session.message', deviceId: 'M', payload: { localSessionId: 's1', text: 'hi', permission: '计划模式' } } as any)
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'hi', localSessionId: 's1', permission: '计划模式' }))
+  })
+
+  it('session.message 带 extraDirs 时 → 透传给 send（附加目录数组）', async () => {
+    const { createDispatcher } = await import('../src/main/remote-bridge')
+    const send = vi.fn().mockResolvedValue(undefined)
+    const dispatch = createDispatcher({ send, interrupt: vi.fn(), resolveDialog: vi.fn() })
+    await dispatch({ type: 'session.message', deviceId: 'M', payload: { localSessionId: 's1', text: 'hi', extraDirs: ['/a/b', '/c/d'] } } as any)
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ extraDirs: ['/a/b', '/c/d'] }))
+  })
+
+  it('session.message 带 images 时 → 透传给 send（base64 图片数组）', async () => {
+    const { createDispatcher } = await import('../src/main/remote-bridge')
+    const send = vi.fn().mockResolvedValue(undefined)
+    const dispatch = createDispatcher({ send, interrupt: vi.fn(), resolveDialog: vi.fn() })
+    const images = [{ mediaType: 'image/png', data: 'iVBORw0KGgo=', name: 'x.png' }]
+    await dispatch({ type: 'session.message', deviceId: 'M', payload: { localSessionId: 's1', text: '看图', images } } as any)
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ images }))
+  })
+
+  it('session.message 不带新字段时 → 向后兼容（permission/extraDirs/images 为 undefined）', async () => {
+    const { createDispatcher } = await import('../src/main/remote-bridge')
+    const send = vi.fn().mockResolvedValue(undefined)
+    const dispatch = createDispatcher({ send, interrupt: vi.fn(), resolveDialog: vi.fn() })
+    await dispatch({ type: 'session.message', deviceId: 'M', payload: { localSessionId: 's1', text: 'hi' } } as any)
+    const call = send.mock.calls[0][0]
+    expect(call.permission).toBeUndefined()
+    expect(call.extraDirs).toBeUndefined()
+    expect(call.images).toBeUndefined()
+  })
+
   it('session.message 带 claudeSessionId 时 → 透传 sessionId 给 send（修复失忆）', async () => {
     const { createDispatcher } = await import('../src/main/remote-bridge')
     const send = vi.fn().mockResolvedValue(undefined)
