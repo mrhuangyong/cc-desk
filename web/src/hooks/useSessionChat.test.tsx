@@ -265,3 +265,84 @@ describe('useSessionChat - 历史灌入', () => {
     expect(result.current.hasMoreHistory).toBe(false)
   })
 })
+
+describe('useSessionChat - 编辑重发', () => {
+  // 构造已有 user+assistant 消息的会话状态(模拟发过一轮)
+  function seedConversation(result: any, messages: any[]) {
+    act(() => {
+      // 用 sendMessage 预置:echo user + 开 assistant,然后塞入历史 assistant 文本
+      // 简化:直接通过 onInbound 历史灌入构造 user/assistant 交替
+    })
+  }
+
+  it('editAndResend 截断该 index 及之后消息,替换为新文本,发 session.message(不重复echo)', async () => {
+    const send = vi.fn().mockResolvedValue(true)
+    const { result } = renderHook(() => useSessionChat({ send }))
+    // 预置:[user "原文", assistant "回复"]
+    act(() => {
+      const historyEnv: any = {
+        v: 1, type: 'session.history', deviceId: 'd', ts: 1, nonce: 'n', sig: '',
+        payload: { items: [
+          { role: 'assistant', text: '回复' },
+          { role: 'user', text: '原文' },
+        ] },
+      }
+      result.current.onInbound(historyEnv)
+    })
+    expect(result.current.messages.map((m: any) => m.text)).toEqual(['回复', '原文']) // 历史前置
+
+    // 编辑 index 1(最后一条 user "原文"),新文本 "改后的"
+    await act(async () => {
+      await result.current.editAndResend('s1', 1, '改后的')
+    })
+    // 截断:user "原文" 被替换为 "改后的",之后的 assistant "回复"... 注意历史前置顺序
+    // 历史灌入后 messages = [assistant "回复"(idx0), user "原文"(idx1)],editAndResend(1) 截断 idx1 及之后
+    // → [assistant "回复"(idx0)] + 新 user "改后的" + 空 assistant mkMessage
+    const texts = result.current.messages.map((m: any) => (m.role === 'user' ? m.text : '(assistant)'))
+    expect(texts).toEqual(['(assistant)', '改后的', '(assistant)'])
+    // 发了 session.message,文本是改后的
+    const lastCall = send.mock.calls[send.mock.calls.length - 1]
+    expect(lastCall[0]).toBe('session.message')
+    expect(lastCall[1].text).toBe('改后的')
+    // 只发了 1 次 session.message(没有重复 echo 导致多次发送)
+    const messageCalls = send.mock.calls.filter((c) => c[0] === 'session.message')
+    expect(messageCalls.length).toBe(1)
+  })
+
+  it('editAndResend 在 running 时先调 interrupt', async () => {
+    const send = vi.fn().mockResolvedValue(true)
+    const { result } = renderHook(() => useSessionChat({ send }))
+    // 预置一条 user + 进入 running(模拟流式中)
+    act(() => {
+      result.current.onInbound({ v: 1, type: 'session.history', deviceId: 'd', ts: 1, nonce: 'n', sig: '', payload: { items: [{ role: 'user', text: '原文' }] } } as any)
+    })
+    act(() => {
+      // session.delta 触发 setRunning(true)
+      result.current.onInbound({ v: 1, type: 'session.delta', deviceId: 'd', ts: 1, nonce: 'n', sig: '', payload: { localSessionId: 's1', text: '流式中' } } as any)
+    })
+    expect(result.current.running).toBe(true)
+
+    await act(async () => {
+      await result.current.editAndResend('s1', 0, '改后')
+    })
+    // running 时应先 interrupt 再 message
+    const interruptCall = send.mock.calls.find((c) => c[0] === 'session.interrupt')
+    const messageCall = send.mock.calls.find((c) => c[0] === 'session.message')
+    expect(interruptCall).toBeTruthy()
+    expect(messageCall).toBeTruthy()
+    // interrupt 在 message 之前(按调用顺序)
+    expect(send.mock.calls.indexOf(interruptCall!)).toBeLessThan(send.mock.calls.indexOf(messageCall!))
+  })
+
+  it('editAndResend 空文本不发送', async () => {
+    const send = vi.fn().mockResolvedValue(true)
+    const { result } = renderHook(() => useSessionChat({ send }))
+    act(() => {
+      result.current.onInbound({ v: 1, type: 'session.history', deviceId: 'd', ts: 1, nonce: 'n', sig: '', payload: { items: [{ role: 'user', text: '原文' }] } } as any)
+    })
+    await act(async () => {
+      await result.current.editAndResend('s1', 0, '   ')
+    })
+    expect(send).not.toHaveBeenCalled()
+  })
+})
