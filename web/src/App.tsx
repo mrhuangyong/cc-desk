@@ -325,6 +325,12 @@ function RemoteShell({
           attachments={attachments}
           onAddImages={addImages}
           onRemoveImage={removeImage}
+          editingIndex={chat.editingIndex}
+          onStartEdit={chat.setEditing}
+          onCancelEdit={() => chat.setEditing(null)}
+          onEditResend={(index, newText) => {
+            if (view.kind === 'chat') void chat.editAndResend(view.localSessionId, index, newText)
+          }}
           headerExtra={themeToggle}
         />
         {exitToast}
