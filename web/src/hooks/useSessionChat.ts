@@ -79,6 +79,12 @@ export interface UseSessionChatHandle {
   loadHistory(localSessionId: string, limit?: number): Promise<void>
   /** 清空消息（切会话/卸载）。 */
   reset(): void
+  /** 当前编辑的 user 消息 index(null=非编辑态)。 */
+  editingIndex: number | null
+  /** 进入/退出编辑态(传 index 进入编辑该消息,传 null 退出)。 */
+  setEditing: (index: number | null) => void
+  /** 编辑重发:截断 index 及之后消息,用新文本替换该 user + 中断(若在跑)+ 重发。 */
+  editAndResend(localSessionId: string, index: number, newText: string): Promise<void>
 }
 
 /** 从 session.blocks payload 取出 blocks 数组（容错）。 */
@@ -96,6 +102,8 @@ export function useSessionChat(opts: UseSessionChatOptions): UseSessionChatHandl
   const { send } = opts
   const [messages, setMessages] = useState<AnyMessage[]>([])
   const [running, setRunning] = useState(false)
+  // 编辑重发态:正在编辑的 user 消息 index(null=非编辑态)。仅最后一条 user 可编辑。
+  const [editingIndex, setEditing] = useState<number | null>(null)
   const [hasMoreHistory, setHasMoreHistory] = useState(false)
   // 历史灌入计数：每次 session.history 到达 +1。供 UI 感知「这是一次历史到达」，
   // 触发强制滚动到底（历史异步到达，messages 变化不足以区分历史 vs 流式）。
@@ -231,6 +239,31 @@ export function useSessionChat(opts: UseSessionChatOptions): UseSessionChatHandl
     [send],
   )
 
+  // 编辑重发:截断 index 及之后的消息,用新文本替换该 user 消息 + 重发。
+  // 内联发送(不调 sendMessage)避免重复 echo user。running 时先 interrupt。
+  // SDK resume 旧会话带历史(UI 截断但 SDK 上下文完整,与桌面 EDIT_RESEND 一致)。
+  const editAndResend = useCallback(
+    async (localSessionId: string, index: number, newText: string) => {
+      const trimmed = newText.trim()
+      if (!trimmed) return
+      // 1) 截断:丢弃 index 及之后所有消息,加新 user + 空 assistant(开新轮次)
+      setMessages((prev) => {
+        if (index < 0 || index >= prev.length || prev[index].role !== 'user') return prev
+        return [...prev.slice(0, index), { role: 'user' as const, text: trimmed }, mkMessage()]
+      })
+      setEditing(null)
+      finishedRef.current = false // 新 assistant 已就位,delta 续写它
+      setRunning(true)
+      // 2) 若在跑,先中断当前流(避免并发)
+      if (running) {
+        await send('session.interrupt', { localSessionId })
+      }
+      // 3) 用新文本重发(resume 旧会话,带历史)
+      await send('session.message', { localSessionId, text: trimmed })
+    },
+    [send, running],
+  )
+
   const loadHistory = useCallback(
     async (localSessionId: string, limit = 50) => {
       await send('session.history.request', { localSessionId, limit })
@@ -246,5 +279,5 @@ export function useSessionChat(opts: UseSessionChatOptions): UseSessionChatHandl
     finishedRef.current = true
   }, [])
 
-  return { messages, running, hasMoreHistory, historyVersion, onInbound, sendMessage, interrupt, loadHistory, reset }
+  return { messages, running, hasMoreHistory, historyVersion, onInbound, sendMessage, interrupt, loadHistory, reset, editingIndex, setEditing, editAndResend }
 }
