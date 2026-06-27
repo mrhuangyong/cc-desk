@@ -95,27 +95,35 @@ const searchCache = new Map<string, string[]>()
 export async function searchFiles(dirPath: string): Promise<string[]> {
   if (searchCache.has(dirPath)) return searchCache.get(dirPath)!
   const result: string[] = []
-  const ig = ignore()
-  async function walk(dir: string, rel: string) {
+  // gitignore 按目录作用域：每层目录读自己的 .gitignore/.aiignore，模式只对该目录及子树生效。
+  // 关键 bug 修复：原实现把所有层的模式累加进同一个 ignore 实例，
+  // 导致子目录 .gitignore 里的 `*`（如 .codegraph/.gitignore）被全局应用到项目所有文件。
+  // 正确语义：父目录模式继承给子目录，但子目录模式绝不反向影响父级兄弟。
+  // 实现：每层 walk 创建自己的 ignore 实例（继承父层 + 本层模式），判定用相对本目录的路径。
+  async function walk(dir: string, rel: string, parentIg: ReturnType<typeof ignore>) {
     let entries
     try { entries = await readdir(dir, { withFileTypes: true }) } catch { return }
-    // 本层 gitignore/aiignore 模式累加进同一实例
-    const gitPatterns = await readIgnoreFile(dir, '.gitignore')
+    // 本目录的 ignore = 父层继承模式 + 本目录 .gitignore/.aiignore。
+    // 模式相对本目录解释（gitignore 语义），判定时用相对本目录的路径 e.name。
+    const ig = ignore().add(parentIg as any)
+    const localPatterns = await readIgnoreFile(dir, '.gitignore')
     const aiPatterns = await readIgnoreFile(dir, '.aiignore')
-    if (gitPatterns.length) ig.add(gitPatterns)
+    if (localPatterns.length) ig.add(localPatterns)
     if (aiPatterns.length) ig.add(aiPatterns)
     for (const e of entries) {
       if (IGNORE.has(e.name)) continue
+      // 判定用「相对本目录的路径」（e.name），符合 gitignore 语义
+      if (ig.ignores(e.name)) continue
       const relPath = rel ? `${rel}/${e.name}` : e.name
-      if (ig.ignores(relPath)) continue
       if (e.isDirectory()) {
-        if (rel.split('/').length < 20) await walk(join(dir, e.name), relPath)
+        if (rel.split('/').length < 20) await walk(join(dir, e.name), relPath, ig)
       } else {
         result.push(relPath)
       }
     }
   }
-  await walk(dirPath, '')
+  const rootIg = ignore()
+  await walk(dirPath, '', rootIg)
   result.sort()
   searchCache.set(dirPath, result)
   return result

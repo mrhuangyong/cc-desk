@@ -15,8 +15,9 @@ import * as mkt from './marketplace-manager'
 import * as gitSvc from './git-service'
 import { getMemoryFile, saveMemoryFile } from './memory-file'
 import { BackendTaskRegistry } from './backend-task-registry'
-import { ensureClaudeConfigDir } from './paths'
+import { ensureClaudeConfigDir, CC_DESK_DIR } from './paths'
 import { migrateFromClaude } from './migrate-from-claude'
+import { migrateDevFromProd } from './migrate-dev'
 import { UpdateManager } from './update-manager'
 import { fixEnvSync } from './fix-env'
 import {
@@ -43,6 +44,8 @@ fixEnvSync()
 // 紧接着：把 Claude Agent SDK / CLI 的配置目录隔离到 ~/.cc-desk/claude，
 // 使运行时不再读取 ~/.claude/settings.json（其 env 块会覆盖 cc-desk 注入的角色模型映射，
 // 导致 haiku 等后台子任务被 ~/.claude 的模型配置劫持）。必须在任何 query() 之前完成。
+// dev 版数据隔离：首次启动从正式版 ~/.cc-desk 拷一份作起点（剥掉 relay 身份）到 ~/.cc-desk-dev。
+migrateDevFromProd(CC_DESK_DIR)
 ensureClaudeConfigDir()
 // 首次启动时把 ~/.claude 的插件/技能/设置一次性迁移到隔离目录（幂等，已迁移则跳过）。
 // 让设置页与 SDK 运行时在隔离目录也能看到原有插件，cc-desk 完全自洽不再依赖 ~/.claude。

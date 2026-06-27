@@ -205,7 +205,11 @@ export function BackendTaskPanel({
             </div>
             <div className="panel-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '6px 6px' }}>
               {taskVisible && (
-                <TaskCard tasks={tasks} onClickTask={(task) => setActiveTask(task)} />
+                <TaskCard
+                  tasks={tasks}
+                  onClickTask={(task) => setActiveTask(task)}
+                  onClearFinished={() => dispatch({ type: 'CLEAR_FINISHED_TASKS', sessionId: activeSessionId })}
+                />
               )}
               {subagentVisible && (
                 <SubagentCard

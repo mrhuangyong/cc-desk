@@ -88,4 +88,21 @@ describe('file-service 读操作', () => {
     expect(files.some(f => f.includes('.git/'))).toBe(false)
     expect(files).not.toContain('skip.log')  // 被 *.gitignore 忽略
   })
+
+  it('searchFiles：子目录 .gitignore 的 `*` 只作用于该子目录，不污染项目其他文件', async () => {
+    // 复现真实 bug：.codegraph/.gitignore 含 `*` + `!.gitignore`，
+    // 被错误地全局应用，导致项目根所有文件（a.txt/sub/...）全被忽略，只剩 .gitignore。
+    // gitignore 语义：模式相对于该文件所在目录，子目录的 `*` 不应影响父级兄弟文件。
+    // 触发条件：含 `*` 的子目录必须排在其他兄弟目录前（walk 顺序），用 'aaa' 保证排在 sub 前。
+    await mkdir(join(root, 'aaa'))
+    await writeFile(join(root, 'aaa', '.gitignore'), '*\n!.gitignore\n')
+    await writeFile(join(root, 'aaa', 'cache.db'), 'x')
+    const files = await searchFiles(root)
+    // 项目根的正常文件必须保留（未被 aaa 的 `*` 污染）
+    expect(files).toContain('a.txt')
+    expect(files).toContain('sub/b.md')
+    expect(files).toContain('sub/deep/c.ts')
+    // aaa 目录内除 .gitignore 外应被自己的 `*` 忽略
+    expect(files).not.toContain('aaa/cache.db')
+  })
 })
