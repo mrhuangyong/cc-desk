@@ -73,11 +73,13 @@ export interface ProjectGroup {
 }
 
 /** 把扁平会话列表按 projectId 分组，保留项目首次出现的顺序。
- *  projectsMeta 提供项目路径（可选，桌面端下发）。
+ *  projectsMeta 提供项目路径（可选，桌面端下发），并补出「有项目元信息但暂无会话」的空项目
+ *  （桌面新加的工作目录）——这类项目也要显示，否则用户在移动端看不到新工作目录、无法建会话。
  *  projectId 为空的会话归到 projectName='未分组' 的特殊项目。 */
 export function groupByProject(sessions: SessionListItem[], projectsMeta: ProjectMeta[] = []): ProjectGroup[] {
-  // 路径查表
+  // 路径 + 项目名查表（projectsMeta 是项目元信息的真相源）
   const pathOf = new Map(projectsMeta.map((m) => [m.projectId, m.projectPath]))
+  const nameOf = new Map(projectsMeta.map((m) => [m.projectId, m.projectName]))
   const groups: ProjectGroup[] = []
   const index = new Map<string, number>() // projectId → groups 下标
   for (const s of sessions) {
@@ -87,13 +89,26 @@ export function groupByProject(sessions: SessionListItem[], projectsMeta: Projec
       idx = groups.length
       groups.push({
         projectId: key,
-        projectName: key === '' ? '未分组' : (s.projectName || '未命名项目'),
+        projectName: key === '' ? '未分组' : (s.projectName || nameOf.get(key) || '未命名项目'),
         projectPath: pathOf.get(key),
         sessions: [],
       })
       index.set(key, idx)
     }
     groups[idx].sessions.push(s)
+  }
+  // 补出 projectsMeta 里有、但 sessions 里没有的空项目（桌面新加的工作目录，暂无会话）。
+  // 按 projectsMeta 的顺序追加，让空项目出现在它该在的位置之后。
+  for (const m of projectsMeta) {
+    if (m.projectId && !index.has(m.projectId)) {
+      index.set(m.projectId, groups.length)
+      groups.push({
+        projectId: m.projectId,
+        projectName: m.projectName || '未命名项目',
+        projectPath: m.projectPath,
+        sessions: [],
+      })
+    }
   }
   return groups
 }

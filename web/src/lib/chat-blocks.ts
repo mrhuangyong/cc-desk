@@ -39,15 +39,21 @@ interface DeltaPayload {
   thinking?: string
 }
 
-/** 把流式 delta 累加到消息；返回新消息（不可变）。 */
+/** 把流式 delta 累加到消息；返回新消息（不可变）。
+ *  首个非空 delta 会去除前导换行（SDK 的首个 text chunk 常以 \n 开头，
+ *  移动端 CSS pre-wrap 会把它渲染成顶部空行）；中间换行保留。 */
 export function appendDelta(m: ChatMessage, delta: DeltaPayload): ChatMessage {
   const hasText = typeof delta.text === 'string' && delta.text.length > 0
   const hasThinking = typeof delta.thinking === 'string' && delta.thinking.length > 0
   if (!hasText && !hasThinking) return m
+  // 消息 text 还为空时，本次是首个 text chunk —— 去掉它的前导换行（避免顶部空行）
+  const textDelta = hasText && m.text.length === 0 ? delta.text!.replace(/^[\r\n]+/, '') : delta.text
+  // thinking 同理（首个思考片段去前导换行）
+  const thinkingDelta = hasThinking && m.thinking.length === 0 ? delta.thinking!.replace(/^[\r\n]+/, '') : delta.thinking
   return {
     ...m,
-    text: hasText ? m.text + delta.text : m.text,
-    thinking: hasThinking ? m.thinking + delta.thinking : m.thinking,
+    text: hasText ? m.text + textDelta : m.text,
+    thinking: hasThinking ? m.thinking + thinkingDelta : m.thinking,
   }
 }
 

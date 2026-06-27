@@ -107,7 +107,8 @@ export function useSessionChat(opts: UseSessionChatOptions): UseSessionChatHandl
           if (it.role === 'user') return { role: 'user', text: it.text ?? '' }
           return {
             role: 'assistant',
-            text: it.text ?? '',
+            // trim 首尾换行（防御：磁盘数据可能残留前导换行，移动端 pre-wrap 会显示空行）
+            text: (it.text ?? '').replace(/^[\r\n]+/, '').replace(/[\r\n]+$/, ''),
             thinking: it.thinking ?? '',
             blocks: (it.blocks ?? []).map((b) => ({ ...b, raw: null })),
           }
@@ -139,6 +140,17 @@ export function useSessionChat(opts: UseSessionChatOptions): UseSessionChatHandl
         const blocks = extractBlocks(env.payload)
         const startNew = finishedRef.current
         finishedRef.current = false
+        // 先把本轮 assistant_blocks 里的所有 text 块聚合成权威文本。
+        // delta 流式只是这段文本的实时前体，assistant_blocks 到来时是权威完整版——
+        // 若直接追加到 msg.text 会导致同一段文本显示两次（delta 拼一次 + 权威版再拼一次）。
+        // 故权威版替换流式草稿（对齐桌面端 STREAM_ASSISTANT_BLOCKS 的去重语义）。
+        const authoritativeText = blocks
+          .filter((raw: any) => raw?.type === 'text' && typeof raw.text === 'string')
+          .map((raw: any) => raw.text)
+          .join('')
+          // 去除整段首尾换行（SDK 的 text 块常以 \n 开头，移动端 pre-wrap 会渲染成空行）
+          .replace(/^[\r\n]+/, '')
+          .replace(/[\r\n]+$/, '')
         setMessages((prev) => {
           let working = prev
           let needNew = startNew || working[working.length - 1]?.role !== 'assistant'
@@ -150,12 +162,12 @@ export function useSessionChat(opts: UseSessionChatOptions): UseSessionChatHandl
               needNew = false
             }
             const cur = working.length - 1
-            // text 块追加到 message.text（而非 blocks）；其余块走 appendBlock
             if (b.kind === 'text') {
               const msg = working[cur] as ChatMessage
+              // 权威版替换流式草稿（不追加），避免重复
               working = [
                 ...working.slice(0, cur),
-                { ...msg, text: msg.text + (b.text ?? '') },
+                { ...msg, text: authoritativeText },
                 ...working.slice(cur + 1),
               ]
             } else {

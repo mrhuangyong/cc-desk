@@ -527,7 +527,7 @@ export function buildSessionListPayload(
   const sessions: (SessionListItem & { projectId: string; projectName: string })[] = []
   const projectsMeta: SessionListProjectMeta[] = []
   for (const p of projects) {
-    let hasSession = false
+    let hasActiveSession = false
     for (const s of p.sessions) {
       if (s.archived) continue
       sessions.push({
@@ -538,9 +538,16 @@ export function buildSessionListPayload(
         projectId: p.id,
         projectName: p.name,
       })
-      hasSession = true
+      hasActiveSession = true
     }
-    if (hasSession) {
+    // 下发项目元信息的条件：
+    //   ① 含活跃会话（非归档），或
+    //   ② 有 path 的真实工作目录（哪怕暂无活跃会话——新增空目录、或会话被全部归档）。
+    // 后者保证用户在移动端始终能看到真实工作目录，通过项目卡片的「新建会话」按钮建会话：
+    //   - 修复「桌面新加工作目录后移动端刷新看不到」
+    //   - 修复「移动端归档最后一条会话后项目凭空消失」（全归档项目仍有 path，保留）
+    // 无 path 的占位项目（历史残留，既无目录意义通常也无活跃会话）排除以避免刷屏。
+    if (hasActiveSession || p.path) {
       projectsMeta.push({ projectId: p.id, projectName: p.name, projectPath: p.path })
     }
   }

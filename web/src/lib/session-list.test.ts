@@ -150,6 +150,35 @@ describe('groupByProject', () => {
     const groups = groupByProject(sessions, [{ projectId: 'p1', projectName: 'P1', projectPath: '/x/P1' }])
     expect(groups[0].projectPath).toBe('/x/P1')
   })
+
+  it('projectsMeta 里有但 sessions 里没有的空项目，也建空会话分组（修复：桌面新增工作目录移动端看不到）', () => {
+    const sessions: SessionListItem[] = [
+      { localSessionId: 's1', title: 'a', status: 'idle', projectId: 'p1', projectName: 'P1' },
+    ]
+    // p-new 是桌面新加的工作目录，桌面端下发到 projectsMeta 但暂无会话
+    const meta = [
+      { projectId: 'p1', projectName: 'P1', projectPath: '/x/P1' },
+      { projectId: 'p-new', projectName: '新目录', projectPath: '/x/new' },
+    ]
+    const groups = groupByProject(sessions, meta)
+    // 必须有两个分组，p-new 作为空会话项目显示，否则用户在移动端看不到新工作目录、无法建会话
+    expect(groups.map((g) => g.projectId)).toEqual(['p1', 'p-new'])
+    const fresh = groups.find((g) => g.projectId === 'p-new')!
+    expect(fresh.projectName).toBe('新目录')
+    expect(fresh.projectPath).toBe('/x/new')
+    expect(fresh.sessions).toEqual([])
+  })
+
+  it('归档最后一条会话后（sessions 空、但 projectsMeta 仍有该项目），项目仍显示为空分组', () => {
+    // 场景：项目原有会话被全部归档 → sessions 列表为空，但项目仍在 projectsMeta
+    const sessions: SessionListItem[] = []
+    const meta = [{ projectId: 'p1', projectName: 'my-proj', projectPath: '/code/my-proj' }]
+    const groups = groupByProject(sessions, meta)
+    // 项目必须仍显示（空会话分组），否则用户归档最后一条会话后项目凭空消失、无法新建会话
+    expect(groups).toHaveLength(1)
+    expect(groups[0]).toMatchObject({ projectId: 'p1', projectName: 'my-proj', projectPath: '/code/my-proj' })
+    expect(groups[0].sessions).toEqual([])
+  })
 })
 
 describe('parseSessionListFull', () => {
