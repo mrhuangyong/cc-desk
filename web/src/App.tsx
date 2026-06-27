@@ -23,6 +23,7 @@ import { usePwaBack } from './hooks/usePwaBack'
 import { useTheme } from './hooks/useTheme'
 import { SunIcon, MoonIcon } from './components/icons'
 import { parseSessionListFull, type SessionListItem, type ProjectMeta } from './lib/session-list'
+import { readImageAsAttachment, type ImageAttachment } from './lib/read-image'
 import type { Envelope } from '@shared/remote-protocol-types'
 
 type View = { kind: 'list' } | { kind: 'chat'; localSessionId: string; title: string }
@@ -84,6 +85,9 @@ function RemoteShell({
   // UI 控件(下拉)留给子项目 B,A 阶段用默认值随消息透传,验证协议层。
   const [currentPermission, setCurrentPermission] = useState<string>('变更前确认')
   const [currentThinking, setCurrentThinking] = useState<'low' | 'medium' | 'high'>('medium')
+  // 图片附件(对齐桌面 store.draft.attachments)。App 持有状态,ChatPage 渲染 chip + 回调。
+  // 发送时转成 images 透传(sendMessage opts,协议层 A 阶段已通),发完清空。
+  const [attachments, setAttachments] = useState<ImageAttachment[]>([])
   const [view, setView] = useState<View>({ kind: 'list' })
   const [inputValue, setInputValue] = useState('')
 
@@ -228,15 +232,27 @@ function RemoteShell({
     [relay, chat],
   )
 
+  const addImages = useCallback(async (files: File[]) => {
+    const items = await Promise.all(files.map(readImageAsAttachment))
+    setAttachments((prev) => [...prev, ...items])
+  }, [])
+
+  const removeImage = useCallback((index: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index))
+  }, [])
+
   const handleSend = useCallback(() => {
     if (view.kind !== 'chat') return
     const text = inputValue
     setInputValue('')
+    const imagesToSend = attachments.length ? attachments : undefined
     void chat.sendMessage(view.localSessionId, text, {
       permission: currentPermission,
       thinking: currentThinking,
+      images: imagesToSend,
     })
-  }, [view, inputValue, chat, currentPermission, currentThinking])
+    if (attachments.length) setAttachments([])
+  }, [view, inputValue, chat, currentPermission, currentThinking, attachments])
 
   const handleInterrupt = useCallback(() => {
     if (view.kind !== 'chat') return
@@ -289,6 +305,9 @@ function RemoteShell({
           currentThinking={currentThinking}
           onPermissionChange={setCurrentPermission}
           onThinkingChange={setCurrentThinking}
+          attachments={attachments}
+          onAddImages={addImages}
+          onRemoveImage={removeImage}
           headerExtra={themeToggle}
         />
         {exitToast}
