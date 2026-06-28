@@ -18,6 +18,7 @@
 /** localStorage 键（受管字段，clear 时仅清这些，不动用户其他数据）。 */
 const LS_KEY_DEVICE = 'ccdesk.device' // 手机自身身份 {deviceId, deviceKey}
 const LS_KEY_DESKTOP = 'ccdesk.desktop' // 已配对桌面 {desktopId, desktopKey}
+const LS_KEY_SHARE = 'ccdesk.share' // 分享 token（桌面端 share-link-auth 下发，免配对直连）
 
 /** 配对码正则：恰好 6 位数字（与 pairing.ts issueCode 输出形态对齐）。 */
 const PAIR_CODE_RE = /^\d{6}$/
@@ -43,6 +44,33 @@ export function parsePairCodeFromUrl(urlOrSearch: string): string | null {
   const raw = params.get('pair')
   if (!raw) return null
   if (!PAIR_CODE_RE.test(raw)) return null
+  return raw
+}
+
+/**
+ * 从 URL 的 ?t= 参数提取分享 token（Task 4：分享链接认证）。
+ *
+ * 与 parsePairCodeFromUrl 区别：分享 token 不是固定 6 位数字配对码，
+ * 而是桌面端生成的任意字符串 token，故只校验非空字符串。
+ * 支持完整 URL、纯 search 串、相对路径。
+ */
+export function parseShareTokenFromUrl(urlOrSearch: string): string | null {
+  if (!urlOrSearch) return null
+  let search: string
+  try {
+    if (urlOrSearch.includes('?')) {
+      search = urlOrSearch.slice(urlOrSearch.indexOf('?') + 1)
+    } else if (urlOrSearch.startsWith('=')) {
+      search = urlOrSearch.slice(1)
+    } else {
+      search = urlOrSearch
+    }
+  } catch {
+    return null
+  }
+  const params = new URLSearchParams(search)
+  const raw = params.get('t')
+  if (typeof raw !== 'string' || raw.length === 0) return null
   return raw
 }
 
@@ -166,8 +194,26 @@ export function loadDesktopIdentity(): DesktopIdentity | null {
   }
 }
 
+// ---------- 分享 token 本地存储（Task 4：分享链接认证，刷新不丢） ----------
+
+/** 持久化分享 token（桌面端 share-link-auth 下发，免配对直连）。 */
+export function saveShareToken(token: string): void {
+  localStorage.setItem(LS_KEY_SHARE, token)
+}
+
+/** 读取分享 token；未存储返回 null。 */
+export function loadShareToken(): string | null {
+  return localStorage.getItem(LS_KEY_SHARE)
+}
+
+/** 清除分享 token。 */
+export function clearShareToken(): void {
+  localStorage.removeItem(LS_KEY_SHARE)
+}
+
 /** 清空配对相关本地存储（仅受管 key，不动用户其他数据）。 */
 export function clearPairingStorage(): void {
   localStorage.removeItem(LS_KEY_DEVICE)
   localStorage.removeItem(LS_KEY_DESKTOP)
+  localStorage.removeItem(LS_KEY_SHARE)
 }

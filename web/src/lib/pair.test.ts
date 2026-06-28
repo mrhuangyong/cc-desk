@@ -13,6 +13,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
   parsePairCodeFromUrl,
+  parseShareTokenFromUrl,
   buildPairConsumeMessage,
   isPairSuccess,
   extractPairSuccess,
@@ -24,6 +25,9 @@ import {
   loadDesktopIdentity,
   saveDesktopIdentity,
   clearPairingStorage,
+  saveShareToken,
+  loadShareToken,
+  clearShareToken,
 } from './pair'
 
 describe('parsePairCodeFromUrl 解析 ?pair=code', () => {
@@ -55,6 +59,40 @@ describe('parsePairCodeFromUrl 解析 ?pair=code', () => {
     expect(parsePairCodeFromUrl('?pair=12345')).toBeNull()   // 5 位
     expect(parsePairCodeFromUrl('?pair=1234567')).toBeNull() // 7 位
     expect(parsePairCodeFromUrl('?pair=abcdef')).toBeNull()  // 非数字
+  })
+})
+
+describe('parseShareTokenFromUrl 解析 ?t=token（Task 4）', () => {
+  it('从完整 URL 解析出 token', () => {
+    expect(parseShareTokenFromUrl('https://ccdesk.mrhua.top/?t=abc123xyz')).toBe('abc123xyz')
+  })
+
+  it('从相对 search 解析', () => {
+    expect(parseShareTokenFromUrl('/?t=token-xyz')).toBe('token-xyz')
+  })
+
+  it('保留其他参数时仍取 t', () => {
+    expect(parseShareTokenFromUrl('https://h/?utm=x&t=MYTOKEN&foo=bar')).toBe('MYTOKEN')
+  })
+
+  it('token 可含特殊字符（base64url 等）', () => {
+    expect(parseShareTokenFromUrl('?t=aBc-123_Xyz')).toBe('aBc-123_Xyz')
+  })
+
+  it('无 t 参数返回 null', () => {
+    expect(parseShareTokenFromUrl('https://h/?foo=bar')).toBeNull()
+  })
+
+  it('空 URL 返回 null', () => {
+    expect(parseShareTokenFromUrl('')).toBeNull()
+  })
+
+  it('t 为空值返回 null', () => {
+    expect(parseShareTokenFromUrl('?t=')).toBeNull()
+  })
+
+  it('不与 pair 混淆：只有 pair 无 t 时返回 null', () => {
+    expect(parseShareTokenFromUrl('?pair=123456')).toBeNull()
   })
 })
 
@@ -170,6 +208,33 @@ describe('本地存储读写（设备身份 + 桌面身份）', () => {
     clearPairingStorage()
     expect(loadDeviceIdentity()).toBeNull()
     expect(loadDesktopIdentity()).toBeNull()
+  })
+
+  it('clearPairingStorage 同时清空分享 token（Task 4）', () => {
+    saveShareToken('tok-123')
+    clearPairingStorage()
+    expect(loadShareToken()).toBeNull()
+  })
+
+  it('saveShareToken / loadShareToken 往返一致（Task 4）', () => {
+    saveShareToken('share-tok-abc')
+    expect(loadShareToken()).toBe('share-tok-abc')
+  })
+
+  it('未存储时 loadShareToken 返回 null（Task 4）', () => {
+    expect(loadShareToken()).toBeNull()
+  })
+
+  it('clearShareToken 单独清空分享 token（Task 4）', () => {
+    saveShareToken('tok')
+    clearShareToken()
+    expect(loadShareToken()).toBeNull()
+  })
+
+  it('saveShareToken 保留未知 localStorage key（仅动受管字段）', () => {
+    localStorage.setItem('unrelated', 'keep-me')
+    saveShareToken('tok')
+    expect(localStorage.getItem('unrelated')).toBe('keep-me')
   })
 
   it('saveDeviceIdentity 保留未知 localStorage key（深合并/仅动受管字段）', () => {
