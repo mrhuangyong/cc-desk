@@ -26,6 +26,10 @@ import {
   ListIcon,
   ShieldIcon,
   QuestionIcon,
+  PlusIcon,
+  ChevronDownIcon,
+  BrainIcon,
+  ChipIcon,
 } from '../components/icons'
 
 /** 权限模式选项(对齐桌面 InputBar.tsx:16,中文标签经主进程 getPermissionMode 翻译)。 */
@@ -291,17 +295,6 @@ export default function ChatPage(props: ChatPageProps) {
         <button className="icon-btn" onClick={onBack} aria-label="返回"><ArrowLeftIcon /></button>
         <div className="chat-header-title">
           <h1 className="chat-title">{title || '会话'}</h1>
-          {models && models.length > 0 && (
-            <select
-              className="model-select"
-              value={activeModelId || ''}
-              onChange={(e) => onSetActiveModel?.(e.target.value)}
-            >
-              {models.map((m) => (
-                <option key={m.id} value={m.id}>{m.name}</option>
-              ))}
-            </select>
-          )}
         </div>
         <div className="header-actions">
           {running && (
@@ -384,89 +377,40 @@ export default function ChatPage(props: ChatPageProps) {
       )}
 
       <footer className="chat-input-bar">
-        {(onPermissionChange || onThinkingChange || onQueueModeChange) && (
-          <div className="chat-input-controls">
-            {onPermissionChange && (
-              <select
-                className="param-select"
-                value={currentPermission || '变更前确认'}
-                onChange={(e) => onPermissionChange(e.target.value)}
-                aria-label="权限模式"
-              >
-                {PERMISSIONS.map((p) => <option key={p} value={p}>{p}</option>)}
-              </select>
-            )}
-            {onThinkingChange && (
-              <select
-                className="param-select"
-                value={currentThinking || 'medium'}
-                onChange={(e) => onThinkingChange(e.target.value as 'low' | 'medium' | 'high')}
-                aria-label="思考强度"
-              >
-                {THINKINGS.map((t) => <option key={t} value={t}>{t}</option>)}
-              </select>
-            )}
-            {onQueueModeChange && (
-              <select
-                className="param-select"
-                value={currentQueueMode || 'queue'}
-                onChange={(e) => onQueueModeChange(e.target.value as 'queue' | 'guide')}
-                aria-label="排队模式"
-              >
-                <option value="queue">排队</option>
-                <option value="guide">中断</option>
-              </select>
-            )}
-          </div>
-        )}
-        {attachments && attachments.length > 0 && (
-          <div className="attach-chips">
-            {attachments.map((att, i) => (
-              <div className="attach-chip" key={i}>
-                <img src={`data:${att.mediaType};base64,${att.data}`} alt={att.name || '附件'} />
-                {onRemoveImage && (
-                  <button
-                    className="attach-chip-remove"
-                    onClick={() => onRemoveImage(i)}
-                    aria-label="删除附件"
-                  >×</button>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-        {queue && queue.length > 0 && (
-          <div className="queue-chips">
-            {queue.map((text, i) => (
-              <div className="queue-chip" key={i}>排队中: {text}</div>
-            ))}
-          </div>
-        )}
-        <div className="chat-input-wrap">
-          {onAddImages && (
-            <>
-              <button
-                className="attach-add-btn"
-                onClick={() => setShowAttachMenu((v) => !v)}
-                aria-label="添加图片"
-              >＋</button>
-              {showAttachMenu && (
-                <div className="attach-menu">
-                  <button onClick={() => cameraInputRef.current?.click()}>拍照</button>
-                  <button onClick={() => albumInputRef.current?.click()}>从相册选</button>
+        {/* 统一输入卡片：附件/排队 chip → textarea → 控件栏(左功能/右模型+发送)。
+            对齐桌面 InputBar 的"卡片容器 + 内嵌控件栏"结构,移动端窄屏下把所有
+            能力(权限/思考/模型/加号/排队)收进一个整体卡片,而非散落堆叠。 */}
+        <div className="chat-input-card">
+          {/* 顶部:附件缩略图 + 排队消息 chip */}
+          {(attachments && attachments.length > 0) || (queue && queue.length > 0) ? (
+            <div className="chat-input-chips">
+              {attachments && attachments.length > 0 && (
+                <div className="attach-chips">
+                  {attachments.map((att, i) => (
+                    <div className="attach-chip" key={i}>
+                      <img src={`data:${att.mediaType};base64,${att.data}`} alt={att.name || '附件'} />
+                      {onRemoveImage && (
+                        <button
+                          className="attach-chip-remove"
+                          onClick={() => onRemoveImage(i)}
+                          aria-label="删除附件"
+                        >×</button>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
-              {/* 拍照:capture=environment 调起相机;相册:普通选择 */}
-              <input
-                ref={cameraInputRef} type="file" accept="image/*" capture="environment"
-                style={{ display: 'none' }} onChange={handleFilePick}
-              />
-              <input
-                ref={albumInputRef} type="file" accept="image/*"
-                style={{ display: 'none' }} onChange={handleFilePick}
-              />
-            </>
-          )}
+              {queue && queue.length > 0 && (
+                <div className="queue-chips">
+                  {queue.map((text, i) => (
+                    <div className="queue-chip" key={i}>排队中: {text}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          {/* 中部:textarea(融入卡片,无独立圆角) */}
           <textarea
             className="chat-input"
             placeholder="输入消息…"
@@ -481,14 +425,106 @@ export default function ChatPage(props: ChatPageProps) {
             onKeyDown={onKeyDown}
             rows={1}
           />
-          <button
-            className="send-icon-btn"
-            onClick={onSend}
-            disabled={!canSend}
-            aria-label="发送"
-          >
-            <SendIcon />
-          </button>
+
+          {/* 底部控件行:横向滚动的控件栏(＋/权限/思考/排队/模型) + 固定发送按钮。
+              移动端窄屏控件多,控件栏横向滚动避免拥挤,发送按钮固定最右不随滚动。 */}
+          <div className="chat-input-controls">
+            <div className="controls-scroll">
+            {/* 左组:＋加图 + 权限 + 思考 + 排队 */}
+            {onAddImages && (
+              <div className="control-wrap">
+                <button
+                  className="control-btn add-btn"
+                  onClick={() => setShowAttachMenu((v) => !v)}
+                  aria-label="添加图片"
+                ><PlusIcon size={14} /></button>
+                {showAttachMenu && (
+                  <div className="attach-menu">
+                    <button onClick={() => cameraInputRef.current?.click()}>拍照</button>
+                    <button onClick={() => albumInputRef.current?.click()}>从相册选</button>
+                  </div>
+                )}
+                <input
+                  ref={cameraInputRef} type="file" accept="image/*" capture="environment"
+                  style={{ display: 'none' }} onChange={handleFilePick}
+                />
+                <input
+                  ref={albumInputRef} type="file" accept="image/*"
+                  style={{ display: 'none' }} onChange={handleFilePick}
+                />
+              </div>
+            )}
+            {onPermissionChange && (
+              <label className="control-pill">
+                <ShieldIcon size={13} />
+                <select
+                  className="param-select"
+                  value={currentPermission || '变更前确认'}
+                  onChange={(e) => onPermissionChange(e.target.value)}
+                  aria-label="权限模式"
+                >
+                  {PERMISSIONS.map((p) => <option key={p} value={p}>{p}</option>)}
+                </select>
+                <ChevronDownIcon size={11} />
+              </label>
+            )}
+            {onThinkingChange && (
+              <label className="control-pill">
+                <BrainIcon size={13} />
+                <select
+                  className="param-select"
+                  value={currentThinking || 'medium'}
+                  onChange={(e) => onThinkingChange(e.target.value as 'low' | 'medium' | 'high')}
+                  aria-label="思考强度"
+                >
+                  {THINKINGS.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+                <ChevronDownIcon size={11} />
+              </label>
+            )}
+            {onQueueModeChange && (
+              <label className="control-pill">
+                <ListIcon size={13} />
+                <select
+                  className="param-select"
+                  value={currentQueueMode || 'queue'}
+                  onChange={(e) => onQueueModeChange(e.target.value as 'queue' | 'guide')}
+                  aria-label="排队模式"
+                >
+                  <option value="queue">排队</option>
+                  <option value="guide">中断</option>
+                </select>
+                <ChevronDownIcon size={11} />
+              </label>
+            )}
+
+            {/* 右组:模型 + 发送 */}
+            {models && models.length > 0 && (
+              <label className="control-pill model-pill">
+                <ChipIcon size={13} />
+                <select
+                  className="param-select"
+                  value={activeModelId || ''}
+                  onChange={(e) => onSetActiveModel?.(e.target.value)}
+                  aria-label="模型"
+                >
+                  {models.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+                <ChevronDownIcon size={11} />
+              </label>
+            )}
+            </div>
+            <button
+              className="send-icon-btn"
+              onClick={onSend}
+              disabled={!canSend}
+              aria-label="发送"
+            >
+              <SendIcon />
+            </button>
+          </div>
         </div>
       </footer>
     </div>

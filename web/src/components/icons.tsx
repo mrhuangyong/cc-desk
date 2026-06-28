@@ -195,3 +195,24 @@ export function CloseIcon({ size = '1em', className }: IconProps) {
     </svg>
   )
 }
+
+/** 大脑（思考强度）。 */
+export function BrainIcon({ size = '1em', className }: IconProps) {
+  return (
+    <svg {...base(size, className)}>
+      {/* 简化脑形：左右两半 + 沟回，表达"思考" */}
+      <path d="M9 4.5a2.5 2.5 0 0 0-2.5 2.5 2.5 2.5 0 0 0-1.5 4.5 2.5 2.5 0 0 0 1 4 2.5 2.5 0 0 0 3 .5V4.5Z" />
+      <path d="M15 4.5a2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1 1.5 4.5 2.5 2.5 0 0 1-1 4 2.5 2.5 0 0 1-3 .5V4.5Z" />
+    </svg>
+  )
+}
+
+/** 盒子/CPU（模型）。 */
+export function ChipIcon({ size = '1em', className }: IconProps) {
+  return (
+    <svg {...base(size, className)}>
+      <rect x="6" y="6" width="12" height="12" rx="2" />
+      <path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2" />
+    </svg>
+  )
+}
