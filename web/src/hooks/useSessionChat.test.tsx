@@ -98,6 +98,36 @@ describe('useSessionChat - blocks', () => {
     expect(m.blocks).toHaveLength(1)
   })
 
+  // 修复:桌面 claude:blocks 按 op 分发(tool_use_start 带 block 单数,tool_result 无 blocks 数组),
+  // 此前 extractBlocks 只认 payload.blocks/payload.kind → 工具调用全部丢失。
+  it('session.blocks payload 是 {op:tool_use_start, block} → 归一化为 tool_use 块', () => {
+    const send = vi.fn().mockResolvedValue(true)
+    const { result } = renderHook(() => useSessionChat({ send }))
+    act(() => {
+      result.current.onInbound({
+        v: 1, type: 'session.blocks', deviceId: 'd', ts: 1, nonce: 'n', sig: '',
+        payload: { localSessionId: 's1', op: 'tool_use_start', block: { type: 'tool_use', id: 'tu1', name: 'Bash', input: { command: 'ls' } } },
+      } as any)
+    })
+    const m = result.current.messages[0] as any
+    expect(m.blocks).toHaveLength(1)
+    expect(m.blocks[0].kind).toBe('tool_use')
+    expect(m.blocks[0].label).toBe('Bash: ls')
+  })
+
+  it('session.blocks payload 是 {op:tool_result, toolUseId, result} → 归一化为 tool_result 块', () => {
+    const send = vi.fn().mockResolvedValue(true)
+    const { result } = renderHook(() => useSessionChat({ send }))
+    act(() => {
+      result.current.onInbound({
+        v: 1, type: 'session.blocks', deviceId: 'd', ts: 1, nonce: 'n', sig: '',
+        payload: { localSessionId: 's1', op: 'tool_result', toolUseId: 'tu1', result: { content: 'ok', isError: false } },
+      } as any)
+    })
+    const m = result.current.messages[0] as any
+    expect(m.blocks.some((b: any) => b.kind === 'tool_result')).toBe(true)
+  })
+
   it('delta 流式拼接后，assistant_blocks 的 text 权威版到来不重复（修复消息重复）', () => {
     const send = vi.fn().mockResolvedValue(true)
     const { result } = renderHook(() => useSessionChat({ send }))
