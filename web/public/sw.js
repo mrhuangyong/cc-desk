@@ -15,8 +15,8 @@
 //
 // 注册范围：scope = '/'（与 index.html 同源根，见 index.html 的注册）。
 
-const CACHE_NAME = 'cc-desk-shell-v2' // SYNC-WITH sw-cache-strategy.ts CACHE_NAME
-// v2 变更：JS/CSS 从 stale-while-revalidate 改为网络优先，避免部署后手机刷新仍用旧 bundle。
+const CACHE_NAME = 'cc-desk-shell-v3' // SYNC-WITH sw-cache-strategy.ts CACHE_NAME
+// v3 变更：强制清 v2 缓存（部署新输入框 UI + 消息持久化修复后，手机旧 bundle 可能连不上/行为异常）。
 // 升版本号触发 activate 清掉 v1 缓存。
 
 // 预缓存的 app shell：名固定（bundle 带 hash，运行时 SWR 懒缓存）。
