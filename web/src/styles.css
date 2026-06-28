@@ -605,17 +605,22 @@ body {
 }
 /* 顶部 chip 区(附件缩略图 + 排队消息),与 textarea 之间留间距 */
 .chat-input-chips { padding-bottom: 6px; }
-.chat-input textarea.chat-input {
+/* textarea 融入卡片:自身无背景/边框/圆角(由卡片统一承载),
+   只保留文字排版。focus 时不抢焦(卡片整体是焦点容器)。 */
+.chat-input-card > textarea.chat-input {
   width: 100%; resize: none;
   min-height: 24px; max-height: 120px;
-  padding: 4px 2px;
-  font-size: 14px; line-height: 1.4;
+  padding: 6px 2px 4px;
+  font-size: 15px; line-height: 1.45;
   background: transparent; color: var(--text);
-  border: 0; outline: none;
+  border: 0; outline: none; box-shadow: none;
   overflow-y: auto;
   font-family: var(--font-sans);
+  -webkit-appearance: none;
+  border-radius: 0;
 }
-.chat-input:focus { /* 融入卡片,无独立 focus 描边(卡片整体已是焦点容器) */ }
+.chat-input-card > textarea.chat-input::placeholder { color: var(--text-faint); }
+.chat-input-card > textarea.chat-input:focus { outline: none; }
 .send-icon-btn {
   width: 30px; height: 30px; border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;
