@@ -33,6 +33,8 @@ import { makeEnvelope, type Envelope, type MessageType } from '../shared/remote-
 import {
   buildPairCodeRequest, buildPairUrl, isPairCodeResponse, isPairErrorResponse,
   isPairRequestEnvelope,
+  buildTokenCreateRequest, buildTokenRevokeRequest, buildShareUrl,
+  isTokenCreatedResponse, isTokenRevokedResponse,
 } from './remote-pair'
 
 // 启动第一件事：修正 PATH/env。打包成 .app 后 GUI 不执行用户 shell 启动脚本，
@@ -485,6 +487,127 @@ async function requestPairCode(cfg: RemoteConfig): Promise<{ code: string; qr: s
   })
 }
 
+/**
+ * 经中继 /pair 端点创建分享链接 token：起一条临时 ws，发 token.create，等回包即关。
+ * expiresInDays<=0 视为永久（中继侧按超大值近似）。
+ * 返回 { token, url, qr, expiresAt } 或 { error }。
+ */
+async function createShareLink(cfg: RemoteConfig, expiresInDays: number): Promise<{ token: string; url: string; qr: string; expiresAt: number } | { error: string }> {
+  return new Promise((resolve) => {
+    const base = cfg.relayUrl.replace(/^http/, 'ws').replace(/\/+$/, '')
+    const url = `${base}/pair`
+    let settled = false
+    let ws: WebSocket | null = null
+    const cleanup = () => {
+      try { ws?.close() } catch { /* noop */ }
+      try { ws?.terminate() } catch { /* noop */ }
+    }
+    const fail = (err: string) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      resolve({ error: err })
+    }
+    try {
+      ws = new WebSocket(url)
+    } catch (e) {
+      fail(`无法连接中继：${String(e)}`)
+      return
+    }
+    const timer = setTimeout(() => fail('创建分享链接超时，请确认中继地址可达'), 10_000)
+    ws.on('open', () => {
+      const req = buildTokenCreateRequest(cfg.deviceId, cfg.deviceKey, expiresInDays)
+      ws!.send(JSON.stringify(req))
+    })
+    ws.on('message', (raw) => {
+      if (settled) return
+      let msg: unknown
+      try { msg = JSON.parse(raw.toString()) } catch { return }
+      if (isTokenCreatedResponse(msg)) {
+        settled = true
+        clearTimeout(timer)
+        const token = msg.payload.token
+        const shareUrl = buildShareUrl(cfg.relayUrl, token)
+        QRCode.toDataURL(shareUrl).then((qr) => {
+          cleanup()
+          // 持久化到 RemoteConfig.shareLinks
+          const cur = getRemoteConfig()
+          const links = [...(cur.shareLinks ?? []), {
+            token, url: shareUrl, createdAt: Date.now(), expiresAt: msg.payload.expiresAt,
+          }]
+          saveRemoteConfig({ shareLinks: links })
+          emitPairEvent({ kind: 'share-link-created' })
+          resolve({ token, url: shareUrl, qr, expiresAt: msg.payload.expiresAt })
+        }).catch((e) => {
+          cleanup()
+          resolve({ error: `二维码生成失败：${String(e)}` })
+        })
+        return
+      }
+      if (isPairErrorResponse(msg)) {
+        fail(`中继拒绝：${msg.payload.code}`)
+        return
+      }
+    })
+    ws.on('error', (e) => fail(`连接中继失败：${String(e)}`))
+  })
+}
+
+/**
+ * 经中继 /pair 端点撤销分享链接 token，并从本地 shareLinks 列表删除。
+ * 中继侧 tokenStore.revokeToken 幂等（不存在也回 revoked），故本地总是删除该条。
+ */
+async function revokeShareLink(cfg: RemoteConfig, token: string): Promise<{ ok: boolean } | { ok: boolean; error: string }> {
+  // 先本地删除（即使中继不可达也清掉展示态，用户意图明确）
+  const cur = getRemoteConfig()
+  const links = (cur.shareLinks ?? []).filter(l => l.token !== token)
+  saveRemoteConfig({ shareLinks: links })
+  // 异步通知中继撤销（失败不阻塞，中继 token 仍会按自身过期）
+  return new Promise((resolve) => {
+    const base = cfg.relayUrl.replace(/^http/, 'ws').replace(/\/+$/, '')
+    const url = `${base}/pair`
+    let ws: WebSocket | null = null
+    const cleanup = () => {
+      try { ws?.close() } catch { /* noop */ }
+      try { ws?.terminate() } catch { /* noop */ }
+    }
+    const done = () => { settled = true; cleanup(); resolve({ ok: true }) }
+    let settled = false
+    try {
+      ws = new WebSocket(url)
+    } catch {
+      resolve({ ok: true })
+      return
+    }
+    const timer = setTimeout(done, 8_000)
+    ws.on('open', () => {
+      const req = buildTokenRevokeRequest(cfg.deviceId, cfg.deviceKey, token)
+      ws!.send(JSON.stringify(req))
+    })
+    ws.on('message', (raw) => {
+      if (settled) return
+      let msg: unknown
+      try { msg = JSON.parse(raw.toString()) } catch { return }
+      if (isTokenRevokedResponse(msg)) {
+        clearTimeout(timer)
+        done()
+        return
+      }
+      if (isPairErrorResponse(msg)) {
+        clearTimeout(timer)
+        settled = true
+        cleanup()
+        // 即便中继报错，本地已删；返回 ok 但带错误供日志
+        resolve({ ok: true, error: `中继：${msg.payload.code}` })
+      }
+    })
+    ws.on('error', () => {
+      if (settled) return
+      clearTimeout(timer)
+      done()
+    })
+  })
+}
 
 // 获取当前活动窗口（IPC handler 在窗口重建后需要拿到最新 webContents）
 function getActiveWin(): Electron.BrowserWindow | null {
@@ -717,6 +840,23 @@ function registerIpcHandlers(): void {
     markUnpaired(deviceId)
     emitPairEvent({ kind: 'unpaired', deviceId })
     return { ok: true }
+  })
+  // 分享链接：经 /pair token.create 生成（返回 token/url/二维码/过期），存 RemoteConfig.shareLinks
+  ipcMain.handle('remote:create-share-link', async (_e, expiresInDays: number) => {
+    const cfg = getRemoteConfig()
+    if (!cfg.enabled || !cfg.deviceId || !cfg.deviceKey) {
+      return { error: '请先启用远程控制' }
+    }
+    const days = typeof expiresInDays === 'number' && expiresInDays > 0 ? expiresInDays : 0
+    return createShareLink(cfg, days)
+  })
+  // 分享链接：撤销 token（本地删除 + 通知中继）
+  ipcMain.handle('remote:revoke-share-link', async (_e, token: string) => {
+    const cfg = getRemoteConfig()
+    if (!cfg.enabled || !cfg.deviceId || !cfg.deviceKey) {
+      return { ok: false, error: '请先启用远程控制' }
+    }
+    return revokeShareLink(cfg, token)
   })
 }
 

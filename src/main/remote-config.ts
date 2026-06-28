@@ -6,12 +6,21 @@ import Store from 'electron-store'
 import { randomBytes, randomUUID } from 'crypto'
 import { CC_DESK_DIR } from './paths'
 
+export interface ShareLink {
+  token: string
+  url: string
+  createdAt: number
+  expiresAt: number
+}
+
 export interface RemoteConfig {
   enabled: boolean
   relayUrl: string
   deviceId: string
   deviceKey: string
   pairedDevices: string[]
+  /** 分享链接列表（Task 3）：经 /pair token.create 生成，撤销时从列表删除。 */
+  shareLinks?: ShareLink[]
 }
 
 const DEFAULT: RemoteConfig = {
@@ -20,6 +29,7 @@ const DEFAULT: RemoteConfig = {
   deviceId: '',
   deviceKey: '',
   pairedDevices: [],
+  shareLinks: [],
 }
 
 // 与 cc-desk-store 同文件（name: 'config', cwd: CC_DESK_DIR），不同顶层 key（remote vs config）。

@@ -18,6 +18,7 @@ interface RemoteConfig {
   deviceId: string
   deviceKey: string
   pairedDevices: string[]
+  shareLinks?: { token: string; url: string; createdAt: number; expiresAt: number }[]
 }
 
 interface PairResult {
@@ -25,6 +26,22 @@ interface PairResult {
   qr?: string
   expiresAt?: number
   error?: string
+}
+
+interface ShareLinkResult {
+  token?: string
+  url?: string
+  qr?: string
+  expiresAt?: number
+  error?: string
+}
+
+interface ShareLinkItem {
+  token: string
+  url: string
+  createdAt: number
+  expiresAt: number
+  qr?: string
 }
 
 const inputStyle: React.CSSProperties = {
@@ -48,14 +65,22 @@ export function RemoteSettings() {
   const [pair, setPair] = useState<PairResult | null>(null)
   const [pairing, setPairing] = useState(false)
   const [relayDraft, setRelayDraft] = useState('')
+  // 分享链接
+  const [shareLinks, setShareLinks] = useState<ShareLinkItem[]>([])
+  const [creatingShare, setCreatingShare] = useState(false)
+  const [shareExpiry, setShareExpiry] = useState<number>(30)
+  const [shareError, setShareError] = useState('')
+  const [shareQrMap, setShareQrMap] = useState<Record<string, string>>({})
+  const [copiedToken, setCopiedToken] = useState('')
 
   // 拉取配置
   const refresh = useCallback(() => {
     window.api.remote.getConfig().then((c: RemoteConfig) => {
       setCfg(c)
       setRelayDraft(c.relayUrl)
+      setShareLinks((c.shareLinks ?? []).map(l => ({ ...l, qr: shareQrMap[l.token] })))
     }).catch(() => {})
-  }, [])
+  }, [shareQrMap])
 
   useEffect(() => { refresh() }, [refresh])
 
@@ -116,6 +141,57 @@ export function RemoteSettings() {
     window.api.remote.unpair(deviceId)
   }
 
+  const onCreateShareLink = async () => {
+    setCreatingShare(true)
+    setShareError('')
+    try {
+      const r: ShareLinkResult = await window.api.remote.createShareLink(shareExpiry)
+      if (r.error) {
+        setShareError(r.error)
+        return
+      }
+      if (r.token && r.url) {
+        // 把刚生成的二维码存入 map，refresh 时回填
+        setShareQrMap(prev => ({ ...prev, [r.token!]: r.qr ?? '' }))
+        refresh()
+      }
+    } catch (e) {
+      setShareError(String(e))
+    } finally {
+      setCreatingShare(false)
+    }
+  }
+
+  const onRevokeShareLink = async (token: string) => {
+    try {
+      await window.api.remote.revokeShareLink(token)
+      setShareQrMap(prev => {
+        const next = { ...prev }
+        delete next[token]
+        return next
+      })
+      refresh()
+    } catch { /* noop */ }
+  }
+
+  const onCopy = async (token: string, url: string) => {
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopiedToken(token)
+      setTimeout(() => setCopiedToken(''), 1500)
+    } catch { /* noop */ }
+  }
+
+  // 格式化过期时间
+  const fmtExpiry = (expiresAt: number) => {
+    if (!expiresAt || expiresAt > Date.now() + 1000 * 60 * 60 * 24 * 365 * 50) return t('remote.neverExpires')
+    const left = expiresAt - Date.now()
+    if (left <= 0) return t('remote.expired')
+    const days = Math.floor(left / (1000 * 60 * 60 * 24))
+    const hrs = Math.floor((left % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+    return days > 0 ? `${days}天${hrs}小时` : `${hrs}小时`
+  }
+
   return (
     <SettingsLayout title={t('remote.title')}>
       <SettingsCard>
@@ -141,6 +217,67 @@ export function RemoteSettings() {
           </div>
         </SettingsRow>
       </SettingsCard>
+
+      {cfg.enabled && (
+        <SettingsCard>
+          <SettingsRow title={t('remote.shareLinks')} desc={t('remote.shareLinksDesc')}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <select
+                value={shareExpiry}
+                onChange={(e) => setShareExpiry(Number(e.target.value))}
+                style={{ ...inputStyle, width: 'auto' }}
+              >
+                <option value={7}>{t('remote.expiry7')}</option>
+                <option value={30}>{t('remote.expiry30')}</option>
+                <option value={0}>{t('remote.expiryForever')}</option>
+              </select>
+              <button onClick={onCreateShareLink} disabled={creatingShare} style={{ ...btnStyle, opacity: creatingShare ? 0.6 : 1 }}>
+                {creatingShare ? t('remote.pairing') : t('remote.genShareLink')}
+              </button>
+            </div>
+          </SettingsRow>
+          {shareError && (
+            <SettingsRow title={t('remote.shareFailed')} noBorder>
+              <span style={{ ...mutedStyle, color: 'var(--danger, #c0392b)' }}>{shareError}</span>
+            </SettingsRow>
+          )}
+          {shareLinks.map((l, idx) => {
+            const expired = l.expiresAt && l.expiresAt <= Date.now()
+            return (
+              <SettingsRow key={l.token} title={t('remote.shareCreated')} desc={fmtExpiry(l.expiresAt)} noBorder={idx === shareLinks.length - 1}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end', maxWidth: 460 }}>
+                  {l.qr && (
+                    <img src={l.qr} alt={t('remote.pairQr')} style={{ width: 120, height: 120, borderRadius: 'var(--radius)', opacity: expired ? 0.4 : 1 }} />
+                  )}
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', maxWidth: '100%' }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 280 }}>
+                      {l.url}
+                    </span>
+                    <button
+                      onClick={() => onCopy(l.token, l.url)}
+                      style={{ padding: '2px 8px', fontSize: 11, cursor: 'pointer', border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--bg)', color: 'var(--text-muted)' }}
+                    >
+                      {copiedToken === l.token ? t('remote.copied') : t('remote.copy')}
+                    </button>
+                    <button
+                      onClick={() => onRevokeShareLink(l.token)}
+                      style={{ padding: '2px 8px', fontSize: 11, cursor: 'pointer', border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--bg)', color: 'var(--danger, #c0392b)' }}
+                    >
+                      {t('remote.delete')}
+                    </button>
+                  </div>
+                  {expired && <span style={{ ...mutedStyle, color: 'var(--danger, #c0392b)' }}>{t('remote.expired')}</span>}
+                </div>
+              </SettingsRow>
+            )
+          })}
+          {shareLinks.length > 0 && (
+            <SettingsRow title="" noBorder>
+              <span style={mutedStyle}>{t('remote.scanShareTip')}</span>
+            </SettingsRow>
+          )}
+        </SettingsCard>
+      )}
 
       {cfg.enabled && (
         <SettingsCard>

@@ -214,6 +214,10 @@ contextBridge.exposeInMainWorld('api', {
     cancelPair: () => ipcRenderer.invoke('remote:cancel-pair'),
     // 解绑设备：通知中继删绑定 + 清本地 pairedDevices
     unpair: (deviceId: string) => ipcRenderer.invoke('remote:unpair', deviceId),
+    // 创建分享链接（返回 { token, url, qr, expiresAt } 或 { error }）
+    createShareLink: (expiresInDays: number) => ipcRenderer.invoke('remote:create-share-link', expiresInDays),
+    // 撤销分享链接（本地删除 + 通知中继 revoke）
+    revokeShareLink: (token: string) => ipcRenderer.invoke('remote:revoke-share-link', token),
     // 主→渲染：配对相关事件（如手机配对成功通知，刷新已配对列表）
     onPairEvent: (cb: (data: any) => void) => {
       const channel = 'remote:pair-event'

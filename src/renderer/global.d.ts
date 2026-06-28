@@ -140,6 +140,8 @@ interface RemoteAPI {
   pair(): Promise<{ code?: string; qr?: string; expiresAt?: number; error?: string }>
   cancelPair(): Promise<{ ok: boolean }>
   unpair(deviceId: string): Promise<{ ok: boolean }>
+  createShareLink(expiresInDays: number): Promise<{ token?: string; url?: string; qr?: string; expiresAt?: number; error?: string }>
+  revokeShareLink(token: string): Promise<{ ok: boolean; error?: string }>
   onPairEvent(cb: (data: { kind: string; deviceId?: string }) => void): () => void
   onState(cb: (s: { connected: boolean }) => void): () => void
   removeAllListeners(): void

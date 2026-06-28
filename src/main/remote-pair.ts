@@ -56,6 +56,74 @@ export function isPairErrorResponse(msg: unknown): msg is PairErrorResponse {
   )
 }
 
+// ---- 分享链接 token 协议（Task 3）----
+// 中继 /pair 端点接受 token.create / token.revoke（明文 JSON，与 pair.code 同源信任：
+// deviceId + deviceKey 必须已在 keyRegistry 登记）。
+
+/** 中继 /pair 端点接收的 token.create 请求。 */
+export interface TokenCreateRequest {
+  type: 'token.create'
+  deviceId: string
+  deviceKey: string
+  expiresInDays: number
+}
+
+/** 中继 /pair 端点对 token.create 的响应。 */
+export interface TokenCreatedResponse {
+  type: 'token.created'
+  payload: { token: string; expiresAt: number }
+}
+
+/** 中继 /pair 端点接收的 token.revoke 请求。 */
+export interface TokenRevokeRequest {
+  type: 'token.revoke'
+  deviceId: string
+  deviceKey: string
+  token: string
+}
+
+/** 中继 /pair 端点对 token.revoke 的响应。 */
+export interface TokenRevokedResponse {
+  type: 'token.revoked'
+  payload: { token: string }
+}
+
+/** 构造向中继申请分享链接 token 的请求消息。expiresInDays<=0 视为永久（中继侧按 365*100 年近似）。 */
+export function buildTokenCreateRequest(deviceId: string, deviceKey: string, expiresInDays: number): TokenCreateRequest {
+  return { type: 'token.create', deviceId, deviceKey, expiresInDays }
+}
+
+/** 构造向中继撤销分享链接 token 的请求消息。 */
+export function buildTokenRevokeRequest(deviceId: string, deviceKey: string, token: string): TokenRevokeRequest {
+  return { type: 'token.revoke', deviceId, deviceKey, token }
+}
+
+/**
+ * 把分享 token 拼成手机可访问的 PWA URL。
+ * 规则：`${relayUrl}/?t=${token}`。
+ */
+export function buildShareUrl(relayUrl: string, token: string): string {
+  const base = relayUrl.replace(/\/+$/, '')
+  return `${base}/?t=${encodeURIComponent(token)}`
+}
+
+/** 类型守卫：判断中继返回的 JSON 是否为 token.created 成功响应。 */
+export function isTokenCreatedResponse(msg: unknown): msg is TokenCreatedResponse {
+  return (
+    typeof msg === 'object' && msg !== null &&
+    (msg as any).type === 'token.created' &&
+    typeof (msg as any).payload?.token === 'string'
+  )
+}
+
+/** 类型守卫：判断中继返回的 JSON 是否为 token.revoked 响应。 */
+export function isTokenRevokedResponse(msg: unknown): msg is TokenRevokedResponse {
+  return (
+    typeof msg === 'object' && msg !== null &&
+    (msg as any).type === 'token.revoked'
+  )
+}
+
 /**
  * 判断一条入站业务信封是否为「配对请求」（pair.request）。
  * 协议里 pair.request 是中继转发给桌面的「手机请求配对」控制消息；
