@@ -7,7 +7,7 @@
 //   - 列表标题栏：「当前设备上的项目和会话」+ 统计
 //   - 项目卡：📁名称 + 本地标签 + 会话数 + 路径 + 展开箭头；展开后会话行（标题+状态+时间）
 //   - 会话行：左侧状态色条（运行=绿，完成=灰，错误=红）+ 等宽标题 + 状态标签 + 相对时间
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import {
   type SessionListItem,
   type ProjectMeta,
@@ -43,6 +43,13 @@ export default function ProjectListPage(props: ProjectListPageProps) {
   const [expanded, setExpanded] = useState<Set<string>>(() => {
     return new Set(groups.length > 0 ? [groups[0].projectId] : [])
   })
+  useEffect(() => {
+    if (groups.length === 0) return
+    setExpanded((prev) => {
+      if (prev.size > 0) return prev
+      return new Set([groups[0].projectId])
+    })
+  }, [groups])
   // 归档二次确认态：记录哪个会话正在「待确认归档」（点一次进入确认，再点执行）
   const [pendingArchive, setPendingArchive] = useState<string | null>(null)
 

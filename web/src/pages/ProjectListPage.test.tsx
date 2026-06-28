@@ -45,4 +45,13 @@ describe('ProjectListPage - 会话行归档', () => {
     fireEvent.click(screen.getByText('确认删除'))
     expect(onArchive).toHaveBeenCalledWith('s1')
   })
+
+  it('项目列表从空异步到达时自动展开第一个项目', () => {
+    const props = baseProps({ sessions: [], projectsMeta: [] })
+    const { rerender } = render(<ProjectListPage {...props} />)
+
+    rerender(<ProjectListPage {...baseProps()} />)
+
+    expect(screen.getByText('会话')).toBeInTheDocument()
+  })
 })

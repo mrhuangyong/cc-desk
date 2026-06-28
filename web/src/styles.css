@@ -460,6 +460,7 @@ body {
 .msg { display: flex; padding: 0; }
 .msg.user { justify-content: flex-end; }
 .msg.assistant { justify-content: flex-start; }
+.msg.notice { justify-content: center; }
 .msg-bubble {
   max-width: 85%; padding: 10px 13px; border-radius: 18px; font-size: 14px;
   line-height: 1.55; word-break: break-word;
@@ -471,6 +472,27 @@ body {
 .assistant-bubble {
   background: var(--bg-elev); color: var(--text); border: 1px solid var(--border);
   border-bottom-left-radius: 5px;
+}
+.notice-bubble {
+  max-width: 85%;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  word-break: break-word;
+}
+.msg.notice-warn .notice-bubble {
+  color: var(--accent-ink);
+  background: var(--accent-bg);
+  border-color: var(--accent-bg-strong);
+}
+.msg.notice-error .notice-bubble {
+  color: var(--error);
+  background: var(--error-bg);
+  border-color: var(--error);
 }
 .assistant-text { white-space: pre-wrap; }
 .assistant-bubble code {

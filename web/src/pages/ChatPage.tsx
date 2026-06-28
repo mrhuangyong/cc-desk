@@ -11,7 +11,7 @@
 // 数据由父组件（App）通过 useSessionChat / useDialogQueue 聚合后以 props 注入；
 //   本页只做渲染 + 回调，传输/状态机在 hook 层（便于测试）。
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import type { AnyMessage } from '../hooks/useSessionChat'
+import type { AnyMessage, QueuedMessage } from '../hooks/useSessionChat'
 import type { DialogRequest } from '../lib/dialog-queue'
 import type { ChatBlock } from '../lib/chat-blocks'
 import type { ImageAttachment } from '../lib/read-image'
@@ -87,7 +87,7 @@ export interface ChatPageProps {
   /** 切换排队模式。 */
   onQueueModeChange?: (mode: 'queue' | 'guide') => void
   /** 排队中的消息文本(流式时 queue 模式发送的,AI 结束后自动发)。 */
-  queue?: string[]
+  queue?: QueuedMessage[]
   /** header 右侧额外控件(主题切换等)。 */
   headerExtra?: React.ReactNode
 }
@@ -169,7 +169,7 @@ export default function ChatPage(props: ChatPageProps) {
     queue,
   } = props
 
-  const canSend = inputValue.trim().length > 0
+  const canSend = inputValue.trim().length > 0 || (attachments?.length ?? 0) > 0
 
   // 原位编辑:正在编辑的文本(初始从被编辑消息取)。保存/取消时清空。
   const [editValue, setEditValue] = useState('')
@@ -329,6 +329,13 @@ export default function ChatPage(props: ChatPageProps) {
           <p className="hint chat-empty">还没有消息，输入开始对话</p>
         )}
         {messages.map((m, i) => {
+          if (m.role === 'notice') {
+            return (
+              <div key={i} className={`msg notice notice-${m.level ?? 'info'}`}>
+                <div className="notice-bubble">{m.text}</div>
+              </div>
+            )
+          }
           if (m.role === 'user') {
             // 编辑态:该消息原位变 textarea + 保存/取消
             if (editingIndex === i) {
@@ -420,8 +427,10 @@ export default function ChatPage(props: ChatPageProps) {
               )}
               {queue && queue.length > 0 && (
                 <div className="queue-chips">
-                  {queue.map((text, i) => (
-                    <div className="queue-chip" key={i}>排队中: {text}</div>
+                  {queue.map((item, i) => (
+                    <div className="queue-chip" key={i}>
+                      排队中: {item.text || ((item.opts.images?.length ?? 0) > 0 ? '图片附件' : '消息')}
+                    </div>
                   ))}
                 </div>
               )}

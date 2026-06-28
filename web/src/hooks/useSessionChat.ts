@@ -30,7 +30,29 @@ export interface UserMessage {
   role: 'user'
   text: string
 }
-export type AnyMessage = ChatMessage | UserMessage
+
+/** 系统提示/警告消息（来自 session.notice），插入对话流但不参与 assistant blocks。 */
+export interface NoticeMessage {
+  role: 'notice'
+  text: string
+  level?: 'info' | 'warn' | 'error'
+  kind?: string
+}
+
+export type AnyMessage = ChatMessage | UserMessage | NoticeMessage
+
+export interface SendMessageOptions {
+  permission?: string
+  thinking?: 'low' | 'medium' | 'high'
+  extraDirs?: string[]
+  images?: { mediaType: string; data: string; name?: string }[]
+  queueMode?: 'queue' | 'guide'
+}
+
+export interface QueuedMessage {
+  text: string
+  opts: Omit<SendMessageOptions, 'queueMode'>
+}
 
 export type ChatSendFn = (
   type: Extract<MessageType, 'session.message' | 'session.interrupt' | 'session.history.request'>,
@@ -66,14 +88,8 @@ export interface UseSessionChatHandle {
   sendMessage(
     localSessionId: string,
     text: string,
-    opts?: {
-      permission?: string
-      thinking?: 'low' | 'medium' | 'high'
-      extraDirs?: string[]
-      images?: { mediaType: string; data: string; name?: string }[]
-      queueMode?: 'queue' | 'guide'
-    },
-  ): Promise<void>
+    opts?: SendMessageOptions,
+  ): Promise<boolean>
   /** 中断当前 query。 */
   interrupt(localSessionId: string): Promise<void>
   /** 拉取历史对话（attach 后调；hasMore=true 时可继续上拉）。 */
@@ -87,7 +103,7 @@ export interface UseSessionChatHandle {
   /** 编辑重发:截断 index 及之后消息,用新文本替换该 user + 中断(若在跑)+ 重发。 */
   editAndResend(localSessionId: string, index: number, newText: string): Promise<void>
   /** 排队中的消息文本(queue 模式流式时发送的消息,AI 结束后自动发)。 */
-  queue: string[]
+  queue: QueuedMessage[]
 }
 
 /** 从 session.blocks payload 取出 blocks 数组（容错，归一化桌面端 claude:blocks 的三种 op）。
@@ -118,6 +134,21 @@ function extractBlocks(payload: any): unknown[] {
   return []
 }
 
+function hasSendableContent(text: string, opts?: SendMessageOptions): boolean {
+  return text.trim().length > 0 || (opts?.images?.length ?? 0) > 0
+}
+
+function userEchoText(text: string, opts?: SendMessageOptions): string {
+  const trimmed = text.trim()
+  if (trimmed) return trimmed
+  return (opts?.images?.length ?? 0) > 0 ? '图片附件' : ''
+}
+
+function stripQueueMode(opts?: SendMessageOptions): Omit<SendMessageOptions, 'queueMode'> {
+  const { queueMode: _queueMode, ...sendOpts } = opts ?? {}
+  return sendOpts
+}
+
 export function useSessionChat(opts: UseSessionChatOptions): UseSessionChatHandle {
   const { send } = opts
   const [messages, setMessages] = useState<AnyMessage[]>([])
@@ -131,7 +162,7 @@ export function useSessionChat(opts: UseSessionChatOptions): UseSessionChatHandl
   // 当前轮次是否已收尾（收到 session.result）。true 时下一条 delta/blocks 强制开新 assistant 消息。
   const finishedRef = useRef(true)
   // 排队模式:流式中 queue 模式发送的消息暂存队列,AI 结束后自动发队首。
-  const [queue, setQueue] = useState<string[]>([])
+  const [queue, setQueue] = useState<QueuedMessage[]>([])
   // 自动出队的 useEffect 需 localSessionId,但 hook 不持有它(sendMessage 参数传入)。
   // 用 ref 缓存最近一次 sendMessage 的 localSessionId,供出队 useEffect 使用。
   const localSessionIdRef = useRef<string>('')
@@ -230,7 +261,20 @@ export function useSessionChat(opts: UseSessionChatOptions): UseSessionChatHandl
         finishedRef.current = true // 收尾：下一次 delta 开新轮次
         return
       }
-      // 其余信封（session.notice 等）不在本 hook 关注范围
+      if (env.type === 'session.notice') {
+        const p = env.payload as { text?: string; level?: 'info' | 'warn' | 'error'; kind?: string }
+        const noticeText = typeof p.text === 'string' ? p.text : ''
+        if (noticeText.trim()) {
+          setMessages((prev) => [...prev, {
+            role: 'notice',
+            text: noticeText,
+            level: p.level,
+            kind: p.kind,
+          }])
+        }
+        return
+      }
+      // 其余信封不在本 hook 关注范围
     },
     [],
   )
@@ -239,43 +283,43 @@ export function useSessionChat(opts: UseSessionChatOptions): UseSessionChatHandl
     async (
       localSessionId: string,
       text: string,
-      opts?: {
-        permission?: string
-        thinking?: 'low' | 'medium' | 'high'
-        extraDirs?: string[]
-        images?: { mediaType: string; data: string; name?: string }[]
-        queueMode?: 'queue' | 'guide'
-      },
+      opts?: SendMessageOptions,
     ) => {
       const trimmed = text.trim()
-      if (!trimmed) return
+      if (!hasSendableContent(text, opts)) return false
       localSessionIdRef.current = localSessionId
       // 剔除 queueMode(协议层不需要,不该透传给 session.message)
-      const { queueMode: _qm, ...sendOpts } = opts ?? {}
+      const sendOpts = stripQueueMode(opts)
+      const echoText = userEchoText(text, opts)
       // 流式中按 queueMode 处理(非流式直接发)
       if (running) {
         if (opts?.queueMode === 'queue') {
           // queue:进队列,不直接发(等 AI 结束自动出队)
-          setQueue((prev) => [...prev, trimmed])
-          return
+          setQueue((prev) => [...prev, { text: trimmed, opts: sendOpts }])
+          return true
         }
         if (opts?.queueMode === 'guide') {
           // guide:中断当前 AI,200ms 后立即发(确保 SDK 中断完成)
-          await send('session.interrupt', { localSessionId })
+          const interrupted = await send('session.interrupt', { localSessionId })
+          if (!interrupted) return false
           setTimeout(() => {
-            setMessages((prev) => [...prev, { role: 'user' as const, text: trimmed }, mkMessage()])
-            finishedRef.current = false
-            setRunning(true)
-            void send('session.message', { localSessionId, text: trimmed })
+            void send('session.message', { localSessionId, text: trimmed, ...sendOpts }).then((ok) => {
+              if (!ok) return
+              setMessages((prev) => [...prev, { role: 'user' as const, text: echoText }, mkMessage()])
+              finishedRef.current = false
+              setRunning(true)
+            })
           }, 200)
-          return
+          return true
         }
       }
       // 非流式 / 无 queueMode:直接 echo + 发
-      setMessages((prev) => [...prev, { role: 'user' as const, text: trimmed }, mkMessage()])
+      const ok = await send('session.message', { localSessionId, text: trimmed, ...sendOpts })
+      if (!ok) return false
+      setMessages((prev) => [...prev, { role: 'user' as const, text: echoText }, mkMessage()])
       finishedRef.current = false // 新 assistant 已就位，delta 续写它
       setRunning(true)
-      await send('session.message', { localSessionId, text: trimmed, ...sendOpts })
+      return true
     },
     [send, running],
   )
@@ -288,10 +332,15 @@ export function useSessionChat(opts: UseSessionChatOptions): UseSessionChatHandl
       setQueue((prev) => prev.slice(1))
       const localSessionId = localSessionIdRef.current
       // 出队即直接发(echo + send,不再判断 queueMode)
-      setMessages((prev) => [...prev, { role: 'user' as const, text: next }, mkMessage()])
-      finishedRef.current = false
-      setRunning(true)
-      void send('session.message', { localSessionId, text: next })
+      void send('session.message', { localSessionId, text: next.text, ...next.opts }).then((ok) => {
+        if (!ok) {
+          setQueue((prev) => [next, ...prev])
+          return
+        }
+        setMessages((prev) => [...prev, { role: 'user' as const, text: userEchoText(next.text, next.opts) }, mkMessage()])
+        finishedRef.current = false
+        setRunning(true)
+      })
     }
   }, [running, queue, send])
 

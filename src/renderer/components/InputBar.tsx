@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Plus, Paperclip, AtSign, Check, ShieldCheck, ChevronDown, ArrowUp, Square, Folder, FolderPlus } from 'lucide-react'
 import { useStore } from '../state/store'
 import { useI18n } from '../i18n/useI18n'
@@ -51,6 +51,14 @@ export function collectImages(attachments: DraftAttachment[]): { mediaType: stri
 export function InputBar() {
   const { state, dispatch } = useStore()
   const { t } = useI18n()
+  const [draftDoc, setDraftDoc] = useState(state.draft.doc)
+  const [draftAttachments, setDraftAttachments] = useState<DraftAttachment[]>(state.draft.attachments)
+
+  useEffect(() => {
+    setDraftDoc(state.draft.doc)
+    setDraftAttachments(state.draft.attachments)
+    setOpenMenu(null)
+  }, [state.activeSessionId])
 
   // / 菜单全量缓存：组件 mount 时拉命令+技能，转成 SlashMenuItem[]
   const [allSlashItems, setAllSlashItems] = useState<SlashMenuItem[]>([])
@@ -74,7 +82,8 @@ export function InputBar() {
 
   // @ 菜单的 cwd 基点：当前会话所属项目的 path，回退 settings.cwd
   const project = state.projects.find(p => p.sessions.some(s => s.id === state.activeSessionId))
-  const getCwd = () => project?.path || state.settings?.cwd || ''
+  const cwd = project?.path || state.settings?.cwd || ''
+  const getCwd = useCallback(() => cwd, [cwd])
 
   // 会话级权限/思考：读会话字段，undefined 时用默认。
   // 从已找到的 project 内取 session，避免对全量 projects 再做一次 flatMap 扫描。
@@ -89,11 +98,11 @@ export function InputBar() {
         const reader = new FileReader()
         reader.onload = () => {
           const base64 = (reader.result as string).split(',')[1] ?? ''
-          dispatch({ type: 'ADD_DRAFT_ATTACHMENT', attachment: { type: 'image', name: f.name, base64, mediaType: f.type } })
+          setDraftAttachments(prev => [...prev, { type: 'image', name: f.name, base64, mediaType: f.type }])
         }
         reader.readAsDataURL(f)
       } else {
-        dispatch({ type: 'ADD_DRAFT_ATTACHMENT', attachment: { type: 'file', name: f.name, path: f.name } })
+        setDraftAttachments(prev => [...prev, { type: 'file', name: f.name, path: f.name }])
       }
     })
   }
@@ -158,13 +167,17 @@ export function InputBar() {
   }, [state.activeSessionId, editorRef])
 
   // 序列化 doc 得到纯文本预览：canSend 与 doSend 都用它
-  const promptPreview = serializeForPrompt(state.draft.doc)
-  const canSend = promptPreview.trim().length > 0 || state.draft.attachments.length > 0
+  const promptPreview = useMemo(() => serializeForPrompt(draftDoc), [draftDoc])
+  const canSend = promptPreview.trim().length > 0 || draftAttachments.length > 0
+  const clearLocalDraft = () => {
+    setDraftDoc(null)
+    setDraftAttachments([])
+  }
 
   // 发送：追加用户消息 + 标记会话进入流式 + IPC 调用主进程
   const handleSend = () => {
     // 空 prompt 且无附件：不发
-    if (!promptPreview.trim() && state.draft.attachments.length === 0) return
+    if (!promptPreview.trim() && draftAttachments.length === 0) return
     // 流式中：按 queueMode 处理
     if (isStreaming) {
       if (state.settings.queueMode === 'guide') {
@@ -173,8 +186,8 @@ export function InputBar() {
         setTimeout(() => doSend(), 200)
       } else {
         // 队列模式：消息进排队列表，AI 完成后自动发送
-        dispatch({ type: 'ENQUEUE_MESSAGE', sessionId: state.activeSessionId, prompt: promptPreview, attachments: state.draft.attachments })
-        dispatch({ type: 'CLEAR_DRAFT' })
+        dispatch({ type: 'ENQUEUE_MESSAGE', sessionId: state.activeSessionId, prompt: promptPreview, attachments: draftAttachments })
+        clearLocalDraft()
       }
       return
     }
@@ -192,8 +205,7 @@ export function InputBar() {
     const doc = next.prompt
       ? { type: 'doc' as const, content: [{ type: 'paragraph' as const, content: [{ type: 'text' as const, text: next.prompt }] }] }
       : null
-    dispatch({ type: 'SET_DRAFT_DOC', doc })
-    dispatch({ type: 'SEND_MESSAGE' })
+    dispatch({ type: 'SEND_MESSAGE_WITH_DRAFT', doc, attachments: next.attachments })
     dispatch({ type: 'DEQUEUE_MESSAGE', sessionId: state.activeSessionId, queueId: next.id })
     dispatch({ type: 'STREAM_START', sessionId: state.activeSessionId })
     window.api?.claude?.send({ prompt: buildPromptWithAttachments(next.prompt, next.attachments), images: collectImages(next.attachments), localSessionId: state.activeSessionId, sessionId: claudeSessionId || undefined, cwd, permission, thinking, extraDirs: activeSession?.extraDirs })
@@ -214,16 +226,15 @@ export function InputBar() {
       const claudeSessionId = state.claudeSessionMap?.[state.activeSessionId]
       const cwd = project?.path || state.settings?.cwd || undefined
       const doc = qm.prompt ? { type: 'doc' as const, content: [{ type: 'paragraph' as const, content: [{ type: 'text' as const, text: qm.prompt }] }] } : null
-      dispatch({ type: 'SET_DRAFT_DOC', doc })
-      dispatch({ type: 'SEND_MESSAGE' })
+      dispatch({ type: 'SEND_MESSAGE_WITH_DRAFT', doc, attachments: qm.attachments })
       dispatch({ type: 'STREAM_START', sessionId: state.activeSessionId })
       window.api?.claude?.send({ prompt: buildPromptWithAttachments(qm.prompt, qm.attachments), images: collectImages(qm.attachments), localSessionId: state.activeSessionId, sessionId: claudeSessionId || undefined, cwd, permission, thinking, extraDirs: activeSession?.extraDirs })
     }, 200)
   }
 
   const doSend = () => {
-    const prompt = serializeForPrompt(state.draft.doc)
-    if (!prompt.trim() && state.draft.attachments.length === 0) return
+    const prompt = serializeForPrompt(draftDoc)
+    if (!prompt.trim() && draftAttachments.length === 0) return
     // 宿主级内置命令（/export /add-dir）：Claude 不认识，选中引用后发送时由宿主执行，
     // 不发给模型。精确匹配 /name。
     // 注意：/init 不在此列——它是 Claude 原生指令，普通发送给 Claude 它自己就会执行
@@ -241,18 +252,19 @@ export function InputBar() {
         claudeSessionId: state.claudeSessionMap?.[state.activeSessionId],
         toggleMenu, editor: editorRef,
       })
-      dispatch({ type: 'SEND_MESSAGE' })
+      dispatch({ type: 'SEND_MESSAGE_WITH_DRAFT', doc: draftDoc, attachments: draftAttachments })
+      clearLocalDraft()
       return
     }
     // 取当前本地会话映射到的 Claude 真实 sessionId；存在则 resume 续接，否则新建会话
     const claudeSessionId = state.claudeSessionMap?.[state.activeSessionId]
     // 工作目录优先取当前激活会话所属项目的 path，回退到全局设置 cwd。
     const cwd = project?.path || state.settings?.cwd || undefined
-    dispatch({ type: 'SEND_MESSAGE' })
+    dispatch({ type: 'SEND_MESSAGE_WITH_DRAFT', doc: draftDoc, attachments: draftAttachments })
     dispatch({ type: 'STREAM_START', sessionId: state.activeSessionId })
     window.api?.claude?.send({
-      prompt: buildPromptWithAttachments(prompt, state.draft.attachments),
-      images: collectImages(state.draft.attachments),
+      prompt: buildPromptWithAttachments(prompt, draftAttachments),
+      images: collectImages(draftAttachments),
       localSessionId: state.activeSessionId,
       sessionId: claudeSessionId || undefined,
       cwd,
@@ -260,6 +272,7 @@ export function InputBar() {
       thinking,
       extraDirs: activeSession?.extraDirs,
     })
+    clearLocalDraft()
   }
 
   // 停止：IPC 中断主进程的 Claude 调用
@@ -403,13 +416,13 @@ export function InputBar() {
         </div>
       )}
       {/* 上方 chip 栏：粘贴/拖拽的附件 */}
-      {state.draft.attachments.length > 0 && (
+      {draftAttachments.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '8px 16px 0' }}>
-          {state.draft.attachments.map((att, i) => (
+          {draftAttachments.map((att, i) => (
             <AttachmentChip
               key={i}
               attachment={att}
-              onRemove={() => dispatch({ type: 'REMOVE_DRAFT_ATTACHMENT', index: i })}
+              onRemove={() => setDraftAttachments(prev => prev.filter((_, idx) => idx !== i))}
             />
           ))}
         </div>
@@ -424,11 +437,11 @@ export function InputBar() {
         style={{ position: 'relative', minHeight: 48, padding: '14px 16px 8px' }}
       >
         <PromptEditor
-          doc={state.draft.doc}
+          doc={draftDoc}
           placeholder={t('input.placeholder')}
           allSlashItems={slashItems}
           getCwd={getCwd}
-          onDocChange={(doc) => dispatch({ type: 'SET_DRAFT_DOC', doc })}
+          onDocChange={setDraftDoc}
           onPasteFiles={onPasteFiles}
           onSend={onSendClick}
           onEditorReady={setEditorRef}

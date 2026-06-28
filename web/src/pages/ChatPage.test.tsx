@@ -71,6 +71,22 @@ describe('ChatPage - 渲染', () => {
     expect(screen.getByText('你好')).toBeInTheDocument()
   })
 
+  it('渲染 notice 消息', () => {
+    render(
+      <ChatPage
+        title="t"
+        messages={[{ role: 'notice', text: 'API 重试中', level: 'warn' } as any]}
+        running={false}
+        inputValue=""
+        onInputChange={() => {}}
+        onSend={() => {}}
+        onInterrupt={() => {}}
+        onBack={() => {}}
+      />,
+    )
+    expect(screen.getByText('API 重试中')).toBeInTheDocument()
+  })
+
   it('渲染 tool_use 块', () => {
     render(
       <ChatPage
@@ -172,6 +188,29 @@ describe('ChatPage - 交互', () => {
       />,
     )
     expect(screen.getByRole('button', { name: /发送/ })).toBeDisabled()
+  })
+
+  it('只有附件没有文本时发送按钮可用并触发 onSend', () => {
+    const onSend = vi.fn()
+    render(
+      <ChatPage
+        title="t"
+        messages={[]}
+        running={false}
+        inputValue=""
+        onInputChange={() => {}}
+        onSend={onSend}
+        onInterrupt={() => {}}
+        onBack={() => {}}
+        attachments={[{ mediaType: 'image/png', data: 'aaa', name: 'a.png' }]}
+        onAddImages={() => {}}
+        onRemoveImage={() => {}}
+      />,
+    )
+    const btn = screen.getByRole('button', { name: /发送/ })
+    expect(btn).not.toBeDisabled()
+    fireEvent.click(btn)
+    expect(onSend).toHaveBeenCalled()
   })
 
   it('回车触发 onSend（非 Shift+Enter）', () => {
@@ -662,7 +701,7 @@ describe('ChatPage - 排队模式', () => {
     render(
       <ChatPage
         {...baseProps}
-        queue={['排队消息1', '排队消息2']}
+        queue={[{ text: '排队消息1' }, { text: '排队消息2' }] as any}
       />,
     )
     const chips = screen.getAllByText(/排队消息/)

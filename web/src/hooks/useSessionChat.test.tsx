@@ -170,12 +170,47 @@ describe('useSessionChat - blocks', () => {
 })
 
 describe('useSessionChat - 输入与中断', () => {
+  it('sendMessage 在传输失败时返回 false，且不本地 echo、不进入 running', async () => {
+    const send = vi.fn().mockResolvedValue(false)
+    const { result } = renderHook(() => useSessionChat({ send }))
+
+    let ok: boolean | undefined
+    await act(async () => {
+      ok = await result.current.sendMessage('s1', '断线消息')
+    })
+
+    expect(ok).toBe(false)
+    expect(result.current.messages).toHaveLength(0)
+    expect(result.current.running).toBe(false)
+  })
+
+  it('sendMessage 支持只有图片附件、没有文本的消息', async () => {
+    const send = vi.fn().mockResolvedValue(true)
+    const { result } = renderHook(() => useSessionChat({ send }))
+    const images = [{ mediaType: 'image/png', data: 'iVBORw0KGgo=', name: 'x.png' }]
+
+    let ok: boolean | undefined
+    await act(async () => {
+      ok = await result.current.sendMessage('s1', '', { images })
+    })
+
+    expect(ok).toBe(true)
+    expect(send).toHaveBeenCalledWith('session.message', expect.objectContaining({
+      localSessionId: 's1',
+      text: '',
+      images,
+    }))
+    expect(result.current.messages.some((m) => m.role === 'user')).toBe(true)
+  })
+
   it('sendMessage 发 session.message + 本地 echo 一条 user 消息 + 开新 assistant', async () => {
     const send = vi.fn().mockResolvedValue(true)
     const { result } = renderHook(() => useSessionChat({ send }))
+    let ok: boolean | undefined
     await act(async () => {
-      await result.current.sendMessage('s1', '你好')
+      ok = await result.current.sendMessage('s1', '你好')
     })
+    expect(ok).toBe(true)
     expect(send).toHaveBeenCalledWith('session.message', { localSessionId: 's1', text: '你好' })
     // user 消息 echo
     expect(result.current.messages.some((m) => m.role === 'user' && m.text === '你好')).toBe(true)
@@ -209,9 +244,11 @@ describe('useSessionChat - 输入与中断', () => {
   it('空文本不发送', async () => {
     const send = vi.fn().mockResolvedValue(true)
     const { result } = renderHook(() => useSessionChat({ send }))
+    let ok: boolean | undefined
     await act(async () => {
-      await result.current.sendMessage('s1', '   ')
+      ok = await result.current.sendMessage('s1', '   ')
     })
+    expect(ok).toBe(false)
     expect(send).not.toHaveBeenCalled()
     expect(result.current.messages).toHaveLength(0)
   })
@@ -392,8 +429,26 @@ describe('useSessionChat - 排队模式', () => {
       await result.current.sendMessage('s1', '排队消息', { queueMode: 'queue' })
     })
     // 进了队列,没有新 session.message 调用
-    expect(result.current.queue).toEqual(['排队消息'])
+    expect(result.current.queue.map((q: any) => q.text)).toEqual(['排队消息'])
     expect(send.mock.calls.length).toBe(sendCallsBefore) // 无新 send
+  })
+
+  it('running + queueMode=queue → 出队时保留 permission/thinking/images', async () => {
+    const send = vi.fn().mockResolvedValue(true)
+    const { result } = renderHook(() => useSessionChat({ send }))
+    const images = [{ mediaType: 'image/png', data: 'abc', name: 'a.png' }]
+    act(() => {
+      result.current.onInbound({ v: 1, type: 'session.delta', deviceId: 'd', ts: 1, nonce: 'n', sig: '', payload: { localSessionId: 's1', text: '流式中' } } as any)
+    })
+    await act(async () => {
+      await result.current.sendMessage('s1', '排队1', { queueMode: 'queue', permission: '完全访问', thinking: 'high', images })
+    })
+
+    act(() => {
+      result.current.onInbound({ v: 1, type: 'session.result', deviceId: 'd', ts: 1, nonce: 'n', sig: '', payload: { localSessionId: 's1' } } as any)
+    })
+
+    expect(send.mock.calls.some((c) => c[0] === 'session.message' && c[1]?.text === '排队1' && c[1]?.permission === '完全访问' && c[1]?.thinking === 'high' && c[1]?.images === images)).toBe(true)
   })
 
   it('running + queueMode=guide → interrupt 后 200ms 发', async () => {
@@ -417,6 +472,22 @@ describe('useSessionChat - 排队模式', () => {
     vi.useRealTimers()
   })
 
+  it('running + queueMode=guide → 200ms 后发送保留 permission/thinking/images', async () => {
+    vi.useFakeTimers()
+    const send = vi.fn().mockResolvedValue(true)
+    const { result } = renderHook(() => useSessionChat({ send }))
+    const images = [{ mediaType: 'image/png', data: 'abc', name: 'a.png' }]
+    act(() => {
+      result.current.onInbound({ v: 1, type: 'session.delta', deviceId: 'd', ts: 1, nonce: 'n', sig: '', payload: { localSessionId: 's1', text: '流式中' } } as any)
+    })
+    await act(async () => {
+      await result.current.sendMessage('s1', '立即发', { queueMode: 'guide', permission: '计划模式', thinking: 'low', images })
+    })
+    act(() => { vi.advanceTimersByTime(200) })
+    expect(send.mock.calls.some((c) => c[0] === 'session.message' && c[1]?.text === '立即发' && c[1]?.permission === '计划模式' && c[1]?.thinking === 'low' && c[1]?.images === images)).toBe(true)
+    vi.useRealTimers()
+  })
+
   it('!running → 直接发(不受 queueMode 影响)', async () => {
     const send = vi.fn().mockResolvedValue(true)
     const { result } = renderHook(() => useSessionChat({ send }))
@@ -436,7 +507,7 @@ describe('useSessionChat - 排队模式', () => {
     await act(async () => {
       await result.current.sendMessage('s1', '排队1', { queueMode: 'queue' })
     })
-    expect(result.current.queue).toEqual(['排队1'])
+    expect(result.current.queue.map((q: any) => q.text)).toEqual(['排队1'])
     // AI 结束(session.result → running:false)
     act(() => {
       result.current.onInbound({ v: 1, type: 'session.result', deviceId: 'd', ts: 1, nonce: 'n', sig: '', payload: { localSessionId: 's1' } } as any)
@@ -444,5 +515,23 @@ describe('useSessionChat - 排队模式', () => {
     // 自动出队:queue 清空,发了队首
     expect(result.current.queue).toEqual([])
     expect(send.mock.calls.some((c) => c[0] === 'session.message' && c[1]?.text === '排队1')).toBe(true)
+  })
+})
+
+describe('useSessionChat - 系统提示', () => {
+  it('session.notice 追加为 notice 消息', () => {
+    const send = vi.fn().mockResolvedValue(true)
+    const { result } = renderHook(() => useSessionChat({ send }))
+    act(() => {
+      result.current.onInbound({
+        v: 1, type: 'session.notice', deviceId: 'd', ts: 1, nonce: 'n', sig: '',
+        payload: { localSessionId: 's1', text: 'API 重试中', level: 'warn' },
+      } as any)
+    })
+    expect(result.current.messages).toContainEqual(expect.objectContaining({
+      role: 'notice',
+      text: 'API 重试中',
+      level: 'warn',
+    }))
   })
 })
