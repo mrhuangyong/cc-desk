@@ -8,6 +8,7 @@ import { createBindingStore } from './binding-store'
 import { createKeyStore } from './key-store'
 import { createPairingStore } from './pairing'
 import { createRouter } from './router'
+import { createTokenStore } from './token-store'
 import { verifySig, type Envelope } from '../src/shared/remote-protocol'
 
 export interface RelayHandle {
@@ -39,6 +40,10 @@ export async function startRelayServer(opts: {
   //   - pair.consume：手机带 deviceKey 来，配对成功（信任点）时首次登记。
   //   - bind 握手：不信任/登记上报的密钥，只用此表已登记密钥验签身份。
   const keyRegistry = createKeyStore(join(opts.dataDir, 'keys.json'))
+  // 分享链接 token 存储（Task 2）：桌面经 /pair token.create 生成分享 token，
+  // 手机带 token 经 /ws bind 认证（token → desktopId 映射），无需走完整配对。
+  // 落盘到 dataDir/tokens.json，重启可恢复（与 keys.json/bindings.json 同范式）。
+  const tokenStore = createTokenStore({ filePath: join(opts.dataDir, 'tokens.json') })
   const router = createRouter(bindings, (id) => keyRegistry.get(id))
 
   // PWA 静态资源 MIME 映射（Task 15）。
@@ -151,6 +156,29 @@ export async function startRelayServer(opts: {
           ws.send(JSON.stringify({ type: 'error', payload: { code: 'bad_pair_code' } }))
         }
       }
+      // 分享链接 token 管理（Task 2）：桌面经 /pair 生成/撤销分享 token。
+      // 信任入口：桌面身份 = keyRegistry 已登记的密钥（与 pair.code 同源）。
+      // 未登记/密钥不符 → bad_auth，不泄露「deviceId 是否存在」给攻击者侧信道。
+      if (msg.type === 'token.create' && msg.deviceId && msg.deviceKey) {
+        const key = keyRegistry.get(msg.deviceId)
+        if (!key || key !== msg.deviceKey) {
+          ws.send(JSON.stringify({ type: 'error', payload: { code: 'bad_auth' } })); return
+        }
+        const expiresInDays = typeof msg.expiresInDays === 'number' ? msg.expiresInDays : 7
+        const { token, expiresAt } = tokenStore.createToken(msg.deviceId, expiresInDays)
+        console.log(`[pair] token created for ${msg.deviceId} expires=${expiresAt}`)
+        ws.send(JSON.stringify({ type: 'token.created', payload: { token, expiresAt } }))
+        return
+      }
+      if (msg.type === 'token.revoke' && msg.deviceId && msg.deviceKey && msg.token) {
+        const key = keyRegistry.get(msg.deviceId)
+        if (!key || key !== msg.deviceKey) {
+          ws.send(JSON.stringify({ type: 'error', payload: { code: 'bad_auth' } })); return
+        }
+        tokenStore.revokeToken(msg.token)
+        ws.send(JSON.stringify({ type: 'token.revoked', payload: { token: msg.token } }))
+        return
+      }
     })
   })
 
@@ -163,6 +191,24 @@ export async function startRelayServer(opts: {
       try { env = JSON.parse(raw.toString()) } catch { console.log('[ws] unparseable message'); return }
       // bind 握手：第一条消息。
       if (env.type === 'bind' && !boundDeviceId) {
+        // 新（Task 2）：token 认证（分享链接模式）。手机带 token 连接，无需走完整配对。
+        // token → desktopId 映射由 tokenStore 维护；token 持有者即以桌面身份接入。
+        // 注意：Envelope 类型无 token 字段（签名机制不同），这里放宽读取。
+        const tok = (env as any).token
+        if (typeof tok === 'string' && tok.length > 0) {
+          const entry = tokenStore.getToken(tok)
+          if (!entry) {
+            console.log(`[ws] bind invalid_token`)
+            ws.send(JSON.stringify({ type: 'error', payload: { code: 'invalid_token' } })); return
+          }
+          // token 持有者 = 桌面身份（entry.desktopId）。register 后 route 放行（见 router.ts）。
+          boundDeviceId = entry.desktopId
+          router.register(boundDeviceId, (e) => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(e)) })
+          ws.send(JSON.stringify({ type: 'bind.ok' }))
+          console.log(`[ws] bind.ok (token) device=${boundDeviceId}`)
+          return
+        }
+        // 旧：deviceId + 签名认证（向后兼容已配对设备）
         const bound = bindings.has(env.deviceId)
         const key = bound ? keyRegistry.get(env.deviceId) : null
         console.log(`[ws] bind from ${env.deviceId} bound=${bound} hasKey=${!!key}`)

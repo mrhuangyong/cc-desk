@@ -71,6 +71,27 @@ export function createRouter(
     unregister(deviceId) { conns.delete(deviceId) },
     seenSize() { return seen.size },
     route(env) {
+      // 0. token 模式放行（Task 2）：已 register 的连接（bind 握手通过，含 token 连接）
+      //    直接转发，跳过 bindings + 签名校验。
+      //    为什么：token 连接的 deviceId = desktopId（来自 token entry），不在 bindings 里
+      //    （bindings 是配对设备关系，token 桌面未必配对过），走旧路径必 unbound；
+      //    且 token 模式无 deviceKey 签名，走 verifySig 必 bad_sig。
+      //    安全性由 bind 握手的 token 校验（tokenStore.getToken）保证：只有持有效 token 的
+      //    连接才能 register，此处 conns.has 为真即代表已通过 bind 认证。
+      if (conns.has(env.deviceId)) {
+        const peers = bindings.getPeers(env.deviceId)
+        let delivered = false
+        if (peers.size > 0) {
+          for (const peer of peers) {
+            // 转发给除发送方外的在线对端（避免回环）
+            const send = conns.get(peer)
+            if (send && peer !== env.deviceId) { send(env); delivered = true }
+          }
+        }
+        return delivered
+          ? { ok: true, delivered: true }
+          : { ok: true, delivered: false, reason: 'peer_offline' }
+      }
       // 1. 绑定校验
       if (!bindings.has(env.deviceId)) return { ok: false, delivered: false, reason: 'unbound' }
       // 2. 签名校验

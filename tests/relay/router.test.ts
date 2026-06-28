@@ -125,6 +125,26 @@ describe('router 路由转发', () => {
     expect(r.delivered).toBe(true)
     expect(sent).toHaveLength(1) // 只发给桌面一个
   })
+
+  // === Task 2：token 连接放行（已 register 但不在 bindings）===
+  it('Task 2 token 连接：已 register 的 deviceId 不在 bindings 也能 route 转发（跳过 bindings+签名）', async () => {
+    // 场景：token 手机 bind 后 register 了 desktopId（来自 token entry），但 desktopId 不在 bindings
+    // （token 桌面未必走完整配对）。旧路径会 unbound；新路径 conns.has 命中 → 放行转发。
+    const { createRouter } = await import('../../relay/router')
+    // bindings 只有 D↔M；token 手机用 desktopId='D' 发消息，对端是 M
+    const bindings = makeFakeBindingsOneToMany({ D: ['M'] })
+    const router = createRouter(bindings, () => 'unused-key')
+    // token 手机 register 了 'D'（bind 握手通过）；真桌面 M 也 register
+    const sentToDesktop: any[] = []
+    router.register('D', () => {}) // token 手机（发送方，不接收自己的消息）
+    router.register('M', (env) => sentToDesktop.push(env))
+    // 用任意 sig 的信封（token 模式不验签）
+    const env = makeEnvelope('any', 'session.sync', 'D', { x: 1 })
+    const r = router.route(env)
+    expect(r.ok).toBe(true)
+    expect(r.delivered).toBe(true)
+    expect(sentToDesktop).toHaveLength(1) // 转发给对端 M
+  })
 })
 
 function makeFakeBindings(map: Record<string, string>) {

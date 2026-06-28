@@ -288,4 +288,117 @@ describe('relay server 集成', () => {
     wsD.close(); wsOver.close()
     await rm(dataDir, { recursive: true, force: true })
   })
+
+  // === Task 2：分享链接 token 认证 ===
+  /** 先用 pair.code 登记桌面密钥（token.create 的信任入口 = keyRegistry）。 */
+  async function registerDesktop(port: number, desktopId: string, desktopKey: string): Promise<void> {
+    const ws = await connect(port, '/pair')
+    ws.send(JSON.stringify({ type: 'pair.code', deviceId: desktopId, deviceKey: desktopKey }))
+    await nextMsg(ws) // pair.code 回告（码不用）
+    ws.close()
+  }
+
+  it('Task 2 token.create：桌面用正确密钥生成分享 token，返回 token.created', async () => {
+    const dataDir = join(tmpdir(), `relay-${Math.random().toString(36).slice(2)}`)
+    const s = await startRelayServer({ port: 0, dataDir })
+    servers.push(s)
+    const port = s.port!
+    const desktopKey = 'ZGVza3RvcC1rZXk='
+    await registerDesktop(port, 'D', desktopKey)
+
+    const ws = await connect(port, '/pair')
+    ws.send(JSON.stringify({ type: 'token.create', deviceId: 'D', deviceKey: desktopKey, expiresInDays: 7 }))
+    const msg: any = await nextMsg(ws)
+    expect(msg.type).toBe('token.created')
+    expect(msg.payload.token).toMatch(/^[0-9a-f]{64}$/)
+    expect(msg.payload.expiresAt).toBeGreaterThan(0)
+    ws.close()
+    await rm(dataDir, { recursive: true, force: true })
+  })
+
+  it('Task 2 token.create：密钥不符返回 bad_auth（不泄露 deviceId 是否存在）', async () => {
+    const dataDir = join(tmpdir(), `relay-${Math.random().toString(36).slice(2)}`)
+    const s = await startRelayServer({ port: 0, dataDir })
+    servers.push(s)
+    const port = s.port!
+    await registerDesktop(port, 'D', 'ZGVza3RvcC1rZXk=')
+
+    const ws = await connect(port, '/pair')
+    ws.send(JSON.stringify({ type: 'token.create', deviceId: 'D', deviceKey: 'd3Jvbmcta2V5', expiresInDays: 7 }))
+    const msg: any = await nextMsg(ws)
+    expect(msg.type).toBe('error')
+    expect(msg.payload?.code).toBe('bad_auth')
+    ws.close()
+    await rm(dataDir, { recursive: true, force: true })
+  })
+
+  it('Task 2 token.revoke：撤销后 token 失效（/ws bind 返回 invalid_token）', async () => {
+    const dataDir = join(tmpdir(), `relay-${Math.random().toString(36).slice(2)}`)
+    const s = await startRelayServer({ port: 0, dataDir })
+    servers.push(s)
+    const port = s.port!
+    const desktopKey = 'ZGVza3RvcC1rZXk='
+    await registerDesktop(port, 'D', desktopKey)
+
+    // 生成 token
+    const wsCreate = await connect(port, '/pair')
+    wsCreate.send(JSON.stringify({ type: 'token.create', deviceId: 'D', deviceKey: desktopKey }))
+    const created: any = await nextMsg(wsCreate)
+    const token = created.payload.token
+    wsCreate.close()
+
+    // 撤销
+    const wsRevoke = await connect(port, '/pair')
+    wsRevoke.send(JSON.stringify({ type: 'token.revoke', deviceId: 'D', deviceKey: desktopKey, token }))
+    const revoked: any = await nextMsg(wsRevoke)
+    expect(revoked.type).toBe('token.revoked')
+    wsRevoke.close()
+
+    // 撤销后 bind 应 invalid_token
+    const wsBind = await connect(port, '/ws')
+    wsBind.send(JSON.stringify({ type: 'bind', token, deviceId: 'D', ts: Date.now(), nonce: 'n', sig: 'x', payload: {} }))
+    const bindMsg: any = await nextMsg(wsBind)
+    expect(bindMsg.type).toBe('error')
+    expect(bindMsg.payload?.code).toBe('invalid_token')
+    wsBind.close()
+    await rm(dataDir, { recursive: true, force: true })
+  })
+
+  it('Task 2 /ws bind：有效 token 返回 bind.ok（无需走完整配对）', async () => {
+    const dataDir = join(tmpdir(), `relay-${Math.random().toString(36).slice(2)}`)
+    const s = await startRelayServer({ port: 0, dataDir })
+    servers.push(s)
+    const port = s.port!
+    const desktopKey = 'ZGVza3RvcC1rZXk='
+    await registerDesktop(port, 'D', desktopKey)
+
+    const wsCreate = await connect(port, '/pair')
+    wsCreate.send(JSON.stringify({ type: 'token.create', deviceId: 'D', deviceKey: desktopKey }))
+    const created: any = await nextMsg(wsCreate)
+    const token = created.payload.token
+    wsCreate.close()
+
+    // 用 token bind（不走配对，无 deviceKey 签名）
+    const wsBind = await connect(port, '/ws')
+    wsBind.send(JSON.stringify({ type: 'bind', token, deviceId: 'D', ts: Date.now(), nonce: 'n', sig: 'x', payload: {} }))
+    const bindMsg: any = await nextMsg(wsBind)
+    expect(bindMsg.type).toBe('bind.ok')
+    wsBind.close()
+    await rm(dataDir, { recursive: true, force: true })
+  })
+
+  it('Task 2 /ws bind：无效 token 返回 invalid_token', async () => {
+    const dataDir = join(tmpdir(), `relay-${Math.random().toString(36).slice(2)}`)
+    const s = await startRelayServer({ port: 0, dataDir })
+    servers.push(s)
+    const port = s.port!
+
+    const wsBind = await connect(port, '/ws')
+    wsBind.send(JSON.stringify({ type: 'bind', token: 'nonexistent-token', deviceId: 'X', ts: Date.now(), nonce: 'n', sig: 'x', payload: {} }))
+    const bindMsg: any = await nextMsg(wsBind)
+    expect(bindMsg.type).toBe('error')
+    expect(bindMsg.payload?.code).toBe('invalid_token')
+    wsBind.close()
+    await rm(dataDir, { recursive: true, force: true })
+  })
 })
