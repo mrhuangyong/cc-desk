@@ -350,3 +350,50 @@ it('重复 Task tool_use(同 id) → registry 幂等,不重复 create', () => {
   expect(created.length).toBe(2)
   // 渲染端 upsertBySession 按 id 覆盖,最终只有一条
 })
+
+describe('forwardEvent user 文本提取(修复移动端消息不持久化)', () => {
+  // 根因:SDK 的 user 消息事件含用户输入的真实文本 prompt,但 case 'user' 只处理 tool_result,
+  // 完全忽略纯文本。导致远程(移动端)发的 user 消息从不被提取/持久化(只靠脆弱的
+  // REMOTE_USER_MESSAGE 补丁)。修复:user 消息含纯文本时,发 claude:user-message 通道,
+  // 让 user 消息与 assistant 消息走同一条可靠的 claude:* 事件 → renderer 累积 → 落盘路径。
+  it('user 消息含纯文本 prompt → 发 claude:user-message(含 localSessionId + text)', () => {
+    const svc = new ClaudeService()
+    const { wc, calls } = mockWebContents()
+    fwd(svc, {
+      type: 'user', uuid: 'u-user1', session_id: 's1',
+      message: { role: 'user', content: [{ type: 'text', text: '从手机发的问题' }] },
+    }, wc)
+    const userMsg = calls.find(c => c.channel === 'claude:user-message')
+    expect(userMsg).toBeTruthy()
+    expect(userMsg!.data.localSessionId).toBe('sess1')
+    expect(userMsg!.data.text).toBe('从手机发的问题')
+  })
+
+  it('user 消息只含 tool_result(无纯文本) → 不发 claude:user-message', () => {
+    const svc = new ClaudeService()
+    svc.setRegistry(new BackendTaskRegistry())
+    const { wc, calls } = mockWebContents()
+    fwd(svc, {
+      type: 'user', uuid: 'u-user2', session_id: 's1',
+      message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_x1', content: '结果', is_error: false }] },
+    }, wc)
+    // 纯 tool_result 的 user 消息不该触发 user-message(它不是用户输入的文本)
+    expect(calls.some(c => c.channel === 'claude:user-message')).toBe(false)
+  })
+
+  it('user 消息同时含文本和 tool_result → 只提取文本发 claude:user-message,tool_result 仍正常处理', () => {
+    const svc = new ClaudeService()
+    const { wc, calls } = mockWebContents()
+    fwd(svc, {
+      type: 'user', uuid: 'u-user3', session_id: 's1',
+      message: { role: 'user', content: [
+        { type: 'text', text: '继续' },
+        { type: 'tool_result', tool_use_id: 'toolu_x2', content: 'ok', is_error: false },
+      ] },
+    }, wc)
+    const userMsg = calls.find(c => c.channel === 'claude:user-message')
+    expect(userMsg!.data.text).toBe('继续')
+    // tool_result 仍走 claude:blocks
+    expect(calls.some(c => c.channel === 'claude:blocks' && c.data?.op === 'tool_result')).toBe(true)
+  })
+})

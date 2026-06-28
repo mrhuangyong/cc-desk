@@ -481,6 +481,17 @@ export function reducer(state: AppState, action: Action): AppState {
       // 消息塞进指定 session，让桌面端对话里除了 AI 回复也能看到「手机问的问题」。
       // 目标会话不存在时静默（HYDRATE 竞态窗口内可能先于会话节点到达），由后续
       // STREAM_ASSISTANT_BLOCKS / HYDRATE 校正，不抛错。
+      //
+      // 去重：本 action 有三个来源——① REMOTE_USER_MESSAGE 补丁(dispatcher 收到 session.message)
+      // ② claude:user-message(SDK user turn 回放,可靠落盘源) ③ 本地 SEND_MESSAGE 也会加 user。
+      // 同一条用户输入可能被多源触发,按「该 session 末条消息已是相同文本的 user」去重,避免重复。
+      const existed = updateSession(state, action.sessionId, s => s).projects
+      const sess = existed.flatMap(p => p.sessions).find(s => s.id === action.sessionId)
+      const last = sess?.messages?.[sess.messages.length - 1]
+      const lastText = last?.role === 'user' ? (last as any).content?.map((b: any) => b.text ?? '').join('') : undefined
+      if (lastText !== undefined && lastText === action.text) {
+        return state // 末条已是相同 user 文本,跳过(去重)
+      }
       const newMessage = {
         id: nextId('m'),
         role: 'user' as const,

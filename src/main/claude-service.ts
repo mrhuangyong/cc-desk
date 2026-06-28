@@ -631,6 +631,21 @@ export class ClaudeService {
         break
       }
       case 'user': {
+        // 提取用户输入的纯文本 prompt，发 claude:user-message 通道持久化。
+        // 根因修复：SDK 的 user 消息含用户真实输入文本，但此前 case 'user' 只处理 tool_result，
+        // 完全忽略纯文本 → 远程（移动端）发的 user 消息从不被提取/落盘（只靠脆弱的
+        // REMOTE_USER_MESSAGE 补丁通道，时序竞态易丢）。现在让 user 文本与 assistant 走同一条
+        // 可靠的 claude:* 事件 → renderer 累积 → projects.json 落盘路径，桌面可见 + 移动端刷新可恢复。
+        // 只提取 {type:'text'} 块（tool_result 块无 text，且其内容由下面 tool_result 逻辑处理）。
+        const rawContentArr = Array.isArray(message.message?.content) ? message.message.content : []
+        const userText = rawContentArr
+          .filter((b: any) => b?.type === 'text' && typeof b.text === 'string')
+          .map((b: any) => b.text)
+          .join('')
+          .trim()
+        if (userText) {
+          webContents.send('claude:user-message', { localSessionId: lsid, text: userText })
+        }
         const results = extractToolResults(message.message?.content || [])
         for (const r of results) {
           // subagent 内部工具的结果：回填进对应 subagent 的输出（抽屉可见），
