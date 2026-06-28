@@ -157,6 +157,7 @@ export async function startRelayServer(opts: {
   wsWss.on('connection', (ws) => {
     stats.wsConnections++
     let boundDeviceId: string | null = null
+    let boundSend: ((e: any) => void) | null = null
     console.log(`[ws] connection opened (total=${stats.wsConnections})`)
     ws.on('message', (raw) => {
       let env: Envelope
@@ -172,7 +173,9 @@ export async function startRelayServer(opts: {
           ws.send(JSON.stringify({ type: 'error', payload: { code: 'bad_sig' } })); return
         }
         boundDeviceId = env.deviceId
-        router.register(env.deviceId, (e) => ws.readyState === WebSocket.OPEN && ws.send(JSON.stringify(e)))
+        // send 闭包存为变量，ws close 时按引用 unregister（多端连接：只删当前连接，不删同 deviceId 的其他连接）
+        boundSend = (e) => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(e)) }
+        router.register(env.deviceId, boundSend)
         ws.send(JSON.stringify({ type: 'bind.ok' }))
         console.log(`[ws] bind.ok device=${env.deviceId}`)
         return
@@ -181,7 +184,7 @@ export async function startRelayServer(opts: {
       const r = router.route(env) // 转发或拒绝
       console.log(`[ws] route type=${env.type} from=${env.deviceId} ok=${r.ok} delivered=${r.delivered} reason=${r.reason ?? '-'}`)
     })
-    ws.on('close', () => { if (boundDeviceId) router.unregister(boundDeviceId); console.log(`[ws] closed device=${boundDeviceId ?? 'unbound'}`) })
+    ws.on('close', () => { if (boundDeviceId) router.unregister(boundDeviceId, boundSend ?? undefined); console.log(`[ws] closed device=${boundDeviceId ?? 'unbound'}`) })
   })
 
   return new Promise((resolve) => {

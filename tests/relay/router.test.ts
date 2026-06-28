@@ -156,3 +156,48 @@ function makeFakeBindingsOneToMany(peers: Record<string, string[]>) {
     addBinding: vi.fn(), removeBinding: vi.fn(),
   } as any
 }
+
+describe('router 多端同 deviceId 连接', () => {
+  // 修复场景：电脑浏览器和手机用同一个 deviceId 连中继（共用配对身份），
+  // 两者应同时在线、都能收到对端消息。原实现 conns=Map<deviceId,SendFn>，
+  // register 用 set 覆盖，导致后连的踢掉先连的。
+  it('同 deviceId 注册两个连接 → 两个都收到对端消息', async () => {
+    const { createRouter } = await import('../../relay/router')
+    const bindings = makeFakeBindings({ 'D': 'M', 'M': 'D' })
+    const key = 'a2V5LW0='
+    const router = createRouter(bindings, () => key)
+    const mobileA: any[] = []
+    const mobileB: any[] = []
+    // 两个连接用同一 deviceId M（手机A + 手机B 或 电脑浏览器 + 手机）
+    router.register('M', (env) => mobileA.push(env))
+    router.register('M', (env) => mobileB.push(env))
+    // 桌面 D 发消息 → M 的两个连接都应收到
+    router.register('D', () => {})
+    const env = makeEnvelope(key, 'session.list', 'D', { sessions: [] })
+    const r = router.route(env)
+    expect(r.ok).toBe(true)
+    expect(r.delivered).toBe(true)
+    expect(mobileA).toHaveLength(1)
+    expect(mobileB).toHaveLength(1)
+  })
+
+  it('同 deviceId 的一个连接 unregister → 另一个连接仍在线收消息', async () => {
+    const { createRouter } = await import('../../relay/router')
+    const bindings = makeFakeBindings({ 'D': 'M', 'M': 'D' })
+    const key = 'a2V5LW0='
+    const router = createRouter(bindings, () => key)
+    const mobileA: any[] = []
+    const mobileB: any[] = []
+    const sendA = (env: any) => mobileA.push(env)
+    const sendB = (env: any) => mobileB.push(env)
+    router.register('M', sendA)
+    router.register('M', sendB)
+    router.register('D', () => {})
+    // A 断开（unregister 只删 A，不删 B）
+    router.unregister('M', sendA)
+    // 桌面再发消息 → 只有 B 收到
+    router.route(makeEnvelope(key, 'session.list', 'D', { x: 1 }))
+    expect(mobileA).toHaveLength(0)
+    expect(mobileB).toHaveLength(1)
+  })
+})

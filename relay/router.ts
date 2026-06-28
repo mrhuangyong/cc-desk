@@ -13,7 +13,7 @@ export interface RouteResult {
 
 export interface Router {
   register(deviceId: string, send: SendFn): void
-  unregister(deviceId: string): void
+  unregister(deviceId: string, send?: SendFn): void
   route(env: Envelope): RouteResult
   /** 去重表当前条目数（可观测性：内存安全回归监控）。 */
   seenSize(): number
@@ -44,7 +44,10 @@ export function createRouter(
     now?: () => number
   } = {},
 ): Router {
-  const conns = new Map<string, SendFn>()
+  // 多端连接支持：同一 deviceId 可有多个在线连接（电脑浏览器 + 手机共用配对身份）。
+  // 原实现 Map<deviceId, SendFn> 的 set 会覆盖，后连的踢掉先连的。
+  // 改为 Map<deviceId, Set<SendFn>>，register 往 Set 加，unregister 按 send 引用删。
+  const conns = new Map<string, Set<SendFn>>()
   const rateLimit = opts.rateLimit ?? 50 // msg/s per device
   const counters = new Map<string, { count: number; windowStart: number }>()
 
@@ -67,8 +70,24 @@ export function createRouter(
   }
 
   return {
-    register(deviceId, send) { conns.set(deviceId, send) },
-    unregister(deviceId) { conns.delete(deviceId) },
+    register(deviceId, send) {
+      let set = conns.get(deviceId)
+      if (!set) { set = new Set(); conns.set(deviceId, set) }
+      set.add(send)
+    },
+    unregister(deviceId, send) {
+      if (!send) {
+        // 无 send 引用：删整个 deviceId（兼容旧调用方，如 ws close 不带 send）
+        conns.delete(deviceId)
+        return
+      }
+      // 按 send 引用删单个连接（多端场景：只断一个，其余保留）
+      const set = conns.get(deviceId)
+      if (set) {
+        set.delete(send)
+        if (set.size === 0) conns.delete(deviceId)
+      }
+    },
     seenSize() { return seen.size },
     route(env) {
       // 1. 绑定校验
@@ -96,13 +115,15 @@ export function createRouter(
       counters.set(env.deviceId, c)
       if (c.count > rateLimit) return { ok: false, delivered: false, reason: 'rate_limited' }
 
-      // 6. 找对端并转发（一对多广播：桌面绑多个手机时，桌面→手机的消息投递给所有在线手机）
+      // 6. 找对端并转发（一对多广播：同 deviceId 多连接 + 桌面绑多手机）
       const peers = bindings.getPeers(env.deviceId)
       let delivered = false
       if (peers.size > 0) {
         for (const peer of peers) {
-          const send = conns.get(peer)
-          if (send) { send(env); delivered = true }
+          const set = conns.get(peer)
+          if (set) {
+            for (const send of set) { send(env); delivered = true }
+          }
         }
       }
       return delivered
