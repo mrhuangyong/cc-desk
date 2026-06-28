@@ -1,0 +1,52 @@
+# .github/workflows/docker.yml
+# 构建 cc-relay 镜像（relay 中继 + web PWA）并推送到 Docker Hub。
+# 触发：push 到 main（与 release.yml 同步）。每次 main 更新，latest 镜像自动更新。
+#
+# 依赖 secrets（需在仓库 Settings → Secrets and variables → Actions 配置）：
+#   DOCKER_USERNAME  Docker Hub 用户名（mrhua382812）
+#   DOCKER_PASSWORD  Docker Hub access token（非登录密码，在 Docker Hub → Account Settings → Security 生成）
+#
+# 服务器拉取更新：
+#   docker login -u mrhua382812
+#   docker pull mrhua382812/cc-desk-relay:latest
+#   docker stop cc-relay && docker rm cc-relay
+#   docker run -d --name cc-relay --restart unless-stopped -p 32768:8080 -v cc-relay-data:/app/data mrhua382812/cc-desk-relay:latest
+name: Docker
+
+on:
+  push:
+    branches: [main]
+
+env:
+  IMAGE: mrhua382812/cc-desk-relay
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 登录 Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: 提取 short sha（用作镜像额外标签，便于回溯）
+        id: sha
+        run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: 构建并推送镜像
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          # 双标签：latest（服务器固定拉这个）+ short sha（版本回溯）
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ steps.sha.outputs.short }}
+          # 缓存加速：用 GitHub Actions cache 存 Docker 层
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
