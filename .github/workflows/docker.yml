@@ -47,6 +47,3 @@ jobs:
           tags: |
             ${{ env.IMAGE }}:latest
             ${{ env.IMAGE }}:${{ steps.sha.outputs.short }}
-          # 缓存加速：用 GitHub Actions cache 存 Docker 层
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
