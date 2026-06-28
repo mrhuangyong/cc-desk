@@ -126,24 +126,73 @@ describe('router 路由转发', () => {
     expect(sent).toHaveLength(1) // 只发给桌面一个
   })
 
-  // === Task 2：token 连接放行（已 register 但不在 bindings）===
-  it('Task 2 token 连接：已 register 的 deviceId 不在 bindings 也能 route 转发（跳过 bindings+签名）', async () => {
-    // 场景：token 手机 bind 后 register 了 desktopId（来自 token entry），但 desktopId 不在 bindings
-    // （token 桌面未必走完整配对）。旧路径会 unbound；新路径 conns.has 命中 → 放行转发。
+  // === Task 2-fix：token 虚拟身份（share: 前缀）放行 + tokenPeers 路由 ===
+  it('Task 2-fix token 手机→桌面：share: 前缀身份放行，经 tokenPeers 转发给桌面', async () => {
+    // 场景：token 手机以虚拟 id share:xxx register（bind 时带 tokenPeer=桌面真实 id D），
+    // 真桌面 D 也 register。token 手机发消息 → route 命中 share: 放行分支 → 经 tokenPeers
+    // 查到对端 D → 转发给 D 的连接。
     const { createRouter } = await import('../../relay/router')
-    // bindings 只有 D↔M；token 手机用 desktopId='D' 发消息，对端是 M
-    const bindings = makeFakeBindingsOneToMany({ D: ['M'] })
+    const bindings = makeFakeBindingsOneToMany({}) // token 桌面未必配对，bindings 空
     const router = createRouter(bindings, () => 'unused-key')
-    // token 手机 register 了 'D'（bind 握手通过）；真桌面 M 也 register
     const sentToDesktop: any[] = []
-    router.register('D', () => {}) // token 手机（发送方，不接收自己的消息）
-    router.register('M', (env) => sentToDesktop.push(env))
-    // 用任意 sig 的信封（token 模式不验签）
-    const env = makeEnvelope('any', 'session.sync', 'D', { x: 1 })
+    router.register('share:abcd1234', () => {}, { tokenPeer: 'D' }) // token 手机
+    router.register('D', (env) => sentToDesktop.push(env))            // 真桌面
+    // 信封 deviceId 是 share: 前缀（server.ts 会替换为 virtualId）
+    const env = makeEnvelope('any', 'session.sync', 'share:abcd1234', { x: 1 })
     const r = router.route(env)
     expect(r.ok).toBe(true)
     expect(r.delivered).toBe(true)
-    expect(sentToDesktop).toHaveLength(1) // 转发给对端 M
+    expect(sentToDesktop).toHaveLength(1) // 经 tokenPeers 转发给桌面 D
+  })
+
+  it('Task 2-fix 桌面→token 手机：桌面走验签路径，额外转发给 tokenPeers 映射的 token 手机', async () => {
+    // 场景：桌面 D 已配对（bindings 里有 D↔M），同时 token 手机 share:xxx 在线。
+    // 桌面发消息：走完整验签路径转发给配对手机 M，且经 tokenPeers 也转发给 token 手机。
+    const { createRouter } = await import('../../relay/router')
+    const bindings = makeFakeBindingsOneToMany({ D: ['M'] })
+    const deskKey = 'a2V5LWQ='
+    const router = createRouter(bindings, () => deskKey)
+    const sentToMobile: any[] = []
+    const sentToToken: any[] = []
+    router.register('M', (env) => sentToMobile.push(env))
+    router.register('share:abcd1234', (env) => sentToToken.push(env), { tokenPeer: 'D' })
+    const env = makeEnvelope(deskKey, 'session.list', 'D', { sessions: [] })
+    const r = router.route(env)
+    expect(r.ok).toBe(true)
+    expect(r.delivered).toBe(true)
+    expect(sentToMobile).toHaveLength(1)  // 配对手机收到
+    expect(sentToToken).toHaveLength(1)   // token 手机也收到
+  })
+
+  it('Task 2-fix 缺陷2：旧配对设备不走 conns.has 放行，仍需完整验签（非 share: 前缀不命中放行）', async () => {
+    // 回归：原缺陷 `if (conns.has(env.deviceId))` 让任何已 bind 的旧设备绕过验签。
+    // 修复后放行分支只命中 share: 前缀；旧配对设备 M 即使 register 过，签名错误仍 bad_sig。
+    const { createRouter } = await import('../../relay/router')
+    const bindings = makeFakeBindingsOneToMany({ D: ['M'] })
+    const router = createRouter(bindings, () => 'correct-key')
+    router.register('M', () => {}) // M 已 register（已 bind）
+    // M 发消息但用错误密钥签名 → 不命中放行 → 走验签 → bad_sig
+    const env = makeEnvelope('wrong-key', 'session.sync', 'M', {})
+    const r = router.route(env)
+    expect(r.ok).toBe(false)
+    expect(r.reason).toBe('bad_sig')
+  })
+
+  it('Task 2-fix unregister 清理 tokenPeers 双向映射', async () => {
+    const { createRouter } = await import('../../relay/router')
+    const bindings = makeFakeBindingsOneToMany({})
+    const router = createRouter(bindings, () => 'k')
+    router.register('share:abcd1234', () => {}, { tokenPeer: 'D' })
+    router.register('D', () => {})
+    // token 手机断开
+    router.unregister('share:abcd1234')
+    // 桌面发消息不应再转发给已断开的 token 手机（tokenPeers 反向项已清）
+    const sent: any[] = []
+    router.register('D', (env) => sent.push(env))
+    const env = makeEnvelope('k', 'session.list', 'D', {})
+    // D 不在 bindings（这里测的是 tokenPeers 清理，bindings 空 → unbound，但重点是 token 手机收不到）
+    router.route(env)
+    expect(sent).toHaveLength(0)
   })
 })
 

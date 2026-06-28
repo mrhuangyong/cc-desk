@@ -201,11 +201,16 @@ export async function startRelayServer(opts: {
             console.log(`[ws] bind invalid_token`)
             ws.send(JSON.stringify({ type: 'error', payload: { code: 'invalid_token' } })); return
           }
-          // token 持有者 = 桌面身份（entry.desktopId）。register 后 route 放行（见 router.ts）。
-          boundDeviceId = entry.desktopId
-          router.register(boundDeviceId, (e) => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(e)) })
+          // Task 2-fix：token 手机以虚拟 id `share:xxx` register，而非桌面真实 id。
+          //   旧缺陷：boundDeviceId = entry.desktopId（桌面 id），导致 token 手机与真桌面
+          //   用同一 desktopId register → conns 互相覆盖；且 getPeers(desktopId) 返回配对手机。
+          //   修复：生成虚拟 id，register 时带 { tokenPeer: 桌面真实 id } 建立 tokenPeers 双向映射。
+          //   virtualId 同时作为 boundDeviceId（后续消息据此识别连接身份）。
+          const virtualId = 'share:' + tok.slice(0, 8)
+          boundDeviceId = virtualId
+          router.register(virtualId, (e) => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(e)) }, { tokenPeer: entry.desktopId })
           ws.send(JSON.stringify({ type: 'bind.ok' }))
-          console.log(`[ws] bind.ok (token) device=${boundDeviceId}`)
+          console.log(`[ws] bind.ok (token) virtual=${virtualId} desk=${entry.desktopId}`)
           return
         }
         // 旧：deviceId + 签名认证（向后兼容已配对设备）
@@ -224,6 +229,12 @@ export async function startRelayServer(opts: {
         return
       }
       if (!boundDeviceId) { console.log(`[ws] msg before bind: type=${env.type}`); return } // 未 bind 拒收
+      // Task 2-fix：token 连接的客户端不知道自己的虚拟 id（share:xxx），发出的消息
+      //   env.deviceId 是任意值。server 在 route 前把它替换为 boundDeviceId：
+      //   - token 连接：boundDeviceId = virtualId（share:xxx），route 据此走 token 放行分支；
+      //   - 旧配对连接：boundDeviceId = env.deviceId（已验签），替换为自身是无操作。
+      //   这也防止 token 手机伪造 env.deviceId 冒充桌面/其它设备（身份由 bind 握手钉死）。
+      if (env.deviceId !== boundDeviceId) env.deviceId = boundDeviceId
       const r = router.route(env) // 转发或拒绝
       console.log(`[ws] route type=${env.type} from=${env.deviceId} ok=${r.ok} delivered=${r.delivered} reason=${r.reason ?? '-'}`)
     })

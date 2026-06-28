@@ -401,4 +401,108 @@ describe('relay server 集成', () => {
     wsBind.close()
     await rm(dataDir, { recursive: true, force: true })
   })
+
+  // === Task 2-fix：token 手机 ↔ 真桌面 双向可达 + 旧路径安全未削弱 ===
+  /** 走完整配对 + 桌面 bind，让真桌面 D 在线（register 真实 id D）。返回 D 的 ws。 */
+  async function bindDesktop(port: number, desktopKey: string): Promise<WebSocket> {
+    await pair(port, desktopKey, 'bW9iaWxlLWtleQ==')
+    const wsD = await connect(port, '/ws')
+    const env = makeEnvelope(desktopKey, 'bind', 'D', {})
+    wsD.send(JSON.stringify(env))
+    const msg: any = await nextMsg(wsD)
+    expect(msg.type).toBe('bind.ok')
+    return wsD
+  }
+
+  /** 用 token bind 一个 token 手机连接。返回 { ws, token }。 */
+  async function bindTokenMobile(port: number, desktopKey: string): Promise<{ ws: WebSocket; token: string }> {
+    const wsCreate = await connect(port, '/pair')
+    wsCreate.send(JSON.stringify({ type: 'token.create', deviceId: 'D', deviceKey: desktopKey }))
+    const created: any = await nextMsg(wsCreate)
+    const token = created.payload.token
+    wsCreate.close()
+    const wsBind = await connect(port, '/ws')
+    wsBind.send(JSON.stringify({ type: 'bind', token, deviceId: 'ignored', ts: Date.now(), nonce: 'n', sig: 'x', payload: {} }))
+    const bindMsg: any = await nextMsg(wsBind)
+    expect(bindMsg.type).toBe('bind.ok')
+    return { ws: wsBind, token }
+  }
+
+  it('Task 2-fix 端到端：token 手机 T 发消息能到真桌面 D（转发方向正确，无 conns 覆盖）', async () => {
+    // 旧缺陷：token 手机用 desktopId register，与真桌面互相覆盖 conns，
+    // 且 getPeers(desktopId) 返回配对手机而非桌面 → T 的消息到不了 D。
+    // 修复后：T 以 share:xxx 虚拟 id register，经 tokenPeers 路由到 D。
+    const dataDir = join(tmpdir(), `relay-${Math.random().toString(36).slice(2)}`)
+    const s = await startRelayServer({ port: 0, dataDir })
+    servers.push(s)
+    const port = s.port!
+    const desktopKey = 'ZGVza3RvcC1rZXk='
+
+    const wsD = await bindDesktop(port, desktopKey)
+    const { ws: wsT } = await bindTokenMobile(port, desktopKey)
+
+    // T 发消息（env.deviceId 任意，server 会替换为 virtualId）
+    const received = nextMsg(wsD)
+    wsT.send(JSON.stringify(makeEnvelope('any', 'session.sync', 'ignored-by-client', { hello: 'from-token' })))
+    const msg: any = await received
+    expect(msg.type).toBe('session.sync')
+    expect(msg.payload?.hello).toBe('from-token')
+    wsD.close(); wsT.close()
+    await rm(dataDir, { recursive: true, force: true })
+  })
+
+  it('Task 2-fix 端到端：真桌面 D 发消息能到 token 手机 T（桌面→token 手机方向）', async () => {
+    const dataDir = join(tmpdir(), `relay-${Math.random().toString(36).slice(2)}`)
+    const s = await startRelayServer({ port: 0, dataDir })
+    servers.push(s)
+    const port = s.port!
+    const desktopKey = 'ZGVza3RvcC1rZXk='
+
+    const wsD = await bindDesktop(port, desktopKey)
+    const { ws: wsT } = await bindTokenMobile(port, desktopKey)
+
+    // D 发消息 → 经 tokenPeers 也转发给 T
+    const received = nextMsg(wsT)
+    wsD.send(JSON.stringify(makeEnvelope(desktopKey, 'session.list', 'D', { sessions: [1, 2] })))
+    const msg: any = await received
+    expect(msg.type).toBe('session.list')
+    expect(msg.payload?.sessions).toEqual([1, 2])
+    wsD.close(); wsT.close()
+    await rm(dataDir, { recursive: true, force: true })
+  })
+
+  it('Task 2-fix 缺陷2：旧配对设备仍走完整验签（bind 后发错误签名消息被 route 拒绝）', async () => {
+    // 回归：原 conns.has 放行让任何已 bind 设备绕过验签。
+    // 修复后旧配对设备 M 即使 bind 通过，后续消息仍需合法签名（非 share: 前缀不命中放行）。
+    const dataDir = join(tmpdir(), `relay-${Math.random().toString(36).slice(2)}`)
+    const s = await startRelayServer({ port: 0, dataDir })
+    servers.push(s)
+    const port = s.port!
+    const desktopKey = 'ZGVza3RvcC1rZXk='
+    const mobileKey = 'bW9iaWxlLWtleQ=='
+    await pair(port, desktopKey, mobileKey)
+
+    // 手机 M bind
+    const wsM = await connect(port, '/ws')
+    wsM.send(JSON.stringify(makeEnvelope(mobileKey, 'bind', 'M', {})))
+    const bindMsg: any = await nextMsg(wsM)
+    expect(bindMsg.type).toBe('bind.ok')
+
+    // 桌面 D bind（接收方）
+    const wsD = await connect(port, '/ws')
+    wsD.send(JSON.stringify(makeEnvelope(desktopKey, 'bind', 'D', {})))
+    await nextMsg(wsD)
+
+    // M 发错误签名消息 → route 拒绝（bad_sig）→ D 收不到
+    const badEnv = makeEnvelope('wrong-key', 'session.sync', 'M', { x: 1 })
+    wsM.send(JSON.stringify(badEnv))
+    // 给一点时间确认 D 不会收到
+    const got = await Promise.race([
+      nextMsg(wsD).then(() => true),
+      new Promise<boolean>((res) => setTimeout(() => res(false), 300)),
+    ])
+    expect(got).toBe(false) // D 未收到（被 route 拒）
+    wsM.close(); wsD.close()
+    await rm(dataDir, { recursive: true, force: true })
+  })
 })
