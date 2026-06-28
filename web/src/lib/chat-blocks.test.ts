@@ -102,6 +102,27 @@ describe('classifyBlock', () => {
     expect(classifyBlock(null)).toBeNull()
     expect(classifyBlock(undefined)).toBeNull()
   })
+
+  // 修复:SDK 原生 type 结构(assistant_blocks 透传的 tool_use/tool_result)此前不被识别
+  // (classifyBlock 只读 raw.kind,但 SDK 发 raw.type),导致移动端无工具输出。
+  it('type=tool_use (SDK 原生) → tool_use 块,带可读标签', () => {
+    const b = classifyBlock({ type: 'tool_use', id: 'tu1', name: 'Bash', input: { command: 'git status' } })
+    expect(b?.kind).toBe('tool_use')
+    expect(b?.label).toBe('Bash: git status')
+  })
+
+  it('type=tool_result (SDK 原生) → tool_result 块,is_error 反映到标签', () => {
+    const ok = classifyBlock({ type: 'tool_result', tool_use_id: 'tu1', content: 'done', is_error: false })
+    expect(ok?.kind).toBe('tool_result')
+    expect(ok?.label).toBe('完成')
+    const err = classifyBlock({ type: 'tool_result', tool_use_id: 'tu2', content: 'fail', is_error: true })
+    expect(err?.label).toBe('出错')
+  })
+
+  it('type=tool_use + Edit → 标签含文件名', () => {
+    const b = classifyBlock({ type: 'tool_use', id: 'tu2', name: 'Edit', input: { file_path: '/a/b/c.ts' } })
+    expect(b?.label).toBe('Edit: c.ts')
+  })
 })
 
 describe('isPlanCard', () => {

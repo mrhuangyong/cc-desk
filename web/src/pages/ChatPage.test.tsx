@@ -103,7 +103,7 @@ describe('ChatPage - 渲染', () => {
     expect(screen.getByText(/计划/)).toBeInTheDocument()
   })
 
-  it('running 时显示中断按钮', () => {
+  it('running 且输入为空时,发送按钮变停止态(可中断)', () => {
     render(
       <ChatPage
         title="t"
@@ -116,7 +116,8 @@ describe('ChatPage - 渲染', () => {
         onBack={() => {}}
       />,
     )
-    expect(screen.getByRole('button', { name: /中断|停止/ })).toBeInTheDocument()
+    // 发送按钮三态:running+空 → 停止态(aria-label=停止),对齐桌面端
+    expect(screen.getByRole('button', { name: '停止' })).toBeInTheDocument()
   })
 })
 
@@ -210,7 +211,7 @@ describe('ChatPage - 交互', () => {
     expect(onSend).not.toHaveBeenCalled()
   })
 
-  it('点中断触发 onInterrupt', () => {
+  it('running 且空时点发送按钮(停止态)触发 onInterrupt', () => {
     const onInterrupt = vi.fn()
     render(
       <ChatPage
@@ -224,7 +225,8 @@ describe('ChatPage - 交互', () => {
         onBack={() => {}}
       />,
     )
-    fireEvent.click(screen.getByRole('button', { name: /中断|停止/ }))
+    // running+空时发送按钮是停止态,点击应触发 onInterrupt(三态:有内容→发送,流式空→停止)
+    fireEvent.click(screen.getByRole('button', { name: '停止' }))
     expect(onInterrupt).toHaveBeenCalled()
   })
 

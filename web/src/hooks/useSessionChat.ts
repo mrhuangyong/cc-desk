@@ -90,13 +90,30 @@ export interface UseSessionChatHandle {
   queue: string[]
 }
 
-/** 从 session.blocks payload 取出 blocks 数组（容错）。 */
+/** 从 session.blocks payload 取出 blocks 数组（容错，归一化桌面端 claude:blocks 的三种 op）。
+ *  桌面端 claude:blocks 按 op 分发,结构不一:
+ *    - tool_use_start: { op, block: {type:'tool_use',...} }  单块(block 单数)
+ *    - tool_result:    { op, toolUseId, result }             无 block/blocks,需归一化
+ *    - assistant_blocks:{ op, blocks: [...] }                 含 blocks 数组(纯文本/工具)
+ *  这里统一转成 blocks 数组,供 classifyBlock 进一步归一化为渲染块。 */
 function extractBlocks(payload: any): unknown[] {
   if (!payload) return []
-  // 桌面端透传 claude:blocks 的数据：可能是 { blocks: [...] } 或直接是数组。
   if (Array.isArray(payload)) return payload
+  // assistant_blocks:含 blocks 数组(文本/工具的权威整块)
   if (Array.isArray(payload.blocks)) return payload.blocks
-  // 兼容单块
+  // tool_use_start:单块(block 单数)→ 包成数组
+  if (payload.block && typeof payload.block === 'object') return [payload.block]
+  // tool_result:归一化为 { type:'tool_result', tool_use_id, content, is_error }
+  if (payload.op === 'tool_result' && payload.toolUseId) {
+    return [{
+      type: 'tool_result',
+      tool_use_id: payload.toolUseId,
+      content: payload.result?.content ?? '',
+      is_error: payload.result?.isError ?? false,
+      planFilePath: payload.planFilePath,
+    }]
+  }
+  // 兼容旧的单块 {kind:...}
   if (payload.kind) return [payload]
   return []
 }

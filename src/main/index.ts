@@ -85,6 +85,7 @@ const updateManager = new UpdateManager({ repo: 'mrhuangyong/cc-desk' })
 type ForwarderHandle = {
   onClaudeDelta(data: any): void
   onClaudeBlocks(data: any): void
+  onSubagentOutput?(data: any): void
   onNotice(data: any): void
   onResult(data: any): void
   onDialogRequest(data: any): void
@@ -97,6 +98,7 @@ type ForwarderHandle = {
 /** 需要旁路转发给手机端的 claude:* 业务事件通道白名单。 */
 const REMOTE_FORWARD_CHANNELS = new Set([
   'claude:delta', 'claude:blocks', 'claude:notice', 'claude:result', 'claude:dialog-request',
+  'claude:subagent-output',
 ])
 
 let remoteBridge: RemoteBridge | null = null
@@ -363,6 +365,7 @@ function startRemoteBridge(cfg: RemoteConfig): void {
             case 'claude:notice': forwarder.onNotice(args[0]); break
             case 'claude:result': forwarder.onResult(args[0]); break
             case 'claude:dialog-request': forwarder.onDialogRequest(args[0]); break
+            case 'claude:subagent-output': forwarder.onSubagentOutput?.(args[0]); break
           }
         }
       } catch {

@@ -287,6 +287,29 @@ export default function ChatPage(props: ChatPageProps) {
     }
   }
 
+  // 从 dialog payload 提取可读的工具操作摘要（权限请求时显示「批准什么」）。
+  // 桌面端 payload 含 {toolName, displayName, description, decisionReason, input}。
+  // input 是工具入参（Write 的 file_path、Bash 的 command 等），提取关键字段可读化。
+  const dialogDetail = (dialog: DialogRequest | null | undefined): { title?: string; desc?: string; inputLines?: string[] } => {
+    if (!dialog?.payload || typeof dialog.payload !== 'object') return {}
+    const p = dialog.payload as any
+    const title = p.displayName ?? p.toolName ?? undefined
+    const desc = p.description ?? p.decisionReason ?? undefined
+    const inputLines: string[] = []
+    const input = p.input
+    if (input && typeof input === 'object') {
+      // 常见工具的关键入参可读化
+      if (typeof input.command === 'string') inputLines.push(`$ ${input.command}`)
+      else if (typeof input.file_path === 'string') inputLines.push(input.file_path)
+      else if (typeof input.path === 'string') inputLines.push(input.path)
+      else if (typeof input.pattern === 'string') inputLines.push(`/${input.pattern}/`)
+      else if (typeof input.prompt === 'string') inputLines.push(input.prompt.slice(0, 120))
+    } else if (typeof input === 'string' && input) {
+      inputLines.push(input)
+    }
+    return { title, desc, inputLines: inputLines.length ? inputLines : undefined }
+  }
+
   return (
     <>
     <EdgeSwipeBack onBack={onBack}>
@@ -297,11 +320,6 @@ export default function ChatPage(props: ChatPageProps) {
           <h1 className="chat-title">{title || '会话'}</h1>
         </div>
         <div className="header-actions">
-          {running && (
-            <button className="icon-btn stop" onClick={onInterrupt} aria-label="停止">
-              <SquareIcon />
-            </button>
-          )}
           {headerExtra}
         </div>
       </header>
@@ -517,12 +535,16 @@ export default function ChatPage(props: ChatPageProps) {
             )}
             </div>
             <button
-              className="send-icon-btn"
-              onClick={onSend}
-              disabled={!canSend}
-              aria-label="发送"
+              className={`send-icon-btn ${running && !canSend ? 'stop' : ''}`}
+              onClick={() => {
+                // 三态(对齐桌面 InputBar):有内容→发送;流式中且空→停止(中断);空→禁用
+                if (canSend) { onSend(); return }
+                if (running) { onInterrupt(); return }
+              }}
+              disabled={!canSend && !running}
+              aria-label={running && !canSend ? '停止' : '发送'}
             >
-              <SendIcon />
+              {running && !canSend ? <SquareIcon /> : <SendIcon />}
             </button>
           </div>
         </div>
@@ -533,6 +555,7 @@ export default function ChatPage(props: ChatPageProps) {
     {/* 批准/权限请求：底部弹出模态（不挤压对话区） */}
     {currentDialog && (() => {
       const meta = dialogMeta(currentDialog.dialogKind)
+      const detail = dialogDetail(currentDialog)
       return (
         <div className="dialog-overlay" role="dialog" aria-modal="true" aria-label={meta.label}>
           <div className="dialog-sheet">
@@ -541,7 +564,23 @@ export default function ChatPage(props: ChatPageProps) {
               <span className="dialog-kind-badge">{meta.icon}</span>
               <span className="dialog-kind">{meta.label}</span>
             </div>
-            <div className="dialog-question">{meta.question}</div>
+            <div className="dialog-question">
+              {detail.title ? (
+                <>
+                  <div className="dialog-tool-name">{detail.title}</div>
+                  {detail.desc && <div className="dialog-tool-desc">{detail.desc}</div>}
+                </>
+              ) : (
+                meta.question
+              )}
+            </div>
+            {detail.inputLines && (
+              <div className="dialog-tool-input">
+                {detail.inputLines.map((line, i) => (
+                  <div className="dialog-input-line mono" key={i}>{line}</div>
+                ))}
+              </div>
+            )}
             <div className="dialog-actions">
               <button
                 className="dialog-btn deny"

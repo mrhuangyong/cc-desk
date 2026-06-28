@@ -71,27 +71,47 @@ export function isPlanCard(raw: any): boolean {
 
 /**
  * 把 session.blocks 的单个块归一化为 ChatBlock。
- * 未知 kind 返回 null（静默忽略，最小特权）。
+ * 兼容两种来源结构:
+ *   - 桌面 SDK 原生(assistant_blocks 透传): {type:'text'|'tool_use'|'tool_result', ...}
+ *   - 旧 claude:blocks 的 op 包装: {kind:'tool_use_start'|'tool_result', ...}
+ * 未知块返回 null（静默忽略）。
  */
 export function classifyBlock(raw: any): ChatBlock | null {
   if (!raw || typeof raw !== 'object') return null
-  // assistant_blocks 中的 text 块（{type:'text', text:'...'}）：提取文本内容
+  // text 块(SDK assistant_blocks 里的纯文本)
   if (raw.type === 'text' && typeof raw.text === 'string') {
     return { kind: 'text', label: '', text: raw.text, raw }
   }
-  const kind = raw.kind
-  // 计划卡片优先识别（挂在 tool_result.payload.plan）
-  if (kind === 'tool_result' && isPlanCard(raw)) {
-    return { kind: 'plan', label: '计划', raw }
+  // tool_use 块(SDK type:'tool_use' 或旧 kind:'tool_use_start'):工具调用过程
+  if (raw.type === 'tool_use' || raw.kind === 'tool_use_start') {
+    const name = typeof raw.name === 'string' ? raw.name : 'tool'
+    return { kind: 'tool_use', label: toolUseLabel(name, raw.input), raw }
   }
-  switch (kind) {
-    case 'tool_use_start':
-      return { kind: 'tool_use', label: typeof raw.name === 'string' ? raw.name : 'tool', raw }
-    case 'tool_result':
-      return { kind: 'tool_result', label: '结果', raw }
-    case 'assistant_blocks':
-      return { kind: 'assistant', label: '内容', raw }
-    default:
-      return null
+  // tool_result 块(SDK type:'tool_result' 或旧 kind:'tool_result'):工具执行结果
+  if (raw.type === 'tool_result' || raw.kind === 'tool_result') {
+    // 计划卡片(tool_result 带 plan payload)
+    if (isPlanCard(raw)) return { kind: 'plan', label: '计划', raw }
+    const isError = raw.is_error ?? raw.isError ?? false
+    return { kind: 'tool_result', label: isError ? '出错' : '完成', raw }
   }
+  if (raw.kind === 'assistant_blocks') {
+    return { kind: 'assistant', label: '内容', raw }
+  }
+  return null
+}
+
+/** 工具入参 → 简短可读标签(对齐桌面 toolUseLabel),让 tool_use 块显示「Bash: git status」而非裸名。 */
+function toolUseLabel(name: string | undefined, input: any): string {
+  if (!name) return '工具调用'
+  const i = input ?? {}
+  if (name === 'Bash' && typeof i.command === 'string') {
+    return `Bash: ${i.command.split('\n')[0].trim().slice(0, 50)}`
+  }
+  if ((name === 'Edit' || name === 'Write' || name === 'Read') && typeof i.file_path === 'string') {
+    return `${name}: ${i.file_path.split('/').pop() ?? i.file_path}`
+  }
+  if (name === 'Grep' && typeof i.pattern === 'string') return `Grep: ${i.pattern.slice(0, 40)}`
+  if (name === 'Glob' && typeof i.pattern === 'string') return `Glob: ${i.pattern.slice(0, 40)}`
+  if (name === 'Task' && typeof i.description === 'string') return `Task: ${i.description.slice(0, 40)}`
+  return name
 }

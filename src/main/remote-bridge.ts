@@ -466,6 +466,17 @@ export function createEventForwarder(
     onClaudeBlocks(data: unknown) {
       sendFn(placeholderEnv('session.blocks', data))
     },
+    /** claude:subagent-output —— Task 工具子代理的 tool_use/tool_result(不进主流)。
+     *  转成 session.blocks 让移动端复用 blocks 渲染(归一化为 tool_use/tool_result 块)。 */
+    onSubagentOutput(data: { localSessionId: string; toolUseId: string; block: any }) {
+      if (!data?.block) return
+      const block = data.block
+      // tool_use → tool_use_start 形态;tool_result → tool_result 形态(供 extractBlocks 归一化)
+      const payload = block.type === 'tool_result'
+        ? { localSessionId: data.localSessionId, op: 'tool_result', toolUseId: data.toolUseId, result: { content: block.content ?? '', isError: block.isError ?? false } }
+        : { localSessionId: data.localSessionId, op: 'tool_use_start', block }
+      sendFn(placeholderEnv('session.blocks', payload))
+    },
     /** claude:notice —— 系统提示 info/warn/error。payload 透传。 */
     onNotice(data: unknown) {
       sendFn(placeholderEnv('session.notice', data))
