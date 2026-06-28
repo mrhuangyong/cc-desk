@@ -8,7 +8,7 @@
 // - hook 行为：bind.ok 后 connected=true、断线后退避递增、stop 后不再重连——
 //   通过注入可控的 WebSocket 工厂 + 假时间/定时器驱动（不 mock 协议，只隔离传输）。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { computeBackoff, buildBindEnvelope } from './useRelay'
+import { computeBackoff, buildBindEnvelope, buildBindTokenEnvelope, buildTokenEnvelope } from './useRelay'
 import { signEnvelope, verifyEnvelopeSig } from '../lib/sign'
 import { PROTOCOL_VERSION } from '../../../src/shared/remote-protocol'
 
@@ -60,6 +60,49 @@ describe('buildBindEnvelope 构造 bind 信封', () => {
   it('sig 字段为空字符串（占位，由签名层在发送前填充）', () => {
     const env = buildBindEnvelope(DEVICE_ID)
     expect(env.sig).toBe('')
+  })
+})
+
+describe('buildBindTokenEnvelope 构造 token 模式 bind 信封（Task 4）', () => {
+  it('返回 type=bind、token 来自参数、deviceId 为空（token 即凭证）', () => {
+    const env = buildBindTokenEnvelope('share-tok')
+    expect(env.type).toBe('bind')
+    expect(env.token).toBe('share-tok')
+    expect(env.deviceId).toBe('') // token 模式无设备身份
+    expect(env.v).toBe(PROTOCOL_VERSION)
+    expect(env.payload).toEqual({})
+  })
+
+  it('sig 为空（token 模式不签名）', () => {
+    const env = buildBindTokenEnvelope('tok')
+    expect(env.sig).toBe('')
+  })
+
+  it('ts 为正数毫秒时间戳，nonce 非空', () => {
+    const env = buildBindTokenEnvelope('tok')
+    expect(env.ts).toBeGreaterThan(0)
+    expect(env.nonce.length).toBeGreaterThan(0)
+  })
+
+  it('每次调用 nonce 不同（防重放）', () => {
+    expect(buildBindTokenEnvelope('t').nonce).not.toBe(buildBindTokenEnvelope('t').nonce)
+  })
+})
+
+describe('buildTokenEnvelope 构造 token 模式业务信封（Task 4）', () => {
+  it('返回 type/payload 来自参数，deviceId/sig 为空', () => {
+    const env = buildTokenEnvelope('session.sync', { foo: 1 })
+    expect(env.type).toBe('session.sync')
+    expect(env.payload).toEqual({ foo: 1 })
+    expect(env.deviceId).toBe('')
+    expect(env.sig).toBe('')
+    expect(env.v).toBe(PROTOCOL_VERSION)
+  })
+
+  it('nonce 每次不同', () => {
+    const a = buildTokenEnvelope('session.sync', {})
+    const b = buildTokenEnvelope('session.sync', {})
+    expect(a.nonce).not.toBe(b.nonce)
   })
 })
 
@@ -323,5 +366,73 @@ describe('useRelay hook', () => {
     unmount()
     act(() => { vi.advanceTimersByTime(60000) })
     expect(FakeWebSocket.instances).toHaveLength(1) // 无新增重连
+  })
+
+  // -------------------------------------------------------------------------
+  // Task 4：分享 token 模式 —— bind 不签名（token 即凭证），业务消息也不签名。
+  // -------------------------------------------------------------------------
+  it('token 模式：start 后发送带 token 的 bind 信封（sig 为空，不签名）', async () => {
+    vi.useFakeTimers()
+    const { result } = renderHook(() =>
+      useRelay({ relayUrl: 'ws://relay.test', deviceId: DEVICE_ID, deviceKey: DEVICE_KEY, shareToken: 'SHARE_TOK', WS: FakeWebSocket as unknown as typeof WebSocket }),
+    )
+    act(() => { result.current.start() })
+    expect(FakeWebSocket.instances).toHaveLength(1)
+    const ws = FakeWebSocket.instances[0]
+    act(() => { ws.emitOpen() })
+    await vi.waitFor(() => { expect(ws.sent).toHaveLength(1) })
+    const env = JSON.parse(ws.sent[0])
+    expect(env.type).toBe('bind')
+    expect(env.token).toBe('SHARE_TOK')
+    expect(env.deviceId).toBe('') // token 模式无设备身份
+    expect(env.sig).toBe('')     // 不签名
+  })
+
+  it('token 模式：bind.ok 后 session.sync 不签名（sig 为空）', async () => {
+    vi.useFakeTimers()
+    const { result } = renderHook(() =>
+      useRelay({ relayUrl: 'ws://relay.test', deviceId: DEVICE_ID, deviceKey: DEVICE_KEY, shareToken: 'TOK', WS: FakeWebSocket as unknown as typeof WebSocket }),
+    )
+    act(() => { result.current.start() })
+    const ws = FakeWebSocket.instances[0]
+    act(() => { ws.emitOpen(); ws.emitMessage({ type: 'bind.ok' }) })
+    expect(result.current.connected).toBe(true)
+    // bind(token) + session.sync 两条
+    await vi.waitFor(() => { expect(ws.sent).toHaveLength(2) })
+    const syncEnv = JSON.parse(ws.sent[1])
+    expect(syncEnv.type).toBe('session.sync')
+    expect(syncEnv.sig).toBe('') // token 模式不签名
+  })
+
+  it('token 模式：send 业务消息不签名', async () => {
+    vi.useFakeTimers()
+    const { result } = renderHook(() =>
+      useRelay({ relayUrl: 'ws://relay.test', deviceId: DEVICE_ID, deviceKey: DEVICE_KEY, shareToken: 'TOK', WS: FakeWebSocket as unknown as typeof WebSocket }),
+    )
+    act(() => { result.current.start() })
+    const ws = FakeWebSocket.instances[0]
+    act(() => { ws.emitOpen(); ws.emitMessage({ type: 'bind.ok' }) })
+    await vi.waitFor(() => { expect(ws.sent).toHaveLength(2) }) // bind + sync
+    let sentOk = false
+    await act(async () => { sentOk = await result.current.send('session.message', { text: 'hi' }) })
+    expect(sentOk).toBe(true)
+    await vi.waitFor(() => { expect(ws.sent).toHaveLength(3) })
+    const env = JSON.parse(ws.sent[2])
+    expect(env.type).toBe('session.message')
+    expect(env.payload).toEqual({ text: 'hi' })
+    expect(env.sig).toBe('') // token 模式不签名
+  })
+
+  it('token 模式：收到 error 后 connected=false（与旧模式对称）', async () => {
+    vi.useFakeTimers()
+    const { result } = renderHook(() =>
+      useRelay({ relayUrl: 'ws://relay.test', deviceId: DEVICE_ID, deviceKey: DEVICE_KEY, shareToken: 'TOK', WS: FakeWebSocket as unknown as typeof WebSocket }),
+    )
+    act(() => { result.current.start() })
+    const ws = FakeWebSocket.instances[0]
+    act(() => { ws.emitOpen(); ws.emitMessage({ type: 'bind.ok' }) })
+    expect(result.current.connected).toBe(true)
+    act(() => { ws.emitMessage({ type: 'error', payload: { code: 'invalid_token' } }) })
+    expect(result.current.connected).toBe(false)
   })
 })

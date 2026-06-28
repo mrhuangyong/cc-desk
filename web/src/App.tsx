@@ -12,7 +12,14 @@
 //   dialog.request → useDialogQueue.onInbound。
 // 发送：session.attach/create/message/interrupt/dialog.response 经 relay.send。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { loadDesktopIdentity, loadDeviceIdentity, clearPairingStorage } from './lib/pair'
+import {
+  loadDesktopIdentity,
+  loadDeviceIdentity,
+  clearPairingStorage,
+  parseShareTokenFromUrl,
+  loadShareToken,
+  saveShareToken,
+} from './lib/pair'
 import PairPage from './pages/PairPage'
 import ProjectListPage from './pages/ProjectListPage'
 import ChatPage from './pages/ChatPage'
@@ -36,6 +43,21 @@ const DEFAULT_RELAY =
     : 'ws://localhost:8787')
 
 export default function App() {
+  // Task 4：分享链接认证 —— token 优先级解析（一次性，挂载期确定模式）。
+  //   1) URL ?t=xxx → 存 localStorage 后用它（扫码/点链接直达）。
+  //   2) 无 URL ?t= → 读 localStorage ccdesk.share（刷新不丢）。
+  //   3) 都无 → 旧 desktop 配对路径（PairPage）。
+  // 用 useState 惰性初始化锁定结果：避免 location.search 变化（SPA 内无刷新）反复重算。
+  const [shareToken] = useState<string | null>(() => {
+    if (typeof location === 'undefined') return loadShareToken()
+    const fromUrl = parseShareTokenFromUrl(location.search)
+    if (fromUrl) {
+      saveShareToken(fromUrl)
+      return fromUrl
+    }
+    return loadShareToken()
+  })
+
   const [desktop, setDesktop] = useState(() => loadDesktopIdentity())
   const { theme, toggle } = useTheme()
   const themeToggle = (
@@ -56,6 +78,17 @@ export default function App() {
     return () => window.removeEventListener('storage', onStorage)
   }, [])
 
+  // 有 shareToken → 跳过配对检查，直接进 RemoteShell（token 即凭证，免配对直连）。
+  if (shareToken) {
+    return (
+      <RemoteShell
+        desktop={null}
+        shareToken={shareToken}
+        onUnpaired={() => window.location.reload()}
+        themeToggle={themeToggle}
+      />
+    )
+  }
   if (!desktop) {
     return <PairPage onPaired={handlePaired} headerExtra={themeToggle} />
   }
@@ -67,16 +100,24 @@ function RemoteShell({
   desktop,
   onUnpaired,
   themeToggle,
+  shareToken,
 }: {
-  desktop: { desktopId: string; desktopKey: string }
+  desktop: { desktopId: string; desktopKey: string } | null
   onUnpaired: () => void
   themeToggle: React.ReactNode
+  /** 分享 token（Task 4）：存在则走 token 模式 bind，desktop/device 身份可空。 */
+  shareToken?: string
 }) {
+  // token 模式：无配对身份，用空值占位（bind 不依赖 deviceId/deviceKey）。
+  // 旧模式：必须读到 device（配对时写入），否则兜底回配对页。
   const device = useMemo(() => loadDeviceIdentity(), [])
-  // device 缺失（理论上配对时已写入）：兜底回配对页。
-  if (!device) {
+  if (!shareToken && !device) {
     return <PairPage onPaired={() => window.location.reload()} headerExtra={themeToggle} />
   }
+
+  // device 可能为 null（token 模式），下面用兜底值，仅 type 兼容用。
+  const deviceId = device?.deviceId ?? ''
+  const deviceKey = device?.deviceKey ?? ''
 
   const [sessions, setSessions] = useState<SessionListItem[]>([])
   const [projectsMeta, setProjectsMeta] = useState<ProjectMeta[]>([])
@@ -179,8 +220,9 @@ function RemoteShell({
 
   const relay = useRelay({
     relayUrl: DEFAULT_RELAY,
-    deviceId: device.deviceId,
-    deviceKey: device.deviceKey,
+    deviceId,
+    deviceKey,
+    shareToken,
     onInbound,
   })
 
