@@ -241,6 +241,18 @@ export function App() {
     return () => { unsubscribe?.() }
   }, [dispatch])
 
+  // SDK user turn 的纯文本(claude:user-message):user 消息与 assistant 走同源持久化路径。
+  // 这是 user 消息可靠落盘的来源(本地+远程发消息都经 SDK 回放)。复用 REMOTE_USER_MESSAGE
+  // 的 reducer action,reducer 内按「末条相同文本 user」去重,避免与本地 echo/remote 补丁重复。
+  useEffect(() => {
+    const unsubscribe = window.api?.claude?.onUserMessage?.((data) => {
+      if (data?.localSessionId && typeof data.text === 'string') {
+        dispatch({ type: 'REMOTE_USER_MESSAGE', sessionId: data.localSessionId, text: data.text })
+      }
+    })
+    return () => { unsubscribe?.() }
+  }, [dispatch])
+
   // 应用更新状态：订阅主进程状态机推送（单次挂载，cleanup 取消订阅防泄漏）
   useEffect(() => {
     const unsubscribe = window.api?.update?.onState?.((status) => {

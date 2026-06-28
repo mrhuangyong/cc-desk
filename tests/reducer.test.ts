@@ -57,6 +57,29 @@ describe('reducer', () => {
     expect(() => reducer(state, { type: 'REMOTE_USER_MESSAGE', sessionId: 'not-exist', text: 'x' })).not.toThrow()
   })
 
+  it('REMOTE_USER_MESSAGE 末条已是相同 user 文本时去重（多源触发不重复）', () => {
+    // 三个来源(remote 补丁 / claude:user-message SDK / 本地 SEND_MESSAGE)可能对同一条
+    // 用户输入重复触发,按「末条相同文本 user」去重。
+    const state = initialState()
+    const after1 = reducer(state, { type: 'REMOTE_USER_MESSAGE', sessionId: 's1', text: '问题' })
+    const s1After1 = after1.projects.flatMap(p => p.sessions).find(s => s.id === 's1')!
+    const userCount1 = s1After1.messages.filter(m => m.role === 'user').length
+    // 再来一次相同文本(模拟 SDK 回放)
+    const after2 = reducer(after1, { type: 'REMOTE_USER_MESSAGE', sessionId: 's1', text: '问题' })
+    const s1After2 = after2.projects.flatMap(p => p.sessions).find(s => s.id === 's1')!
+    const userCount2 = s1After2.messages.filter(m => m.role === 'user').length
+    expect(userCount2).toBe(userCount1) // 去重:user 数不增加
+  })
+
+  it('REMOTE_USER_MESSAGE 不同文本不去重（连续两条不同问题）', () => {
+    const state = initialState()
+    // s1 在 seedProjects 里已有 1 条 user(m1),用 s2(空会话)避免初始消息干扰
+    const after1 = reducer(state, { type: 'REMOTE_USER_MESSAGE', sessionId: 's2', text: '问题A' })
+    const after2 = reducer(after1, { type: 'REMOTE_USER_MESSAGE', sessionId: 's2', text: '问题B' })
+    const s2 = after2.projects.flatMap(p => p.sessions).find(s => s.id === 's2')!
+    expect(s2.messages.filter(m => m.role === 'user').length).toBe(2)
+  })
+
   it('REMOTE_USER_MESSAGE 加的 user 消息，不应被随后不含该消息的 HYDRATE 覆盖丢失（竞态根因）', () => {
     // 复现：移动端发消息 → REMOTE_USER_MESSAGE 加入 user 文本 → 紧接着远程操作触发
     // workspace:changed → HYDRATE 用「尚未 save 该 user 消息的磁盘快照」整体替换 projects → user 消息丢失。

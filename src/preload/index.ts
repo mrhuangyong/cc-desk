@@ -29,6 +29,13 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.on('claude:remote-user-message', handler)
       return () => ipcRenderer.removeListener('claude:remote-user-message', handler)
     },
+    // SDK user turn 的纯文本 prompt（claude:user-message）：user 消息与 assistant 走同源
+    // 持久化路径。用于可靠显示+落盘用户输入（本地+远程发消息都走这条），替代脆弱的补丁。
+    onUserMessage: (cb: (data: { localSessionId: string; text: string }) => void) => {
+      const handler = (_: unknown, data: { localSessionId: string; text: string }) => cb(data)
+      ipcRenderer.on('claude:user-message', handler)
+      return () => ipcRenderer.removeListener('claude:user-message', handler)
+    },
     onContextUsage: (cb: (data: any) => void) => {
       const handler = (_: unknown, data: any) => cb(data)
       ipcRenderer.on('claude:context-usage', handler)
@@ -42,7 +49,7 @@ contextBridge.exposeInMainWorld('api', {
     setPermissionMode: (opts: { localSessionId: string; permission: string }) => ipcRenderer.invoke('claude:set-permission-mode', opts),
     contextUsage: (localSessionId: string) => ipcRenderer.invoke('claude:context-usage', localSessionId),
     removeAllListeners: () => {
-      ['claude:system', 'claude:delta', 'claude:blocks', 'claude:notice', 'claude:task', 'claude:result', 'claude:error', 'claude:aborted', 'claude:dialog-request', 'claude:dialog-resolved', 'claude:remote-user-message', 'claude:context-usage', 'claude:backend-task', 'claude:builtin-result', 'claude:subagent-output', 'claude:notification', 'update:state']
+      ['claude:system', 'claude:delta', 'claude:blocks', 'claude:notice', 'claude:task', 'claude:result', 'claude:error', 'claude:aborted', 'claude:dialog-request', 'claude:dialog-resolved', 'claude:remote-user-message', 'claude:user-message', 'claude:context-usage', 'claude:backend-task', 'claude:builtin-result', 'claude:subagent-output', 'claude:notification', 'update:state']
         .forEach(ch => ipcRenderer.removeAllListeners(ch))
     },
   },

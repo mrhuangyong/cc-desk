@@ -21,4 +21,6 @@ build/icons/icon.iconset/
 # PWA 构建产物（web/ 子项目 vite build 输出，Task 15 部署时生成）
 /relay/public/
 # web 子项目 tsc 增量构建缓存
-/web/tsconfig.tsbuildinforelay/data-local/
+/web/tsconfig.tsbuildinfo
+# 本地 relay 运行产生的配对数据（含密钥，绝不提交）
+/relay/data-local/

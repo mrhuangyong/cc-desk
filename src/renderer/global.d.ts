@@ -29,6 +29,8 @@ interface ClaudeAPI {
   onDialogResolved(cb: (data: { reqId: string }) => void): () => void
   // 远程（手机）发来的 user 文本：返回 unsubscribe，组件卸载时调用避免监听器累加。
   onRemoteUserMessage(cb: (data: { localSessionId: string; text: string }) => void): () => void
+  // SDK user turn 的纯文本（claude:user-message）：user 消息与 assistant 同源持久化。
+  onUserMessage(cb: (data: { localSessionId: string; text: string }) => void): () => void
   onNotification(cb: (data: { localSessionId: string; text: string; priority: string }) => void): void
   onBuiltinResult(cb: (data: any) => void): void
   onSubagentOutput(cb: (data: any) => void): void
