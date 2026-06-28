@@ -250,6 +250,44 @@ function ensureAliveSession(
   }
 }
 
+function sendDraftMessage(state: AppState, doc: Draft['doc'], attachments: Draft['attachments']): AppState {
+  const prompt = serializeForPrompt(doc)
+  // 文本和附件都为空则不发送
+  if (!prompt.trim() && attachments.length === 0) return state
+  const sessionId = state.activeSessionId
+  // 用户附加的图片：转成 image content block，让用户气泡显示自己发的图，
+  // 同时也随消息进入持久化。source 为纯 base64，ImageBlock 渲染时自动加 data: 前缀。
+  const imageBlocks = attachments
+    .filter(a => a.type === 'image')
+    .map(a => ({ type: 'image' as const, source: a.base64 }))
+  const content: ContentBlock[] = [
+    ...(prompt ? [{ type: 'text' as const, text: prompt }] : []),
+    ...imageBlocks,
+  ]
+  // 无文本也无图片时不该走到这（上面已拦截），兜底防 content 为空
+  const newMessage = {
+    id: nextId('m'),
+    role: 'user' as const,
+    content: content.length > 0 ? content : [{ type: 'text' as const, text: prompt }],
+    ...(attachments.length ? { attachments } : {}),
+  }
+  // 首条消息标题：用 prompt 文本生成
+  const makeTitle = (raw: string) => {
+    const clean = raw.replace(/\s+/g, ' ').trim()
+    return clean.length > 30 ? clean.slice(0, 30) + '…' : clean
+  }
+  const projects = updateSession(state, sessionId, s => {
+    const isFirst = s.messages.length === 0
+    return {
+      ...s,
+      messages: [...s.messages, newMessage],
+      lastUserSentAt: Date.now(),
+      ...(isFirst && s.title === '新会话' && prompt.trim() ? { title: makeTitle(prompt) } : {}),
+    }
+  }).projects
+  return { ...state, projects, draft: { doc: null, attachments: [] } }
+}
+
 export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'ADD_PROJECT': {
@@ -438,42 +476,10 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, draft: { doc: null, attachments: [] } }
     }
     case 'SEND_MESSAGE': {
-      const { doc, attachments } = state.draft
-      const prompt = serializeForPrompt(doc)
-      // 文本和附件都为空则不发送
-      if (!prompt.trim() && attachments.length === 0) return state
-      const sessionId = state.activeSessionId
-      // 用户附加的图片：转成 image content block，让用户气泡显示自己发的图，
-      // 同时也随消息进入持久化。source 为纯 base64，ImageBlock 渲染时自动加 data: 前缀。
-      const imageBlocks = attachments
-        .filter(a => a.type === 'image')
-        .map(a => ({ type: 'image' as const, source: a.base64 }))
-      const content: ContentBlock[] = [
-        ...(prompt ? [{ type: 'text' as const, text: prompt }] : []),
-        ...imageBlocks,
-      ]
-      // 无文本也无图片时不该走到这（上面已拦截），兜底防 content 为空
-      const newMessage = {
-        id: nextId('m'),
-        role: 'user' as const,
-        content: content.length > 0 ? content : [{ type: 'text' as const, text: prompt }],
-        ...(attachments.length ? { attachments } : {}),
-      }
-      // 首条消息标题：用 prompt 文本生成
-      const makeTitle = (raw: string) => {
-        const clean = raw.replace(/\s+/g, ' ').trim()
-        return clean.length > 30 ? clean.slice(0, 30) + '…' : clean
-      }
-      const projects = updateSession(state, sessionId, s => {
-        const isFirst = s.messages.length === 0
-        return {
-          ...s,
-          messages: [...s.messages, newMessage],
-          lastUserSentAt: Date.now(),
-          ...(isFirst && s.title === '新会话' && prompt.trim() ? { title: makeTitle(prompt) } : {}),
-        }
-      }).projects
-      return { ...state, projects, draft: { doc: null, attachments: [] } }
+      return sendDraftMessage(state, state.draft.doc, state.draft.attachments)
+    }
+    case 'SEND_MESSAGE_WITH_DRAFT': {
+      return sendDraftMessage(state, action.doc, action.attachments)
     }
     case 'REMOTE_USER_MESSAGE': {
       // 远程（手机）发来的 user 文本，直接追加到目标会话。与本地 SEND_MESSAGE 不同：

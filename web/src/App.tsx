@@ -262,16 +262,18 @@ function RemoteShell({
   const handleSend = useCallback(() => {
     if (view.kind !== 'chat') return
     const text = inputValue
-    setInputValue('')
-    clearDraft(view.localSessionId)  // 发送后清草稿
     const imagesToSend = attachments.length ? attachments : undefined
     void chat.sendMessage(view.localSessionId, text, {
       permission: currentPermission,
       thinking: currentThinking,
       images: imagesToSend,
       queueMode: currentQueueMode,
+    }).then((ok) => {
+      if (!ok) return
+      setInputValue('')
+      clearDraft(view.localSessionId)  // 发送后清草稿
+      if (attachments.length) setAttachments([])
     })
-    if (attachments.length) setAttachments([])
   }, [view, inputValue, chat, currentPermission, currentThinking, attachments, currentQueueMode])
 
   const handleInterrupt = useCallback(() => {
@@ -359,4 +361,3 @@ function RemoteShell({
     </>
   )
 }
-

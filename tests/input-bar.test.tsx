@@ -2,7 +2,7 @@
 // PromptEditor（TipTap）stub 为空 div，聚焦测：权限/思考下拉 dispatch、附件 chip 移除、
 // 排队消息（立即/取消）、发送钮 aria-label 三态。Enter 发送/粘贴/拖拽等经 TipTap 内部，不在本测试范围。
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 
 let mockState: any
 const dispatch = vi.fn()
@@ -13,8 +13,12 @@ vi.mock('../src/renderer/i18n/useI18n', () => ({
   useI18n: () => ({ t: (k: string) => k, lang: 'zh-CN' }),
 }))
 // stub TipTap 编辑器
+let promptEditorProps: any
 vi.mock('../src/renderer/editor/PromptEditor', () => ({
-  PromptEditor: () => <div data-testid="editor-stub" />,
+  PromptEditor: (props: any) => {
+    promptEditorProps = props
+    return <div data-testid="editor-stub" />
+  },
 }))
 vi.mock('../src/renderer/components/AttachmentChip', () => ({
   AttachmentChip: ({ onRemove }: any) => <button data-testid="chip-remove" onClick={onRemove}>x</button>,
@@ -41,6 +45,7 @@ describe('InputBar 外围交互', () => {
   const modelGet = vi.fn()
 
   beforeEach(() => {
+    promptEditorProps = null
     dispatch.mockClear()
     commandsGet.mockResolvedValue([])
     skillsGet.mockResolvedValue([])
@@ -94,6 +99,21 @@ describe('InputBar 外围交互', () => {
     })
   })
 
+  describe('输入性能', () => {
+    it('编辑器内容变化不 dispatch 高频全局草稿 action', () => {
+      render(<InputBar />)
+
+      act(() => {
+        promptEditorProps.onDocChange({
+          type: 'doc',
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: 'typing' }] }],
+        })
+      })
+
+      expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'SET_DRAFT_DOC' }))
+    })
+  })
+
   describe('权限下拉', () => {
     it('点击权限按钮展开 4 个选项，当前项带勾', () => {
       render(<InputBar />)
@@ -122,7 +142,7 @@ describe('InputBar 外围交互', () => {
   })
 
   describe('附件 chip', () => {
-    it('draft 有附件 → 渲染 chip，点移除 → REMOVE_DRAFT_ATTACHMENT', () => {
+    it('draft 有附件 → 渲染 chip，点移除仅更新本地输入态', () => {
       mockState = baseState({
         draft: { doc: null, attachments: [
           { type: 'image', name: 'a.png', base64: 'x', mediaType: 'image/png' },
@@ -131,7 +151,8 @@ describe('InputBar 外围交互', () => {
       render(<InputBar />)
       const removeBtn = screen.getByTestId('chip-remove')
       fireEvent.click(removeBtn)
-      expect(dispatch).toHaveBeenCalledWith({ type: 'REMOVE_DRAFT_ATTACHMENT', index: 0 })
+      expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'REMOVE_DRAFT_ATTACHMENT' }))
+      expect(screen.queryByTestId('chip-remove')).toBeNull()
     })
   })
 

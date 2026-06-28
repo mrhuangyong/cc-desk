@@ -20,6 +20,7 @@ export type Action =
   | { type: 'REMOVE_DRAFT_ATTACHMENT'; index: number }
   | { type: 'CLEAR_DRAFT' }
   | { type: 'SEND_MESSAGE' } // 把当前 draft（doc + attachments）序列化后追加到激活会话
+  | { type: 'SEND_MESSAGE_WITH_DRAFT'; doc: import('../editor/types').TipTapDocJSON | null; attachments: import('../types').DraftAttachment[] }
   // 远程（手机）发来的 user 文本：直接按 sessionId 追加一条 user 消息，让桌面端对话
   // 里除了 AI 回复也能看到「手机问的问题」。与本地 SEND_MESSAGE 区分（不带 draft）。
   | { type: 'REMOTE_USER_MESSAGE'; sessionId: string; text: string }
