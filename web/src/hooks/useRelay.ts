@@ -127,10 +127,12 @@ export function useRelay(opts: UseRelayOptions): UseRelayHandle {
   const connect = useCallback(() => {
     if (stoppedRef.current) return
     const gen = generationRef.current
+    console.warn('[useRelay] connect 尝试, endpoint=', wsEndpoint(), 'deviceId=', deviceId.slice(0, 8), 'gen=', gen)
     let ws: WebSocket
     try {
       ws = new WSImpl(wsEndpoint())
-    } catch {
+    } catch (e) {
+      console.warn('[useRelay] new WebSocket 抛错:', e)
       // URL 非法等：直接排重连
       scheduleReconnect()
       return
@@ -139,14 +141,27 @@ export function useRelay(opts: UseRelayOptions): UseRelayHandle {
 
     ws.addEventListener('open', () => {
       if (stoppedRef.current || generationRef.current !== gen) return
+      console.warn('[useRelay] WS open, 发 bind...')
       // bind 握手：构造信封后异步签名再发送。
       // payload 留空对象：中继只验整条信封签名，不读 payload；密钥只存在于签名计算。
       const env = buildBindEnvelope(deviceId)
       void signEnvelope(deviceKey, env).then((sig) => {
         if (stoppedRef.current || generationRef.current !== gen) return
         env.sig = sig
-        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(env))
+        if (ws.readyState === WebSocket.OPEN) {
+          console.warn('[useRelay] bind 发送, readyState=', ws.readyState)
+          ws.send(JSON.stringify(env))
+        } else {
+          console.warn('[useRelay] bind 未发: readyState 不是 OPEN(', ws.readyState, ')')
+        }
       })
+    })
+
+    ws.addEventListener('close', (ev) => {
+      console.warn('[useRelay] WS close, code=', (ev as any).code, 'reason=', (ev as any).reason, 'gen=', gen)
+    })
+    ws.addEventListener('error', (ev) => {
+      console.warn('[useRelay] WS error', ev)
     })
 
     ws.addEventListener('message', (event) => {
@@ -160,8 +175,10 @@ export function useRelay(opts: UseRelayOptions): UseRelayHandle {
         return
       }
       const t = env.type as string
+      console.warn('[useRelay] recv msg type=', t)
       if (t === 'bind.ok') {
         // 握手成功：重置退避，置连接态。
+        console.warn('[useRelay] bind.ok 收到, 连接成功!')
         attemptRef.current = 0
         setConn(true)
         connectedRef.current = true

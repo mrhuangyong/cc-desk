@@ -18,6 +18,16 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- vConsole 调试面板：访问 ?debug 时加载，方便手机端看 console/network 日志。
+         生产环境默认不加载（CDN 按需），不影响正常用户。 -->
+    <script>
+      if (new URLSearchParams(location.search).has('debug')) {
+        var s = document.createElement('script')
+        s.src = 'https://unpkg.com/vconsole@3.15.1/dist/vconsole.min.js'
+        s.onload = function () { new window.VConsole() }
+        document.head.appendChild(s)
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
     <!-- Service Worker 注册：scope='/' 同源根；生产构建下才有 sw.js（dev 下 vite 不复制 public）。
          注册逻辑放主入口（而非单独 main.ts），避免额外网络请求与启动时序问题。
