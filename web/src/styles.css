@@ -381,11 +381,42 @@ body {
   max-width: 120px; overflow: hidden; text-overflow: ellipsis;
   flex-shrink: 0; outline: none;
 }
-/* 发送参数控件栏(权限/思考 select)——在输入框上方,横排、可换行 */
+/* 底部控件行:横向滚动的控件栏 + 固定发送按钮(flex-shrink:0 不随滚动)。
+   移动端窄屏控件多,控件栏横向滚动避免拥挤,发送按钮始终在可视右侧。 */
 .chat-input-controls {
   display: flex; gap: 8px; align-items: center;
-  padding: 0 0 6px 0; flex-wrap: wrap;
+  padding: 6px 0 2px;
 }
+/* 控件滚动区:＋/权限/思考/排队/模型 横向滚动 */
+.controls-scroll {
+  display: flex; gap: 6px; align-items: center;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  flex: 1; min-width: 0;
+}
+.controls-scroll::-webkit-scrollbar { display: none; }
+/* 控件药丸:图标 + 原生 select + 下拉箭头,包成一个整体按钮形态。
+   select 透明融入药丸(只显示选中值的文本),外观由药丸统一控制。 */
+.control-pill {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 3px 6px 3px 7px; border-radius: var(--r-sm);
+  background: var(--bg-sunken); border: 1px solid var(--border);
+  color: var(--text-muted); font-size: 11px; line-height: 1;
+  flex-shrink: 0; cursor: pointer; position: relative;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.control-pill:hover { background: var(--bg); color: var(--text); border-color: var(--border-strong); }
+.control-pill > svg { flex-shrink: 0; opacity: .8; }
+.control-pill > select.param-select {
+  /* select 融入药丸:去自身背景/边框,只留文本 */
+  font-size: 11px; padding: 0; border: 0; background: transparent;
+  color: inherit; font-family: var(--font-mono);
+  outline: none; cursor: pointer; appearance: none; -webkit-appearance: none;
+  padding-right: 2px; max-width: 92px; text-overflow: ellipsis;
+}
+/* 模型药丸:在滚动区内,无需 margin-left:auto(发送按钮已在滚动区外固定右侧) */
+/* 独立 select(param-select 不在药丸内时的兜底,保留旧样式) */
 .param-select {
   font-size: 11px; padding: 3px 8px; border-radius: var(--r-sm);
   background: var(--bg-sunken); color: var(--text-muted);
@@ -393,6 +424,16 @@ body {
   font-family: var(--font-mono);
   flex-shrink: 0; outline: none;
 }
+/* ＋加图按钮(左组首个,纯图标) */
+.control-btn.add-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: var(--r-sm);
+  background: transparent; border: 1px solid transparent;
+  color: var(--text-muted); cursor: pointer; flex-shrink: 0;
+  transition: background .12s, color .12s;
+}
+.control-btn.add-btn:hover { background: var(--bg-sunken); color: var(--text); }
+.control-wrap { position: relative; flex-shrink: 0; }
 .icon-btn {
   background: transparent; border: 0; color: var(--text-muted);
   padding: 7px 8px; cursor: pointer; border-radius: var(--r-sm);
@@ -543,35 +584,39 @@ body {
 .jump-bottom-btn svg { width: 18px; height: 18px; }
 .jump-bottom-btn:active { transform: scale(.92); }
 
-/* 输入栏：固定底部 */
+/* 输入栏：固定底部,承载统一输入卡片 */
 .chat-input-bar {
   flex-shrink: 0;
   display: flex; align-items: flex-end; padding: 8px 12px;
   padding-bottom: calc(10px + env(safe-area-inset-bottom));
   background: var(--bg); border-top: 1px solid var(--border);
   position: sticky; bottom: 0; z-index: 10;
-  /* 响应式：宽屏下输入栏限宽居中，与对话流对齐 */
   max-width: var(--content-max);
   margin-inline: auto;
   width: 100%;
 }
-.chat-input-wrap {
-  flex: 1; position: relative; display: flex; align-items: flex-end;
+/* 统一输入卡片:把附件chip/排队chip/textarea/控件栏收进一个整体容器。
+   对齐桌面 InputBar 的卡片感(elev 底 + 圆角 + 描边),移动端用描边(比阴影在 bg 上更清晰)。 */
+.chat-input-card {
+  flex: 1; display: flex; flex-direction: column;
+  background: var(--bg-elev); border: 1px solid var(--border-strong);
+  border-radius: var(--r-md); padding: 8px 10px 6px;
+  box-shadow: var(--shadow);
 }
-.chat-input {
+/* 顶部 chip 区(附件缩略图 + 排队消息),与 textarea 之间留间距 */
+.chat-input-chips { padding-bottom: 6px; }
+.chat-input textarea.chat-input {
   width: 100%; resize: none;
-  min-height: 40px; max-height: 120px;
-  padding: 9px 44px 9px 14px;
+  min-height: 24px; max-height: 120px;
+  padding: 4px 2px;
   font-size: 14px; line-height: 1.4;
-  background: var(--bg-elev); color: var(--text);
-  border: 1px solid var(--border-strong); border-radius: 20px; outline: none;
-  transition: border-color .15s, box-shadow .15s;
+  background: transparent; color: var(--text);
+  border: 0; outline: none;
   overflow-y: auto;
   font-family: var(--font-sans);
 }
-.chat-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+.chat-input:focus { /* 融入卡片,无独立 focus 描边(卡片整体已是焦点容器) */ }
 .send-icon-btn {
-  position: absolute; right: 6px; bottom: 5px;
   width: 30px; height: 30px; border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;
   background: var(--accent); color: #fff; border: 0; cursor: pointer;
@@ -664,7 +709,7 @@ body {
 }
 .attach-menu button:hover { background: var(--bg-sunken); }
 .attach-chips {
-  display: flex; gap: 6px; overflow-x: auto; padding: 0 0 6px 0;
+  display: flex; gap: 6px; overflow-x: auto; padding: 0;
 }
 .attach-chip {
   position: relative; flex-shrink: 0; width: 48px; height: 48px;
@@ -696,7 +741,7 @@ body {
 
 /* 排队消息 chip */
 .queue-chips {
-  display: flex; flex-direction: column; gap: 4px; padding: 0 0 6px 0;
+  display: flex; flex-direction: column; gap: 4px; padding: 0;
 }
 .queue-chip {
   font-size: 12px; color: var(--text-muted); padding: 4px 8px;
