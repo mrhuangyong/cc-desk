@@ -55,11 +55,12 @@ export function messageAttachments(message: Message): DraftAttachment[] {
 // react-virtuoso 的 Item(每条消息的外层 wrapper):默认是 block,会把子元素 stretch 到全宽,
 // 导致 MessageRow 的 alignSelf:flex-end(user 右对齐)失效。改成 display:flex,让 MessageRow
 // 的 alignSelf 相对 Item 生效:user 消息 flex-end 右对齐,assistant 消息默认 flex-start 左对齐。
-// props 用 react-virtuoso 的 ItemProps(带 data-index 等),保持类型精确匹配。
+// minWidth:0 必加——flex 子项默认 min-width:auto 不收缩,长内容(代码块/长行)会撑宽 Item
+// 致整个列表水平滚动、内容不换行。props 用 react-virtuoso 的 ItemProps(带 data-index 等)。
 const VirtuosoItem = forwardRef<HTMLDivElement, ItemProps<Message>>(
   function VirtuosoItem({ children, style, ...rest }, ref) {
     return (
-      <div ref={ref} {...rest} style={{ ...style, display: 'flex' }}>
+      <div ref={ref} {...rest} style={{ ...style, display: 'flex', minWidth: 0 }}>
         {children}
       </div>
     )

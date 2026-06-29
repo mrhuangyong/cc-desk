@@ -56,7 +56,7 @@ export const MessageRow = memo(function MessageRow(props: MessageRowProps) {
   if (m.role === 'assistant') {
     return (
       <div className="msg-row is-assistant" style={{
-        alignSelf: 'flex-start', width: '100%',
+        alignSelf: 'flex-start', width: '100%', minWidth: 0,
         color: 'var(--text)',
         display: 'flex', flexDirection: 'column', gap: 0,
         userSelect: 'text', cursor: 'text',
@@ -85,7 +85,7 @@ export const MessageRow = memo(function MessageRow(props: MessageRowProps) {
   // 不能用 alignSelf:flex-end——那是交叉轴(垂直)对齐,在 row flex 里是底对齐,起不到右对齐作用。
   return (
     <div className="msg-row is-user" style={{
-      marginLeft: 'auto', maxWidth: '75%',
+      marginLeft: 'auto', maxWidth: '75%', minWidth: 0,
       background: 'var(--surface-1)', borderRadius: 'var(--radius)', padding: '5px 11px',
       color: 'var(--text)',
       display: 'flex', flexDirection: 'column', gap: 2,
