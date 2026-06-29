@@ -210,6 +210,14 @@ function RemoteShell({
         return
       }
       if (env.type === 'dialog.request') {
+        // 按会话过滤:只弹当前查看的会话的 dialog,其他会话的直接 deny(避免跨会话弹窗)。
+        const d = (env.payload as any)
+        const currentSid = view.kind === 'chat' ? view.localSessionId : null
+        if (d?.localSessionId && currentSid && d.localSessionId !== currentSid) {
+          // 非当前会话的 dialog:直接发 deny,避免桌面端挂起等待 + 不弹窗打扰用户
+          void sendViaRef('dialog.response', { reqId: d.reqId, result: { behavior: 'deny' } })
+          return
+        }
         dialog.onInbound(env)
         return
       }
