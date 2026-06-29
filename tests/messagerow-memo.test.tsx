@@ -25,6 +25,7 @@ function renderRow(overrides: Partial<Parameters<typeof MessageRow>[0]> = {}) {
         editDoc={null}
         onEditDocChange={() => {}}
         onEditResend={() => {}}
+        showThinking={true}
         {...overrides}
       />
     </AppProvider>,
@@ -44,6 +45,7 @@ describe('MessageRow memo', () => {
       editDoc: null,
       onEditDocChange: () => {},
       onEditResend: () => {},
+      showThinking: true,
     }
     const Wrapper = ({ tick }: { tick: number }) => (
       <AppProvider>

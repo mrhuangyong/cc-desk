@@ -410,6 +410,7 @@ export function ChatArea() {
               editDoc={editDoc}
               onEditDocChange={setEditDoc}
               onEditResend={handleEditResend}
+              showThinking={state.settings.showThinking}
             />
           )
         })}
@@ -417,7 +418,7 @@ export function ChatArea() {
         {streaming && (
           <div style={{ color: 'var(--text)', fontSize: 14, lineHeight: 1.6, padding: '0 28px', display: 'flex', flexDirection: 'column', gap: 8, userSelect: 'text' }}>
             <Notices notices={streaming.notices ?? []} />
-            {renderBlocks(streaming.blocks, false, subagentOutputByToolUseId, subagentToolUseIds)}
+            {renderBlocks(streaming.blocks, false, subagentOutputByToolUseId, subagentToolUseIds, state.settings.showThinking)}
             {streaming.error && <div style={{ color: '#ef4444', fontSize: 13 }}>❌ {streaming.error}</div>}
             {/* 思考中指示器:Sparkles 图标 + 文字,呼吸式脉冲动画(参考 codex app) */}
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontSize: 13 }}>

@@ -28,6 +28,8 @@ export interface MessageRowProps {
   editDoc: any
   onEditDocChange: (doc: any) => void
   onEditResend: () => void
+  // showThinking 下发：来自 state.settings.showThinking，透传至 renderBlocks（解耦 BlockRenderer 的 useStore）
+  showThinking: boolean
 }
 
 // 浅比 message + subagentOutputByToolUseId + subagentToolUseIds 引用,
@@ -41,14 +43,15 @@ function arePropsEqual(prev: MessageRowProps, next: MessageRowProps): boolean {
     prev.isStreaming === next.isStreaming &&
     prev.isLastUserMessage === next.isLastUserMessage &&
     prev.editingMessageId === next.editingMessageId &&
-    prev.onEditResend === next.onEditResend
+    prev.onEditResend === next.onEditResend &&
+    prev.showThinking === next.showThinking
   )
 }
 
 export const MessageRow = memo(function MessageRow(props: MessageRowProps) {
   const { dispatch } = useStore()
   const { t } = useI18n()
-  const { message: m, isStreaming, subagentOutputByToolUseId, subagentToolUseIds, isLastUserMessage, editingMessageId, editDoc, onEditDocChange, onEditResend } = props
+  const { message: m, isStreaming, subagentOutputByToolUseId, subagentToolUseIds, isLastUserMessage, editingMessageId, editDoc, onEditDocChange, onEditResend, showThinking } = props
 
   if (m.role === 'assistant') {
     return (
@@ -60,7 +63,7 @@ export const MessageRow = memo(function MessageRow(props: MessageRowProps) {
       }}>
         {messageAttachments(m).map((attachment, index) => <AttachmentChip key={index} attachment={attachment} />)}
         <Notices notices={m.notices ?? []} />
-        {renderBlocks(m.content, false, subagentOutputByToolUseId, subagentToolUseIds)}
+        {renderBlocks(m.content, false, subagentOutputByToolUseId, subagentToolUseIds, showThinking)}
         {/* 底部行：cost 元数据 + 复制钮，mono 小字 */}
         <div className="msg-foot" style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
           {(m.costUSD != null || m.durationMs != null) && (
@@ -127,7 +130,7 @@ export const MessageRow = memo(function MessageRow(props: MessageRowProps) {
       ) : (
         <>
           {messageAttachments(m).map((attachment, index) => <AttachmentChip key={index} attachment={attachment} />)}
-          {renderBlocks(m.content, true, subagentOutputByToolUseId, subagentToolUseIds)}
+          {renderBlocks(m.content, true, subagentOutputByToolUseId, subagentToolUseIds, showThinking)}
           <CopyButton text={extractText(m.content)} />
         </>
       )}
