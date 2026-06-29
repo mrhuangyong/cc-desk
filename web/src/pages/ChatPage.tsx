@@ -255,6 +255,20 @@ export default function ChatPage(props: ChatPageProps) {
     return () => cancelAnimationFrame(raf)
   }, [messages, running, forceBottom, scrollToBottom])
 
+  // 移动端键盘适配:textarea focus 或 visualViewport 变化(键盘弹出/收起)时,
+  // 把输入卡片滚动到可视区,防键盘遮挡。visualViewport 是移动端键盘的标准 API。
+  useEffect(() => {
+    const scrollInputIntoView = () => {
+      const input = document.querySelector('.chat-input-card') as HTMLElement | null
+      if (input) input.scrollIntoView({ block: 'end', behavior: 'smooth' })
+    }
+    // 键盘弹出时 visualViewport resize
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', scrollInputIntoView)
+      return () => window.visualViewport?.removeEventListener('resize', scrollInputIntoView)
+    }
+  }, [])
+
   // 滚动监听：判断是否偏离底部（>120px 视为偏离，显示回底按钮）。
   // 注意：内容撑高导致的 scroll 不会触发（只有 scrollTop 变化才触发）；用户主动滚才会。
   const onBodyScroll = useCallback(() => {

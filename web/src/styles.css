@@ -101,7 +101,7 @@ body {
 
 /* ============ 应用外壳 ============ */
 .app {
-  display: flex; flex-direction: column; min-height: 100%;
+  display: flex; flex-direction: column; min-height: 100%; min-height: 100dvh;
   padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
   background: var(--bg);
 }
@@ -361,7 +361,9 @@ body {
 .session-new-in-project:disabled { opacity: .4; cursor: not-allowed; }
 
 /* ============ 对话页 ============ */
-.chat-page { display: flex; flex-direction: column; min-height: 100%; }
+/* dvh(动态视口高度)随键盘弹出/收起自动调整,防输入框被键盘遮挡。
+   fallback:不支持 dvh 的旧浏览器用 100%(回退到布局视口,不理想但不崩)。 */
+.chat-page { display: flex; flex-direction: column; min-height: 100%; min-height: 100dvh; }
 .chat-page .app-header { gap: 6px; }
 .chat-header-title {
   flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0;
@@ -381,11 +383,13 @@ body {
   max-width: 120px; overflow: hidden; text-overflow: ellipsis;
   flex-shrink: 0; outline: none;
 }
-/* 底部控件行:横向滚动的控件栏 + 固定发送按钮(flex-shrink:0 不随滚动)。
-   移动端窄屏控件多,控件栏横向滚动避免拥挤,发送按钮始终在可视右侧。 */
+/* 底部控件行:横向滚动的控件栏 + 固定发送按钮。
+   min-width:0 + overflow:hidden 防止 flex 子项撑出卡片(水平溢出修复)。 */
 .chat-input-controls {
   display: flex; gap: 8px; align-items: center;
   padding: 6px 0 2px;
+  min-width: 0;
+  overflow: hidden;
 }
 /* 控件滚动区:＋/权限/思考/排队/模型 横向滚动 */
 .controls-scroll {
