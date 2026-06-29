@@ -1,5 +1,4 @@
 import type { ContentBlock } from '../../types'
-import { useStore } from '../../state/store'
 import { TextBlock } from './TextBlock'
 import { ThinkingBlock } from './ThinkingBlock'
 import { ToolUseCard } from './ToolUseCard'
@@ -12,12 +11,19 @@ import { MetaToolCard } from './MetaToolCard'
 // ExitPlanMode 提供「查看计划」入口（plan 抽屉），解决 plan 批准后入口丢失。
 const META_TOOL_NAMES = new Set(['TaskCreate', 'TaskUpdate', 'TaskList', 'ExitPlanMode'])
 
-export function BlockRenderer({ block, subagentOutputByToolUseId, hiddenToolUseIds }: { block: ContentBlock; subagentOutputByToolUseId?: Record<string, ContentBlock[]>; hiddenToolUseIds?: Set<string> }) {
-  const { state } = useStore()
+// showThinking 由调用方 props 传入（缺省 true 向后兼容）：解耦 useStore，
+// 使 BlockRenderer 不再订阅全局 state——这是分片订阅与 memo 生效的前提，
+// 否则子组件仍随每次 state 变化（含流式 token delta）重渲。
+export function BlockRenderer({ block, subagentOutputByToolUseId, hiddenToolUseIds, showThinking = true }: {
+  block: ContentBlock
+  subagentOutputByToolUseId?: Record<string, ContentBlock[]>
+  hiddenToolUseIds?: Set<string>
+  showThinking?: boolean
+}) {
   switch (block.type) {
     case 'text': return <TextBlock text={block.text} />
     // thinking 块受「显示思考过程」设置控制：关闭时不渲染
-    case 'thinking': return state.settings.showThinking ? <ThinkingBlock text={block.text} /> : null
+    case 'thinking': return showThinking ? <ThinkingBlock text={block.text} /> : null
     case 'tool_use':
       // subagent 入口的 Task 卡片不在主流显示(重心移至悬浮面板)
       if (hiddenToolUseIds?.has(block.id)) return null
@@ -34,7 +40,7 @@ export function BlockRenderer({ block, subagentOutputByToolUseId, hiddenToolUseI
 // 让连续工具调用可整体折叠，避免一长串工具卡占满对话区。
 type ToolBlock = Extract<ContentBlock, { type: 'tool_use' }>
 
-export function renderBlocks(blocks: ContentBlock[], compact?: boolean, subagentOutputByToolUseId?: Record<string, ContentBlock[]>, hiddenToolUseIds?: Set<string>): React.ReactNode[] {
+export function renderBlocks(blocks: ContentBlock[], compact?: boolean, subagentOutputByToolUseId?: Record<string, ContentBlock[]>, hiddenToolUseIds?: Set<string>, showThinking?: boolean): React.ReactNode[] {
   const out: React.ReactNode[] = []
   let i = 0
   let key = 0
@@ -70,7 +76,7 @@ export function renderBlocks(blocks: ContentBlock[], compact?: boolean, subagent
       if (b.type === 'text') {
         out.push(<TextBlock key={`b${key++}`} text={b.text} compact={compact} />)
       } else {
-        out.push(<BlockRenderer key={`b${key++}`} block={b} subagentOutputByToolUseId={subagentOutputByToolUseId} hiddenToolUseIds={hiddenToolUseIds} />)
+        out.push(<BlockRenderer key={`b${key++}`} block={b} subagentOutputByToolUseId={subagentOutputByToolUseId} hiddenToolUseIds={hiddenToolUseIds} showThinking={showThinking} />)
       }
       i++
     }

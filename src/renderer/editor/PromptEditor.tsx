@@ -17,6 +17,7 @@ import { SkillChip } from './SkillChip'
 import { FileChip } from './FileChip'
 import { buildSlashExtension } from './SlashSuggestion'
 import { buildFileExtension } from './FileSuggestion'
+import { isSuggestionActive, confirmActiveSuggestion } from './suggestionController'
 import type { SlashMenuItem, TipTapDocJSON } from './types'
 
 interface Props {
@@ -64,9 +65,18 @@ export function PromptEditor({ doc, placeholder, allSlashItems, getCwd, onDocCha
       },
       handleKeyDown: (_view, event) => {
         // Enter（无 Shift）发送；Shift+Enter 换行。
-        // suggestion 菜单打开时，suggestion 的 onKeyDown 会先消费 Enter 并返回 true，
-        // 不会走到这里，所以菜单里按 Enter 是确认选项而非发送。
+        // suggestion 菜单打开时优先补全选中项——而非发送。
+        // 背景:suggestion plugin 的 handleKeyDown 对 Enter 的处理时机晚于 TipTap 对 Enter 的
+        // 默认处理(dispatch transaction → suggestion onExit → active=false),导致 Enter 时
+        // suggestion plugin 因 active=false 提前 return false,Enter 冒泡到这里触发发送。
+        // 故在编辑器 handleKeyDown 这一层(早于 suggestion plugin 的判定)直接拦截:菜单开则补全。
         if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+          if (isSuggestionActive()) {
+            // 菜单打开:Enter 补全选中项(与 Tab 行为一致),不发送
+            event.preventDefault()
+            confirmActiveSuggestion()
+            return true
+          }
           event.preventDefault()
           onSendRef.current?.()
           return true

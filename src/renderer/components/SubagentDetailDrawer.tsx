@@ -9,6 +9,7 @@ import { formatSessionTime } from '../utils/formatSessionTime'
 import { fmtTokens, fmtDuration } from '../utils/format'
 import { Tooltip } from './Tooltip'
 import { Drawer } from './Drawer'
+import { useStore } from '../state/store'
 
 interface Props {
   task: BackendTask | null
@@ -18,6 +19,7 @@ interface Props {
 }
 
 export function SubagentDetailDrawer({ task, outputByToolUseId, onClose }: Props) {
+  const showThinking = useStore().state.settings.showThinking
   if (!task) return null
   const blocks = (task.toolUseId && outputByToolUseId[task.toolUseId]) || []
 
@@ -93,7 +95,7 @@ export function SubagentDetailDrawer({ task, outputByToolUseId, onClose }: Props
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {renderBlocks(blocks)}
+                {renderBlocks(blocks, undefined, undefined, undefined, showThinking)}
               </div>
             )}
           </div>

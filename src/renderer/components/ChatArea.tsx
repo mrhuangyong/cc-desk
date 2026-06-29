@@ -1,19 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDown, Copy, Check, Sparkles, Pencil } from 'lucide-react'
-import { useStore } from '../state/store'
+import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
+import { Virtuoso, type VirtuosoHandle, type ItemProps } from 'react-virtuoso'
+import { ArrowDown, Copy, Check, Sparkles } from 'lucide-react'
+import { useSelector, useDispatch } from '../state/store'
+import type { AppState } from '../state/reducer'
 import { useI18n } from '../i18n/useI18n'
-import { AttachmentChip } from './AttachmentChip'
+import { useStreamBatcher } from '../hooks/useStreamBatcher'
 import { BackendTaskPanel } from './BackendTaskPanel'
 import { PlanCard } from './PlanCard'
 import { InputBar } from './InputBar'
 import { InputDock } from './InputDock'
 import { AnswerPanel } from './AnswerPanel'
 import { PermissionPanel } from './PermissionPanel'
-import { PromptEditor } from '../editor/PromptEditor'
 import { serializeForPrompt } from '../editor/serialize'
-import { renderBlocks } from './blocks/BlockRenderer'
 import { Notices } from './Notices'
 import { Tooltip } from './Tooltip'
+import { MessageRow } from './MessageRow'
 
 import type { ContentBlock, DraftAttachment, Message, TaskStatus } from '../types'
 
@@ -44,11 +46,25 @@ export function extractText(blocks: ContentBlock[]): string {
   }).join('\n').trim()
 }
 
-function messageAttachments(message: Message): DraftAttachment[] {
+export function messageAttachments(message: Message): DraftAttachment[] {
   if (message.attachments?.length) return message.attachments
   if (message.attachment) return [{ type: 'pickedElement', el: message.attachment }]
   return []
 }
+
+// react-virtuoso 的 Item(每条消息的外层 wrapper):默认是 block,会把子元素 stretch 到全宽,
+// 导致 MessageRow 的 alignSelf:flex-end(user 右对齐)失效。改成 display:flex,让 MessageRow
+// 的 alignSelf 相对 Item 生效:user 消息 flex-end 右对齐,assistant 消息默认 flex-start 左对齐。
+// props 用 react-virtuoso 的 ItemProps(带 data-index 等),保持类型精确匹配。
+const VirtuosoItem = forwardRef<HTMLDivElement, ItemProps<Message>>(
+  function VirtuosoItem({ children, style, ...rest }, ref) {
+    return (
+      <div ref={ref} {...rest} style={{ ...style, display: 'flex' }}>
+        {children}
+      </div>
+    )
+  },
+)
 
 export function CopyButton({ text, inline }: { text: string; inline?: boolean }) {
   const [copied, setCopied] = useState(false)
@@ -67,16 +83,30 @@ export function CopyButton({ text, inline }: { text: string; inline?: boolean })
 }
 
 export function ChatArea() {
-  const { state, dispatch } = useStore()
+  // 分片订阅（Layer 2）：流式高频变化字段单独订阅，reducer 不改该切片时引用稳定 → 不重渲。
+  const dispatch = useDispatch()
+  const activeSessionId = useSelector((s: AppState) => s.activeSessionId)
+  const projects = useSelector((s: AppState) => s.projects)
+  const streamingBySession = useSelector((s: AppState) => s.streamingBySession)
+  const subagentOutputBySession = useSelector((s: AppState) => s.subagentOutputBySession)
+  const backendTasksBySession = useSelector((s: AppState) => s.backendTasksBySession)
+  const tasksBySession = useSelector((s: AppState) => s.tasksBySession)
+  const settings = useSelector((s: AppState) => s.settings)
+  const pendingDialog = useSelector((s: AppState) => s.pendingDialog)
+  const editingMessageId = useSelector((s: AppState) => s.editingMessageId)
+  const claudeSessionMap = useSelector((s: AppState) => s.claudeSessionMap)
   const { t } = useI18n()
+  // 流式 delta 走 rAF 节流批处理：把高频 STREAM_DELTA 合并到每帧一次派发，
+  // 降低 reducer/重渲染开销；在中断/结束事件到达时由调用方 flush() 兜底。
+  const { pushDelta, flush } = useStreamBatcher(dispatch)
 
   // 找当前会话及其所属项目：单次遍历拿到两者（避免 flatMap 分配中间数组，
   // 也让 handleEditResend 能复用 project，无需二次 find）。
-  const active = state.projects.find(p => p.sessions.some(s => s.id === state.activeSessionId))
-  const session = active?.sessions.find(s => s.id === state.activeSessionId)
+  const active = projects.find(p => p.sessions.some(s => s.id === activeSessionId))
+  const session = active?.sessions.find(s => s.id === activeSessionId)
 
   // 当前会话的流式状态（增量拼接的 blocks/notices）
-  const streaming = state.streamingBySession[state.activeSessionId]
+  const streaming = streamingBySession[activeSessionId]
   const isStreaming = !!streaming
 
   // 子代理渲染所需的派生数据，每轮渲染算一次（而非每条消息行 ×3 次）：
@@ -84,14 +114,14 @@ export function ChatArea() {
   //     判断某 tool_use 是否归属某 subagent（决定渲染为子代理卡片还是普通工具卡）。
   //   - subagentOutputByToolUseId：当前会话子代理的累积输出。
   // ChatArea 在每个 STREAM_DELTA 重渲染，若内联到 renderBlocks 调用点，N 条消息会构造 N×3 个 Set。
-  const sid = state.activeSessionId
+  const sid = activeSessionId
   const subagentOutputByToolUseId = useMemo(
-    () => state.subagentOutputBySession?.[sid] ?? {},
-    [state.subagentOutputBySession, sid]
+    () => subagentOutputBySession?.[sid] ?? {},
+    [subagentOutputBySession, sid]
   )
   const subagentToolUseIds = useMemo(
-    () => new Set((state.backendTasksBySession?.[sid] ?? []).filter(t => t.kind === 'subagent' && t.toolUseId).map(t => t.toolUseId!)),
-    [state.backendTasksBySession, sid]
+    () => new Set((backendTasksBySession?.[sid] ?? []).filter(t => t.kind === 'subagent' && t.toolUseId).map(t => t.toolUseId!)),
+    [backendTasksBySession, sid]
   )
 
   // 最后一条用户消息（编辑重发仅作用于它）
@@ -107,54 +137,48 @@ export function ChatArea() {
   const [editDoc, setEditDoc] = useState<any>(null)
 
   // 编辑重发：截断历史 + 用新文本发送
-  const handleEditResend = () => {
+  const handleEditResend = useCallback(() => {
     if (!lastUserMessage) return
     const newPrompt = editDoc ? serializeForPrompt(editDoc).trim() : ''
     if (!newPrompt) return
-    dispatch({ type: 'EDIT_RESEND', sessionId: state.activeSessionId, messageId: lastUserMessage.id, newPrompt })
+    dispatch({ type: 'EDIT_RESEND', sessionId: activeSessionId, messageId: lastUserMessage.id, newPrompt })
     setEditDoc(null)
     // 截断后用新文本发送
-    const claudeSessionId = state.claudeSessionMap?.[state.activeSessionId]
-    const cwd = active?.path || state.settings?.cwd || undefined
-    dispatch({ type: 'STREAM_START', sessionId: state.activeSessionId })
+    const claudeSessionId = claudeSessionMap?.[activeSessionId]
+    const cwd = active?.path || settings?.cwd || undefined
+    dispatch({ type: 'STREAM_START', sessionId: activeSessionId })
     window.api?.claude?.send({
       prompt: newPrompt,
-      localSessionId: state.activeSessionId,
+      localSessionId: activeSessionId,
       sessionId: claudeSessionId || undefined,
       cwd,
     })
-  }
+  }, [lastUserMessage, activeSessionId, claudeSessionMap, active, settings?.cwd, editDoc])
 
-  // ===== 滚动「贴底」逻辑 =====
+  // ===== 滚动「贴底」逻辑（迁移到 react-virtuoso 原语）=====
   // 原则：AI 输出时若用户在底部则自动滚动跟随；用户主动上滑后停止自动滚动，
-  //       直到用户再次滚到底部才恢复。isAtBottomRef 用 ref 在 scroll 回调里取最新值，
-  //       避免滚轮触发频繁重渲染；isAtBottom state 仅用于控制「回到底部」按钮显隐。
-  const scrollRef = useRef<HTMLDivElement>(null)
+  //       直到用户再次滚到底部才恢复。isAtBottomRef 由 Virtuoso 的 atBottomStateChange 回调维护，
+  //       避免滚轮触发频繁重渲染；showScrollBtn 仅用于控制「回到底部」按钮显隐。
+  const virtuosoRef = useRef<VirtuosoHandle>(null)
   const isAtBottomRef = useRef(true)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
-  const BOTTOM_THRESHOLD = 40 // 距底部多少像素内视为「在底部」
 
-  const checkAtBottom = () => {
-    const el = scrollRef.current
-    if (!el) return true
-    return el.scrollHeight - el.scrollTop - el.clientHeight < BOTTOM_THRESHOLD
-  }
   const scrollToBottom = (behavior: ScrollBehavior = 'auto') => {
-    const el = scrollRef.current
-    if (!el) return
-    el.scrollTo({ top: el.scrollHeight, behavior })
+    // Virtuoso 滚到底：smooth 时用 animate，auto 时立即
+    virtuosoRef.current?.scrollToIndex({
+      index: 'LAST',
+      behavior: behavior === 'smooth' ? 'smooth' : 'auto',
+      align: 'end',
+    })
     isAtBottomRef.current = true
     setShowScrollBtn(false)
   }
-  const onScroll = () => {
-    const at = checkAtBottom()
-    isAtBottomRef.current = at
-    setShowScrollBtn(!at)
-  }
 
-  // 流式内容/消息变化时，若用户在底部则跟随滚动
+  // 流式内容/消息变化时，若用户在底部则跟随滚动。
+  // Virtuoso 的 followOutput 已自动处理流式吸底，这里作为草稿长度突增的兜底。
   useEffect(() => {
     if (isAtBottomRef.current) scrollToBottom('auto')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [streaming, session?.messages.length])
 
   // 切换会话：立即贴底（重置 isAtBottom）
@@ -163,30 +187,30 @@ export function ChatArea() {
     setShowScrollBtn(false)
     scrollToBottom('auto')
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.activeSessionId])
+  }, [activeSessionId])
 
   // AskUserQuestion / 权限授权 / 计划卡片弹出时自动滚到底：面板作为对话区内联块会把
   // 消息往上推，滚到底让「触发该提问的最近消息」与面板一同可见。
   useEffect(() => {
-    const dlg = state.pendingDialog
-    if (dlg && dlg.sessionId === state.activeSessionId &&
+    const dlg = pendingDialog
+    if (dlg && dlg.sessionId === activeSessionId &&
         (dlg.dialogKind === 'ask_user_question' || dlg.dialogKind === 'permission_request' || dlg.dialogKind === 'plan_proposed')) {
       // 延迟一帧，等面板渲染撑高布局后再滚，确保滚到真实底部
       requestAnimationFrame(() => scrollToBottom('smooth'))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.pendingDialog, state.activeSessionId])
+  }, [pendingDialog, activeSessionId])
 
   // 监听器只在挂载时注册一次，回调内需要的"会变值"通过 ref 取最新值，
   // settings 用 ref 在挂载一次的监听器闭包里取最新值（taskNotify/notifySound）。
   // 注意：流式回调用「事件自带的 localSessionId」路由，不再用「当前激活会话」，
   // 否则 A 发送后切到 B 会串台。activeSessionId 不再进 ref。
-  const settingsRef = useRef(state.settings)
-  useEffect(() => { settingsRef.current = state.settings }, [state.settings])
+  const settingsRef = useRef(settings)
+  useEffect(() => { settingsRef.current = settings }, [settings])
   // 桌面通知防抖：同一 body 文本 10 秒内只通知一次，避免重复轰炸
   const lastNotifRef = useRef<{ text: string; ts: number } | null>(null)
-  const tasksRef = useRef(state.tasksBySession)
-  useEffect(() => { tasksRef.current = state.tasksBySession }, [state.tasksBySession])
+  const tasksRef = useRef(tasksBySession)
+  useEffect(() => { tasksRef.current = tasksBySession }, [tasksBySession])
 
   // 注册 IPC 监听器：归一化后的新通道（delta/blocks/notice/result/error/aborted）
   useEffect(() => {
@@ -224,7 +248,7 @@ export function ChatArea() {
         console.warn('[cc-stream] onDelta drop: no localSessionId')
         return
       }
-      dispatch({ type: 'STREAM_DELTA', sessionId: sid, kind: data.kind, delta: data.delta })
+      pushDelta(sid, data.kind, data.delta)
     })
     // 归一化 blocks：工具开始 / assistant 整块 / 工具结果
     api.onBlocks((data: any) => {
@@ -301,6 +325,7 @@ export function ChatArea() {
     api.onResult((data: any) => {
       const sid = data?.localSessionId
       if (!sid) return
+      flush()  // 兜底：确保末尾 delta 已派发再固化结束
       dispatch({
         type: 'STREAM_END',
         sessionId: sid,
@@ -324,11 +349,13 @@ export function ChatArea() {
     api.onError((data: any) => {
       const sid = data?.localSessionId
       if (!sid) return
+      flush()  // 兜底：错误前确保末尾 delta 已派发
       dispatch({ type: 'STREAM_ERROR', sessionId: sid, error: data.error })
     })
     api.onAborted((data: any) => {
       const sid = data?.localSessionId
       if (!sid) return
+      flush()  // 兜底：用户点「停止」时把缓冲的末尾 delta 冲出，避免丢失
       dispatch({ type: 'STREAM_ABORTED', sessionId: sid })
       // 用户主动停止：把该会话所有未结束的 TaskCreate 任务（pending/running）置为 killed。
       // 主进程 interrupt() 只终止 registry 里的 subagent/shell 等后台任务（走 claude:backend-task），
@@ -374,134 +401,89 @@ export function ChatArea() {
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: 'var(--bg)', position: 'relative' }}>
       <BackendTaskPanel
-        tasks={state.tasksBySession[state.activeSessionId] ?? []}
-        backendTasks={state.backendTasksBySession[state.activeSessionId] ?? []}
-        showTodo={state.settings.showTodo}
-        showBackendTask={state.settings.showBackendTask}
-        activeSessionId={state.activeSessionId}
-        subagentOutputByToolUseId={state.subagentOutputBySession[state.activeSessionId] ?? {}}
+        tasks={tasksBySession[activeSessionId] ?? []}
+        backendTasks={backendTasksBySession[activeSessionId] ?? []}
+        showTodo={settings.showTodo}
+        showBackendTask={settings.showBackendTask}
+        activeSessionId={activeSessionId}
+        subagentOutputByToolUseId={subagentOutputBySession[activeSessionId] ?? {}}
       />
-      <div
-        ref={scrollRef}
-        onScroll={onScroll}
-        style={{ flex: 1, overflowY: 'auto', padding: '20px 28px 48px', display: 'flex', flexDirection: 'column', gap: 28, width: '100%', maxWidth: 'var(--chat-max-width)', margin: '0 auto' }}
-      >
-        {session.messages.length === 0 && !streaming && (
-          <div style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: 60 }}>{t('chat.empty')}</div>
-        )}
-        {session.messages.map(m => {
-          // streaming 进行中时,跳过 draft message(它由下方 streaming 区渲染,避免重复显示)
-          if (streaming?.draftMessageId === m.id) return null
-          return (
-            m.role === 'assistant' ? (
-            // AI 消息：全宽左对齐，无背景；block 之间用 hairline 分隔
-            <div key={m.id} className="msg-row is-assistant" style={{
-              alignSelf: 'flex-start', width: '100%',
-              color: 'var(--text)',
-              display: 'flex', flexDirection: 'column', gap: 0,
-              userSelect: 'text', cursor: 'text',
-            }}>
-              {messageAttachments(m).map((attachment, index) => <AttachmentChip key={index} attachment={attachment} />)}
-              <Notices notices={m.notices ?? []} />
-              {renderBlocks(m.content, false, subagentOutputByToolUseId, subagentToolUseIds)}
-              {/* 底部行：cost 元数据 + 复制钮，mono 小字 */}
-              <div className="msg-foot" style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
-                {(m.costUSD != null || m.durationMs != null) && (
-                  <div style={{ fontSize: 11, color: 'var(--text-faint)', fontFamily: 'var(--font-mono)' }}>
-                    {m.costUSD != null && `$${m.costUSD.toFixed(4)} `}
-                    {m.durationMs != null && `${(m.durationMs / 1000).toFixed(1)}s`}
-                    {m.turns != null && ` · ${m.turns} 轮`}
-                  </div>
-                )}
-                <CopyButton text={extractText(m.content)} inline />
-              </div>
-            </div>
-          ) : (
-            // 用户消息：右对齐，收紧气泡（maxWidth 限制 + 小 padding，避免占满整行）
-            <div key={m.id} className="msg-row is-user" style={{
-              alignSelf: 'flex-end', maxWidth: '75%',
-              background: 'var(--surface-1)', borderRadius: 'var(--radius)', padding: '5px 11px',
-              color: 'var(--text)',
-              display: 'flex', flexDirection: 'column', gap: 2,
-              userSelect: 'text', cursor: 'text',
-              position: 'relative',
-            }}>
-              {/* 编辑重发按钮：仅最后一条用户消息 + 非流式 + 非编辑态时显示，紧贴复制钮左侧 */}
-              {m.id === lastUserMessage?.id && !isStreaming && state.editingMessageId !== m.id && (
-                <button
-                  onClick={() => {
-                    const origText = extractText(m.content)
-                    setEditDoc({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: origText }] }] })
-                    dispatch({ type: 'SET_EDITING_MESSAGE', messageId: m.id })
-                  }}
-                  title={t('chat.edit')}
-                  className="msg-copy edit-resend-btn"
-                >
-                  <Pencil size={13} />
-                </button>
-              )}
-              {state.editingMessageId === m.id && editDoc ? (
-                /* 就地编辑态：PromptEditor + 取消/重发 */
-                <div style={{ minWidth: 280 }}>
-                  <PromptEditor
-                    doc={editDoc}
-                    placeholder=""
-                    allSlashItems={[]}
-                    getCwd={() => ''}
-                    onDocChange={(doc) => setEditDoc(doc)}
-                    onSend={handleEditResend}
-                    onEditorReady={() => {}}
-                  />
-                  <div style={{ display: 'flex', gap: 8, marginTop: 8, justifyContent: 'flex-end' }}>
-                    <button
-                      onClick={() => { setEditDoc(null); dispatch({ type: 'SET_EDITING_MESSAGE', messageId: null }) }}
-                      style={{ padding: '4px 12px', fontSize: 12, cursor: 'pointer', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', color: 'var(--text-muted)' }}
-                    >{t('chat.editCancel')}</button>
-                    <button
-                      onClick={handleEditResend}
-                      disabled={!serializeForPrompt(editDoc).trim()}
-                      style={{ padding: '4px 12px', fontSize: 12, cursor: serializeForPrompt(editDoc).trim() ? 'pointer' : 'not-allowed', border: 'none', borderRadius: 6, background: serializeForPrompt(editDoc).trim() ? 'var(--accent)' : 'var(--bg-hover)', color: serializeForPrompt(editDoc).trim() ? 'var(--accent-text)' : 'var(--text-faint)' }}
-                    >{t('chat.editSend')}</button>
-                  </div>
+      {/* 空会话提示：放在 Virtuoso 外层条件渲染（空列表时 Virtuoso 高度为 0） */}
+      {session.messages.length === 0 && !streaming && (
+        <div style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: 60, flex: 1 }}>{t('chat.empty')}</div>
+      )}
+      {/* react-virtuoso 虚拟化消息列表：仅挂载可见区消息，草稿走方案 A（不再跳过 draftMessageId，
+          它已在 session.messages 中，由 reducer 的 syncDraftMessage 同步 content）。
+          布局契约(经源码+官方示例确认):Virtuoso 必须占满父容器宽度来计算虚拟化尺寸,
+          故 maxWidth 居中 + padding 由【外层 wrapper div】承担,绝不放进 Virtuoso 或其 components
+          (前几轮反复在 Scroller/List/Item 上塞 maxWidth/padding,破坏宽度计算致布局崩溃)。
+          Virtuoso 自身 style 只设 height:100%(官方推荐),占满 wrapper。 */}
+      <div style={{ flex: 1, width: '100%', maxWidth: 'var(--chat-max-width)', margin: '0 auto', padding: '20px 28px 48px', minHeight: 0 }}>
+        <Virtuoso
+          ref={virtuosoRef}
+          data={session.messages}
+          followOutput={(atBottom) => (atBottom ? 'smooth' : false)}
+          atBottomStateChange={(atBottom) => {
+            isAtBottomRef.current = atBottom
+            setShowScrollBtn(!atBottom)
+          }}
+          className="chat-scroll"
+          style={{ height: '100%' }}
+          components={{
+            // 每条消息的外层 wrapper:display:flex,让 MessageRow 的 alignSelf:flex-end(user 右对齐)生效。
+            // 默认 Item 是 block(stretch 全宽),会让 alignSelf 失效。
+            Item: VirtuosoItem,
+            // 流式附加区（列表底部，随列表滚动）：仅 notices + error + 思考中指示器
+            // （blocks 已在草稿 message 里）。非流式时返回 null，不占位。
+            Footer: () => streaming ? (
+              <div style={{ color: 'var(--text)', fontSize: 14, lineHeight: 1.6, display: 'flex', flexDirection: 'column', gap: 8, userSelect: 'text' }}>
+                <Notices notices={streaming.notices ?? []} />
+                {streaming.error && <div style={{ color: '#ef4444', fontSize: 13 }}>❌ {streaming.error}</div>}
+                {/* 思考中指示器:Sparkles 图标 + 文字,呼吸式脉冲动画(参考 codex app) */}
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontSize: 13 }}>
+                  <Sparkles size={14} className="cc-pulse" style={{ color: 'var(--accent)' }} />
+                  <span className="cc-pulse">思考中</span>
                 </div>
-              ) : (
-                <>
-                  {messageAttachments(m).map((attachment, index) => <AttachmentChip key={index} attachment={attachment} />)}
-                  {renderBlocks(m.content, true, subagentOutputByToolUseId, subagentToolUseIds)}
-                  <CopyButton text={extractText(m.content)} />
-                </>
-              )}
-            </div>
+              </div>
+            ) : null,
+          }}
+        itemContent={(index, m) => {
+          // 方案 A：草稿消息正常渲染（不再跳过 draftMessageId）。草稿 content 由 reducer 同步，
+          // 流式追加时它的 MessageRow 自然重渲染。notices/error/思考指示器不在草稿 message 上，
+          // 通过 components.Footer 补显。
+          return (
+            <MessageRow
+              key={m.id}
+              message={m}
+              isStreaming={isStreaming}
+              subagentOutputByToolUseId={subagentOutputByToolUseId}
+              subagentToolUseIds={subagentToolUseIds}
+              isLastUserMessage={m.id === lastUserMessage?.id}
+              editingMessageId={editingMessageId}
+              editDoc={editDoc}
+              onEditDocChange={setEditDoc}
+              onEditResend={handleEditResend}
+              showThinking={settings.showThinking}
+            />
           )
-        )})}
-        {/* 流式消息：notice + blocks + 错误 + 思考中指示器 */}
-        {streaming && (
-          <div style={{ color: 'var(--text)', fontSize: 14, lineHeight: 1.6, padding: '0 28px', display: 'flex', flexDirection: 'column', gap: 8, userSelect: 'text' }}>
-            <Notices notices={streaming.notices ?? []} />
-            {renderBlocks(streaming.blocks, false, subagentOutputByToolUseId, subagentToolUseIds)}
-            {streaming.error && <div style={{ color: '#ef4444', fontSize: 13 }}>❌ {streaming.error}</div>}
-            {/* 思考中指示器:Sparkles 图标 + 文字,呼吸式脉冲动画(参考 codex app) */}
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontSize: 13 }}>
-              <Sparkles size={14} className="cc-pulse" style={{ color: 'var(--accent)' }} />
-              <span className="cc-pulse">思考中</span>
-            </div>
-          </div>
-        )}
-        {/* AskUserQuestion / 权限授权 / 计划卡片：作为对话区内联块（非浮层），占据对话区空间把
-            消息往上推，永不遮挡对话内容。限宽居中，与消息气泡对齐。三种 dialogKind 共用此包裹。 */}
-        {state.pendingDialog && state.pendingDialog.sessionId === state.activeSessionId && (
-          <div style={{ width: '100%', maxWidth: 'var(--chat-max-width)', margin: '0 auto', padding: '0 28px' }}>
-            {state.pendingDialog.dialogKind === 'permission_request' ? <PermissionPanel />
-              : state.pendingDialog.dialogKind === 'plan_proposed'
-                ? <PlanCard
-                    sessionId={state.activeSessionId}
-                    pendingPlan={{ reqId: state.pendingDialog.reqId, plan: state.pendingDialog.payload?.plan ?? '', allowedPrompts: state.pendingDialog.payload?.allowedPrompts }}
-                    dispatch={dispatch}
-                  />
-                : <AnswerPanel />}
-          </div>
-        )}
+        }}
+      />
       </div>
+      {/* AskUserQuestion / 权限授权 / 计划卡片：作为对话区内联块（非浮层），占据对话区空间把
+          消息往上推，永不遮挡对话内容。限宽居中，与消息气泡对齐。三种 dialogKind 共用此包裹。
+          放在 Virtuoso 之外（非虚拟化项），避免被回收。 */}
+      {pendingDialog && pendingDialog.sessionId === activeSessionId && (
+        <div style={{ width: '100%', maxWidth: 'var(--chat-max-width)', margin: '0 auto', padding: '0 28px' }}>
+          {pendingDialog.dialogKind === 'permission_request' ? <PermissionPanel />
+            : pendingDialog.dialogKind === 'plan_proposed'
+              ? <PlanCard
+                  sessionId={activeSessionId}
+                  pendingPlan={{ reqId: pendingDialog.reqId, plan: pendingDialog.payload?.plan ?? '', allowedPrompts: pendingDialog.payload?.allowedPrompts }}
+                  dispatch={dispatch}
+                />
+              : <AnswerPanel />}
+        </div>
+      )}
       <div style={{ padding: '0 28px 20px', width: '100%', maxWidth: 'var(--chat-max-width)', margin: '0 auto', position: 'relative' }}>
         {/* 回到底部按钮：相对输入框容器定位，底边恒在输入框上边框上方 20px */}
         {showScrollBtn && (
