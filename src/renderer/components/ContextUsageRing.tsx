@@ -54,13 +54,14 @@ export function ContextUsageRing({ usage, maxContextFallback }: Props) {
   // 无数据：灰色空心环
   const hasData = !!(usage && typeof usage.totalTokens === 'number')
   const total = hasData ? usage!.totalTokens : 0
-  // maxTokens 优先用 SDK 返回（与 SDK 的 percentage 口径一致），其次模型 contextLength 兜底
+  // maxTokens:优先用模型配置的 contextLength(用户在模型设置里配的真实窗口大小),
+  // 其次用 SDK 返回的 maxTokens(SDK 可能返回硬编码默认值如 200000,与实际模型不匹配)。
   const max = hasData
-    ? (typeof usage!.maxTokens === 'number' && usage!.maxTokens > 0 ? usage!.maxTokens : (maxContextFallback ?? total))
+    ? (maxContextFallback && maxContextFallback > 0 ? maxContextFallback : (typeof usage!.maxTokens === 'number' && usage!.maxTokens > 0 ? usage!.maxTokens : total))
     : (maxContextFallback ?? 0)
-  // percentage 优先用 SDK 算好的（与 maxTokens 自洽），缺失才本地重算
+  // percentage:用本地 max(模型 contextLength 优先)重算,不用 SDK 的 percentage(它基于 SDK maxTokens)。
   const pct = hasData
-    ? (typeof usage!.percentage === 'number' ? usage!.percentage : (max > 0 ? Math.min(100, (total / max) * 100) : 0))
+    ? (max > 0 ? Math.min(100, (total / max) * 100) : 0)
     : 0
   const color = colorFor(pct)
 
@@ -137,15 +138,20 @@ function ContextUsagePanel({ anchor, hasData, total, max, pct, color, categories
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
 
   // 定位：面板右下角对齐圆环左上角（向上向左展开），避免超出视口右侧。
+  // 不用固定 PH 预估高度（空会话面板矮，固定高度导致弹窗离圆环太远）。
+  // 首次渲染用 visibility:hidden 占位(不 return null,否则 ref 永远 null → 死循环),
+  // ref 挂载后测实际高度再定位 + 设可见。
   useEffect(() => {
+    if (!panelRef.current) return
     const rect = anchor.getBoundingClientRect()
-    const PW = 320, PH = 180
+    const panelHeight = panelRef.current.offsetHeight
+    const PW = 320
     let left = rect.right - PW
-    let top = rect.top - PH - 8
+    let top = rect.top - panelHeight - 8
     if (top < 8) top = rect.bottom + 8 // 上方放不下则向下
     if (left < 8) left = 8
     setPos({ left, top })
-  }, [anchor])
+  }, [anchor, hasData, total, max, pct])
 
   // 点击面板外部关闭
   useEffect(() => {
@@ -158,17 +164,19 @@ function ContextUsagePanel({ anchor, hasData, total, max, pct, color, categories
     return () => document.removeEventListener('mousedown', onDown)
   }, [anchor, onClose])
 
-  if (!pos) return null
   const cats = (categories ?? []).filter(cat => cat.tokens > 0).sort((a, b) => b.tokens - a.tokens)
 
   return createPortal(
     <>
-      {/* 透明遮罩：捕获滚动等，但不阻挡面板外其他点击（点击由 mousedown 监听关闭） */}
       <div
         ref={panelRef}
         onClick={e => e.stopPropagation()}
         style={{
-          position: 'fixed', left: pos.left, top: pos.top, width: 320,
+          position: 'fixed',
+          left: pos ? pos.left : -9999, // 未定位时移出视区(但仍渲染,让 ref 可测高度)
+          top: pos ? pos.top : 0,
+          visibility: pos ? 'visible' : 'hidden',
+          width: 320,
           background: 'var(--bg-elevated)', border: '1px solid var(--border)',
           borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-float)',
           padding: 14, zIndex: 99999, fontSize: 12, color: 'var(--text)',
