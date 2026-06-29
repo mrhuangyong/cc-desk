@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { ArrowDown, Copy, Check, Sparkles } from 'lucide-react'
 import { useStore } from '../state/store'
 import { useI18n } from '../i18n/useI18n'
@@ -10,7 +11,6 @@ import { InputDock } from './InputDock'
 import { AnswerPanel } from './AnswerPanel'
 import { PermissionPanel } from './PermissionPanel'
 import { serializeForPrompt } from '../editor/serialize'
-import { renderBlocks } from './blocks/BlockRenderer'
 import { Notices } from './Notices'
 import { Tooltip } from './Tooltip'
 import { MessageRow } from './MessageRow'
@@ -128,36 +128,30 @@ export function ChatArea() {
     })
   }, [lastUserMessage, state.activeSessionId, state.claudeSessionMap, active, state.settings?.cwd, editDoc])
 
-  // ===== 滚动「贴底」逻辑 =====
+  // ===== 滚动「贴底」逻辑（迁移到 react-virtuoso 原语）=====
   // 原则：AI 输出时若用户在底部则自动滚动跟随；用户主动上滑后停止自动滚动，
-  //       直到用户再次滚到底部才恢复。isAtBottomRef 用 ref 在 scroll 回调里取最新值，
-  //       避免滚轮触发频繁重渲染；isAtBottom state 仅用于控制「回到底部」按钮显隐。
-  const scrollRef = useRef<HTMLDivElement>(null)
+  //       直到用户再次滚到底部才恢复。isAtBottomRef 由 Virtuoso 的 atBottomStateChange 回调维护，
+  //       避免滚轮触发频繁重渲染；showScrollBtn 仅用于控制「回到底部」按钮显隐。
+  const virtuosoRef = useRef<VirtuosoHandle>(null)
   const isAtBottomRef = useRef(true)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
-  const BOTTOM_THRESHOLD = 40 // 距底部多少像素内视为「在底部」
 
-  const checkAtBottom = () => {
-    const el = scrollRef.current
-    if (!el) return true
-    return el.scrollHeight - el.scrollTop - el.clientHeight < BOTTOM_THRESHOLD
-  }
   const scrollToBottom = (behavior: ScrollBehavior = 'auto') => {
-    const el = scrollRef.current
-    if (!el) return
-    el.scrollTo({ top: el.scrollHeight, behavior })
+    // Virtuoso 滚到底：smooth 时用 animate，auto 时立即
+    virtuosoRef.current?.scrollToIndex({
+      index: 'LAST',
+      behavior: behavior === 'smooth' ? 'smooth' : 'auto',
+      align: 'end',
+    })
     isAtBottomRef.current = true
     setShowScrollBtn(false)
   }
-  const onScroll = () => {
-    const at = checkAtBottom()
-    isAtBottomRef.current = at
-    setShowScrollBtn(!at)
-  }
 
-  // 流式内容/消息变化时，若用户在底部则跟随滚动
+  // 流式内容/消息变化时，若用户在底部则跟随滚动。
+  // Virtuoso 的 followOutput 已自动处理流式吸底，这里作为草稿长度突增的兜底。
   useEffect(() => {
     if (isAtBottomRef.current) scrollToBottom('auto')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [streaming, session?.messages.length])
 
   // 切换会话：立即贴底（重置 isAtBottom）
@@ -387,17 +381,47 @@ export function ChatArea() {
         activeSessionId={state.activeSessionId}
         subagentOutputByToolUseId={state.subagentOutputBySession[state.activeSessionId] ?? {}}
       />
-      <div
-        ref={scrollRef}
-        onScroll={onScroll}
-        style={{ flex: 1, overflowY: 'auto', padding: '20px 28px 48px', display: 'flex', flexDirection: 'column', gap: 28, width: '100%', maxWidth: 'var(--chat-max-width)', margin: '0 auto' }}
-      >
-        {session.messages.length === 0 && !streaming && (
-          <div style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: 60 }}>{t('chat.empty')}</div>
-        )}
-        {session.messages.map(m => {
-          // streaming 进行中时,跳过 draft message(它由下方 streaming 区渲染,避免重复显示)
-          if (streaming?.draftMessageId === m.id) return null
+      {/* 空会话提示：放在 Virtuoso 外层条件渲染（空列表时 Virtuoso 高度为 0） */}
+      {session.messages.length === 0 && !streaming && (
+        <div style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: 60, flex: 1 }}>{t('chat.empty')}</div>
+      )}
+      {/* react-virtuoso 虚拟化消息列表：仅挂载可见区消息，草稿走方案 A（不再跳过 draftMessageId，
+          它已在 session.messages 中，由 reducer 的 syncDraftMessage 同步 content）。 */}
+      <Virtuoso
+        ref={virtuosoRef}
+        data={session.messages}
+        followOutput={(atBottom) => (atBottom ? 'smooth' : false)}
+        atBottomStateChange={(atBottom) => {
+          isAtBottomRef.current = atBottom
+          setShowScrollBtn(!atBottom)
+        }}
+        className="chat-scroll"
+        style={{ flex: 1 }}
+        components={{
+          // 列表内边距与原 scroll div 一致
+          List: ({ children, style, ...rest }) => (
+            <div {...rest} style={{ ...style, padding: '20px 28px 48px', display: 'flex', flexDirection: 'column', gap: 28, width: '100%', maxWidth: 'var(--chat-max-width)', margin: '0 auto' }}>
+              {children}
+            </div>
+          ),
+          // 流式附加区（列表底部，随列表滚动）：仅 notices + error + 思考中指示器
+          // （blocks 已在草稿 message 里）。非流式时返回 null，不占位。
+          Footer: () => streaming ? (
+            <div style={{ color: 'var(--text)', fontSize: 14, lineHeight: 1.6, padding: '0 28px', display: 'flex', flexDirection: 'column', gap: 8, userSelect: 'text' }}>
+              <Notices notices={streaming.notices ?? []} />
+              {streaming.error && <div style={{ color: '#ef4444', fontSize: 13 }}>❌ {streaming.error}</div>}
+              {/* 思考中指示器:Sparkles 图标 + 文字,呼吸式脉冲动画(参考 codex app) */}
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontSize: 13 }}>
+                <Sparkles size={14} className="cc-pulse" style={{ color: 'var(--accent)' }} />
+                <span className="cc-pulse">思考中</span>
+              </div>
+            </div>
+          ) : null,
+        }}
+        itemContent={(index, m) => {
+          // 方案 A：草稿消息正常渲染（不再跳过 draftMessageId）。草稿 content 由 reducer 同步，
+          // 流式追加时它的 MessageRow 自然重渲染。notices/error/思考指示器不在草稿 message 上，
+          // 通过 components.Footer 补显。
           return (
             <MessageRow
               key={m.id}
@@ -413,35 +437,23 @@ export function ChatArea() {
               showThinking={state.settings.showThinking}
             />
           )
-        })}
-        {/* 流式消息：notice + blocks + 错误 + 思考中指示器 */}
-        {streaming && (
-          <div style={{ color: 'var(--text)', fontSize: 14, lineHeight: 1.6, padding: '0 28px', display: 'flex', flexDirection: 'column', gap: 8, userSelect: 'text' }}>
-            <Notices notices={streaming.notices ?? []} />
-            {renderBlocks(streaming.blocks, false, subagentOutputByToolUseId, subagentToolUseIds, state.settings.showThinking)}
-            {streaming.error && <div style={{ color: '#ef4444', fontSize: 13 }}>❌ {streaming.error}</div>}
-            {/* 思考中指示器:Sparkles 图标 + 文字,呼吸式脉冲动画(参考 codex app) */}
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontSize: 13 }}>
-              <Sparkles size={14} className="cc-pulse" style={{ color: 'var(--accent)' }} />
-              <span className="cc-pulse">思考中</span>
-            </div>
-          </div>
-        )}
-        {/* AskUserQuestion / 权限授权 / 计划卡片：作为对话区内联块（非浮层），占据对话区空间把
-            消息往上推，永不遮挡对话内容。限宽居中，与消息气泡对齐。三种 dialogKind 共用此包裹。 */}
-        {state.pendingDialog && state.pendingDialog.sessionId === state.activeSessionId && (
-          <div style={{ width: '100%', maxWidth: 'var(--chat-max-width)', margin: '0 auto', padding: '0 28px' }}>
-            {state.pendingDialog.dialogKind === 'permission_request' ? <PermissionPanel />
-              : state.pendingDialog.dialogKind === 'plan_proposed'
-                ? <PlanCard
-                    sessionId={state.activeSessionId}
-                    pendingPlan={{ reqId: state.pendingDialog.reqId, plan: state.pendingDialog.payload?.plan ?? '', allowedPrompts: state.pendingDialog.payload?.allowedPrompts }}
-                    dispatch={dispatch}
-                  />
-                : <AnswerPanel />}
-          </div>
-        )}
-      </div>
+        }}
+      />
+      {/* AskUserQuestion / 权限授权 / 计划卡片：作为对话区内联块（非浮层），占据对话区空间把
+          消息往上推，永不遮挡对话内容。限宽居中，与消息气泡对齐。三种 dialogKind 共用此包裹。
+          放在 Virtuoso 之外（非虚拟化项），避免被回收。 */}
+      {state.pendingDialog && state.pendingDialog.sessionId === state.activeSessionId && (
+        <div style={{ width: '100%', maxWidth: 'var(--chat-max-width)', margin: '0 auto', padding: '0 28px' }}>
+          {state.pendingDialog.dialogKind === 'permission_request' ? <PermissionPanel />
+            : state.pendingDialog.dialogKind === 'plan_proposed'
+              ? <PlanCard
+                  sessionId={state.activeSessionId}
+                  pendingPlan={{ reqId: state.pendingDialog.reqId, plan: state.pendingDialog.payload?.plan ?? '', allowedPrompts: state.pendingDialog.payload?.allowedPrompts }}
+                  dispatch={dispatch}
+                />
+              : <AnswerPanel />}
+        </div>
+      )}
       <div style={{ padding: '0 28px 20px', width: '100%', maxWidth: 'var(--chat-max-width)', margin: '0 auto', position: 'relative' }}>
         {/* 回到底部按钮：相对输入框容器定位，底边恒在输入框上边框上方 20px */}
         {showScrollBtn && (

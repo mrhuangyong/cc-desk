@@ -16,6 +16,28 @@ vi.mock('../src/renderer/state/store', () => ({
 vi.mock('../src/renderer/i18n/useI18n', () => ({
   useI18n: () => ({ t: (k: string) => k, lang: 'zh-CN' }),
 }))
+// ---- mock react-virtuoso：jsdom 无真实视口高度，Virtuoso 不会挂载任何 item。
+// 这里 stub 成「全量渲染」的透传组件，让 ChatArea 的 itemContent / components.List / components.Footer
+// 逻辑仍可被消息渲染断言验证（虚拟化交互本就不在 jsdom 可测范围，留给 Task 9 手动验证）。
+vi.mock('react-virtuoso', () => {
+  const React = require('react')
+  const Virtuoso = React.forwardRef(function Virtuoso(props: any, _ref: any) {
+    const List = props.components?.List ?? ((p: any) => <div style={p.style}>{p.children}</div>)
+    const Footer = props.components?.Footer
+    const items = (props.data ?? []).map((item: any, index: number) =>
+      <React.Fragment key={item.id ?? index}>{props.itemContent(index, item)}</React.Fragment>
+    )
+    return (
+      <div className={props.className} style={props.style}>
+        <List>
+          {items}
+          {Footer ? <Footer /> : null}
+        </List>
+      </div>
+    )
+  })
+  return { Virtuoso, VirtuosoHandle: {} as any }
+})
 // ---- stub 子组件（避免 InputBar 的 TipTap 等重依赖）----
 vi.mock('../src/renderer/components/InputBar', () => ({
   InputBar: () => <div data-testid="inputbar-stub" />,
