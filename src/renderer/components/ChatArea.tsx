@@ -400,6 +400,8 @@ export function ChatArea() {
               subagentToolUseIds={subagentToolUseIds}
               isLastUserMessage={m.id === lastUserMessage?.id}
               editingMessageId={state.editingMessageId}
+              editDoc={editDoc}
+              onEditDocChange={setEditDoc}
               onEditResend={handleEditResend}
             />
           )

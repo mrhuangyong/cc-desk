@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { Pencil } from 'lucide-react'
 import { useStore } from '../state/store'
 import { useI18n } from '../i18n/useI18n'
@@ -16,9 +15,8 @@ import type { ContentBlock, DraftAttachment, Message } from '../types'
 // 抽离原因：① 后续 Task 在此加 React.memo（ChatArea 在每个 STREAM_DELTA 重渲染，
 //   N 条消息会全量重算，memo 后仅变化的消息行重渲染）；② 虚拟化时它就是列表项载体。
 // 两个分支（assistant / user 含就地编辑）原样搬运自 ChatArea 旧的内联 map，未改任何渲染逻辑。
-// 注意：editingMessageId 与 editDoc 态——ChatArea 旧代码在自身持 editDoc，
-//   抽出后每行各持一份 editDoc（只有 editingMessageId 命中的那行才会真正用上，
-//   其余行的 editDoc 永远是 null，不产生副作用，与原行为一致）。
+// editDoc 单一真源在 ChatArea（handleEditResend 也在 ChatArea，二者须读写同一 editDoc 实例，
+//   否则编辑重发会失效），通过 props 下发，本组件不再自持 editDoc。
 export interface MessageRowProps {
   message: Message
   isStreaming: boolean
@@ -26,14 +24,15 @@ export interface MessageRowProps {
   subagentToolUseIds: Set<string>
   isLastUserMessage: boolean
   editingMessageId: string | null
+  editDoc: any
+  onEditDocChange: (doc: any) => void
   onEditResend: () => void
 }
 
 export function MessageRow(props: MessageRowProps) {
   const { dispatch } = useStore()
   const { t } = useI18n()
-  const { message: m, isStreaming, subagentOutputByToolUseId, subagentToolUseIds, isLastUserMessage, editingMessageId, onEditResend } = props
-  const [editDoc, setEditDoc] = useState<any>(null)
+  const { message: m, isStreaming, subagentOutputByToolUseId, subagentToolUseIds, isLastUserMessage, editingMessageId, editDoc, onEditDocChange, onEditResend } = props
 
   if (m.role === 'assistant') {
     return (
@@ -76,7 +75,7 @@ export function MessageRow(props: MessageRowProps) {
         <button
           onClick={() => {
             const origText = extractText(m.content)
-            setEditDoc({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: origText }] }] })
+            onEditDocChange({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: origText }] }] })
             dispatch({ type: 'SET_EDITING_MESSAGE', messageId: m.id })
           }}
           title={t('chat.edit')}
@@ -93,13 +92,13 @@ export function MessageRow(props: MessageRowProps) {
             placeholder=""
             allSlashItems={[]}
             getCwd={() => ''}
-            onDocChange={(doc) => setEditDoc(doc)}
+            onDocChange={(doc) => onEditDocChange(doc)}
             onSend={onEditResend}
             onEditorReady={() => {}}
           />
           <div style={{ display: 'flex', gap: 8, marginTop: 8, justifyContent: 'flex-end' }}>
             <button
-              onClick={() => { setEditDoc(null); dispatch({ type: 'SET_EDITING_MESSAGE', messageId: null }) }}
+              onClick={() => { onEditDocChange(null); dispatch({ type: 'SET_EDITING_MESSAGE', messageId: null }) }}
               style={{ padding: '4px 12px', fontSize: 12, cursor: 'pointer', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', color: 'var(--text-muted)' }}
             >{t('chat.editCancel')}</button>
             <button
