@@ -138,10 +138,14 @@ describe('ChatArea IPC 监听 → dispatch 链路', () => {
     expect(dispatch).toHaveBeenCalledWith({ type: 'SET_CLAUDE_SESSION_ID', localSessionId: 's1', claudeSessionId: 'c-claude-1' })
   })
 
-  it('onDelta → STREAM_DELTA', () => {
+  it('onDelta → STREAM_DELTA（经 rAF 批处理后异步派发）', async () => {
     render(<ChatArea />)
     handlers.onDelta({ localSessionId: 's1', kind: 'text', delta: 'hi' })
-    expect(dispatch).toHaveBeenCalledWith({ type: 'STREAM_DELTA', sessionId: 's1', kind: 'text', delta: 'hi' })
+    // onDelta 现走 useStreamBatcher：delta 进 buffer，由 rAF/16ms 兜底定时器异步派发，
+    // 故用 waitFor 等到 STREAM_DELTA 到达。
+    await waitFor(() => {
+      expect(dispatch).toHaveBeenCalledWith({ type: 'STREAM_DELTA', sessionId: 's1', kind: 'text', delta: 'hi' })
+    })
   })
 
   it('onBlocks assistant_blocks → STREAM_ASSISTANT_BLOCKS', () => {

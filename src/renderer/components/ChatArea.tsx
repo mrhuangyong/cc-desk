@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDown, Copy, Check, Sparkles } from 'lucide-react'
 import { useStore } from '../state/store'
 import { useI18n } from '../i18n/useI18n'
+import { useStreamBatcher } from '../hooks/useStreamBatcher'
 import { BackendTaskPanel } from './BackendTaskPanel'
 import { PlanCard } from './PlanCard'
 import { InputBar } from './InputBar'
@@ -68,6 +69,9 @@ export function CopyButton({ text, inline }: { text: string; inline?: boolean })
 export function ChatArea() {
   const { state, dispatch } = useStore()
   const { t } = useI18n()
+  // 流式 delta 走 rAF 节流批处理：把高频 STREAM_DELTA 合并到每帧一次派发，
+  // 降低 reducer/重渲染开销；在中断/结束事件到达时由调用方 flush() 兜底。
+  const { pushDelta, flush } = useStreamBatcher(dispatch)
 
   // 找当前会话及其所属项目：单次遍历拿到两者（避免 flatMap 分配中间数组，
   // 也让 handleEditResend 能复用 project，无需二次 find）。
@@ -223,7 +227,7 @@ export function ChatArea() {
         console.warn('[cc-stream] onDelta drop: no localSessionId')
         return
       }
-      dispatch({ type: 'STREAM_DELTA', sessionId: sid, kind: data.kind, delta: data.delta })
+      pushDelta(sid, data.kind, data.delta)
     })
     // 归一化 blocks：工具开始 / assistant 整块 / 工具结果
     api.onBlocks((data: any) => {
@@ -300,6 +304,7 @@ export function ChatArea() {
     api.onResult((data: any) => {
       const sid = data?.localSessionId
       if (!sid) return
+      flush()  // 兜底：确保末尾 delta 已派发再固化结束
       dispatch({
         type: 'STREAM_END',
         sessionId: sid,
@@ -323,11 +328,13 @@ export function ChatArea() {
     api.onError((data: any) => {
       const sid = data?.localSessionId
       if (!sid) return
+      flush()  // 兜底：错误前确保末尾 delta 已派发
       dispatch({ type: 'STREAM_ERROR', sessionId: sid, error: data.error })
     })
     api.onAborted((data: any) => {
       const sid = data?.localSessionId
       if (!sid) return
+      flush()  // 兜底：用户点「停止」时把缓冲的末尾 delta 冲出，避免丢失
       dispatch({ type: 'STREAM_ABORTED', sessionId: sid })
       // 用户主动停止：把该会话所有未结束的 TaskCreate 任务（pending/running）置为 killed。
       // 主进程 interrupt() 只终止 registry 里的 subagent/shell 等后台任务（走 claude:backend-task），
