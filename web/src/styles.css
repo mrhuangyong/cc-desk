@@ -418,9 +418,13 @@ body {
   font-size: 11px; padding: 0; border: 0; background: transparent;
   color: inherit; font-family: var(--font-mono);
   outline: none; cursor: pointer; appearance: none; -webkit-appearance: none;
-  padding-right: 2px; max-width: 92px; text-overflow: ellipsis;
+  padding-right: 2px; max-width: 72px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;
 }
-/* 模型药丸:在滚动区内,无需 margin-left:auto(发送按钮已在滚动区外固定右侧) */
+/* 模型 pill(在滚动区外,固定右侧):限制宽度防过宽 */
+.control-pill.model-pill {
+  flex-shrink: 0; max-width: 120px; overflow: hidden;
+}
+/* 模型 pill 已移到滚动区外(固定右侧),此处保留兼容 */
 /* 独立 select(param-select 不在药丸内时的兜底,保留旧样式) */
 .param-select {
   font-size: 11px; padding: 3px 8px; border-radius: var(--r-sm);
