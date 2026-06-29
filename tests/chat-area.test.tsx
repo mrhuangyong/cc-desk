@@ -11,6 +11,8 @@ vi.mock('../src/renderer/state/store', () => ({
   useStore: () => ({ state: mockState, dispatch }),
   // MessageRow 已迁移到 useDispatch（不再全订阅）；测试 mock 需同步暴露
   useDispatch: () => dispatch,
+  // ChatArea 已迁移到 useSelector 分片订阅（不再 useStore 全 state）；mock 按 selector 取切片
+  useSelector: (selector: any) => selector(mockState),
 }))
 // ---- mock i18n（ChatArea 用 useI18n）----
 vi.mock('../src/renderer/i18n/useI18n', () => ({

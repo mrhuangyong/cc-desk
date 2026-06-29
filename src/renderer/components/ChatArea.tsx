@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { ArrowDown, Copy, Check, Sparkles } from 'lucide-react'
-import { useStore } from '../state/store'
+import { useSelector, useDispatch } from '../state/store'
+import type { AppState } from '../state/reducer'
 import { useI18n } from '../i18n/useI18n'
 import { useStreamBatcher } from '../hooks/useStreamBatcher'
 import { BackendTaskPanel } from './BackendTaskPanel'
@@ -67,7 +68,18 @@ export function CopyButton({ text, inline }: { text: string; inline?: boolean })
 }
 
 export function ChatArea() {
-  const { state, dispatch } = useStore()
+  // 分片订阅（Layer 2）：流式高频变化字段单独订阅，reducer 不改该切片时引用稳定 → 不重渲。
+  const dispatch = useDispatch()
+  const activeSessionId = useSelector((s: AppState) => s.activeSessionId)
+  const projects = useSelector((s: AppState) => s.projects)
+  const streamingBySession = useSelector((s: AppState) => s.streamingBySession)
+  const subagentOutputBySession = useSelector((s: AppState) => s.subagentOutputBySession)
+  const backendTasksBySession = useSelector((s: AppState) => s.backendTasksBySession)
+  const tasksBySession = useSelector((s: AppState) => s.tasksBySession)
+  const settings = useSelector((s: AppState) => s.settings)
+  const pendingDialog = useSelector((s: AppState) => s.pendingDialog)
+  const editingMessageId = useSelector((s: AppState) => s.editingMessageId)
+  const claudeSessionMap = useSelector((s: AppState) => s.claudeSessionMap)
   const { t } = useI18n()
   // 流式 delta 走 rAF 节流批处理：把高频 STREAM_DELTA 合并到每帧一次派发，
   // 降低 reducer/重渲染开销；在中断/结束事件到达时由调用方 flush() 兜底。
@@ -75,11 +87,11 @@ export function ChatArea() {
 
   // 找当前会话及其所属项目：单次遍历拿到两者（避免 flatMap 分配中间数组，
   // 也让 handleEditResend 能复用 project，无需二次 find）。
-  const active = state.projects.find(p => p.sessions.some(s => s.id === state.activeSessionId))
-  const session = active?.sessions.find(s => s.id === state.activeSessionId)
+  const active = projects.find(p => p.sessions.some(s => s.id === activeSessionId))
+  const session = active?.sessions.find(s => s.id === activeSessionId)
 
   // 当前会话的流式状态（增量拼接的 blocks/notices）
-  const streaming = state.streamingBySession[state.activeSessionId]
+  const streaming = streamingBySession[activeSessionId]
   const isStreaming = !!streaming
 
   // 子代理渲染所需的派生数据，每轮渲染算一次（而非每条消息行 ×3 次）：
@@ -87,14 +99,14 @@ export function ChatArea() {
   //     判断某 tool_use 是否归属某 subagent（决定渲染为子代理卡片还是普通工具卡）。
   //   - subagentOutputByToolUseId：当前会话子代理的累积输出。
   // ChatArea 在每个 STREAM_DELTA 重渲染，若内联到 renderBlocks 调用点，N 条消息会构造 N×3 个 Set。
-  const sid = state.activeSessionId
+  const sid = activeSessionId
   const subagentOutputByToolUseId = useMemo(
-    () => state.subagentOutputBySession?.[sid] ?? {},
-    [state.subagentOutputBySession, sid]
+    () => subagentOutputBySession?.[sid] ?? {},
+    [subagentOutputBySession, sid]
   )
   const subagentToolUseIds = useMemo(
-    () => new Set((state.backendTasksBySession?.[sid] ?? []).filter(t => t.kind === 'subagent' && t.toolUseId).map(t => t.toolUseId!)),
-    [state.backendTasksBySession, sid]
+    () => new Set((backendTasksBySession?.[sid] ?? []).filter(t => t.kind === 'subagent' && t.toolUseId).map(t => t.toolUseId!)),
+    [backendTasksBySession, sid]
   )
 
   // 最后一条用户消息（编辑重发仅作用于它）
@@ -114,19 +126,19 @@ export function ChatArea() {
     if (!lastUserMessage) return
     const newPrompt = editDoc ? serializeForPrompt(editDoc).trim() : ''
     if (!newPrompt) return
-    dispatch({ type: 'EDIT_RESEND', sessionId: state.activeSessionId, messageId: lastUserMessage.id, newPrompt })
+    dispatch({ type: 'EDIT_RESEND', sessionId: activeSessionId, messageId: lastUserMessage.id, newPrompt })
     setEditDoc(null)
     // 截断后用新文本发送
-    const claudeSessionId = state.claudeSessionMap?.[state.activeSessionId]
-    const cwd = active?.path || state.settings?.cwd || undefined
-    dispatch({ type: 'STREAM_START', sessionId: state.activeSessionId })
+    const claudeSessionId = claudeSessionMap?.[activeSessionId]
+    const cwd = active?.path || settings?.cwd || undefined
+    dispatch({ type: 'STREAM_START', sessionId: activeSessionId })
     window.api?.claude?.send({
       prompt: newPrompt,
-      localSessionId: state.activeSessionId,
+      localSessionId: activeSessionId,
       sessionId: claudeSessionId || undefined,
       cwd,
     })
-  }, [lastUserMessage, state.activeSessionId, state.claudeSessionMap, active, state.settings?.cwd, editDoc])
+  }, [lastUserMessage, activeSessionId, claudeSessionMap, active, settings?.cwd, editDoc])
 
   // ===== 滚动「贴底」逻辑（迁移到 react-virtuoso 原语）=====
   // 原则：AI 输出时若用户在底部则自动滚动跟随；用户主动上滑后停止自动滚动，
@@ -160,30 +172,30 @@ export function ChatArea() {
     setShowScrollBtn(false)
     scrollToBottom('auto')
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.activeSessionId])
+  }, [activeSessionId])
 
   // AskUserQuestion / 权限授权 / 计划卡片弹出时自动滚到底：面板作为对话区内联块会把
   // 消息往上推，滚到底让「触发该提问的最近消息」与面板一同可见。
   useEffect(() => {
-    const dlg = state.pendingDialog
-    if (dlg && dlg.sessionId === state.activeSessionId &&
+    const dlg = pendingDialog
+    if (dlg && dlg.sessionId === activeSessionId &&
         (dlg.dialogKind === 'ask_user_question' || dlg.dialogKind === 'permission_request' || dlg.dialogKind === 'plan_proposed')) {
       // 延迟一帧，等面板渲染撑高布局后再滚，确保滚到真实底部
       requestAnimationFrame(() => scrollToBottom('smooth'))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.pendingDialog, state.activeSessionId])
+  }, [pendingDialog, activeSessionId])
 
   // 监听器只在挂载时注册一次，回调内需要的"会变值"通过 ref 取最新值，
   // settings 用 ref 在挂载一次的监听器闭包里取最新值（taskNotify/notifySound）。
   // 注意：流式回调用「事件自带的 localSessionId」路由，不再用「当前激活会话」，
   // 否则 A 发送后切到 B 会串台。activeSessionId 不再进 ref。
-  const settingsRef = useRef(state.settings)
-  useEffect(() => { settingsRef.current = state.settings }, [state.settings])
+  const settingsRef = useRef(settings)
+  useEffect(() => { settingsRef.current = settings }, [settings])
   // 桌面通知防抖：同一 body 文本 10 秒内只通知一次，避免重复轰炸
   const lastNotifRef = useRef<{ text: string; ts: number } | null>(null)
-  const tasksRef = useRef(state.tasksBySession)
-  useEffect(() => { tasksRef.current = state.tasksBySession }, [state.tasksBySession])
+  const tasksRef = useRef(tasksBySession)
+  useEffect(() => { tasksRef.current = tasksBySession }, [tasksBySession])
 
   // 注册 IPC 监听器：归一化后的新通道（delta/blocks/notice/result/error/aborted）
   useEffect(() => {
@@ -374,12 +386,12 @@ export function ChatArea() {
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: 'var(--bg)', position: 'relative' }}>
       <BackendTaskPanel
-        tasks={state.tasksBySession[state.activeSessionId] ?? []}
-        backendTasks={state.backendTasksBySession[state.activeSessionId] ?? []}
-        showTodo={state.settings.showTodo}
-        showBackendTask={state.settings.showBackendTask}
-        activeSessionId={state.activeSessionId}
-        subagentOutputByToolUseId={state.subagentOutputBySession[state.activeSessionId] ?? {}}
+        tasks={tasksBySession[activeSessionId] ?? []}
+        backendTasks={backendTasksBySession[activeSessionId] ?? []}
+        showTodo={settings.showTodo}
+        showBackendTask={settings.showBackendTask}
+        activeSessionId={activeSessionId}
+        subagentOutputByToolUseId={subagentOutputBySession[activeSessionId] ?? {}}
       />
       {/* 空会话提示：放在 Virtuoso 外层条件渲染（空列表时 Virtuoso 高度为 0） */}
       {session.messages.length === 0 && !streaming && (
@@ -430,11 +442,11 @@ export function ChatArea() {
               subagentOutputByToolUseId={subagentOutputByToolUseId}
               subagentToolUseIds={subagentToolUseIds}
               isLastUserMessage={m.id === lastUserMessage?.id}
-              editingMessageId={state.editingMessageId}
+              editingMessageId={editingMessageId}
               editDoc={editDoc}
               onEditDocChange={setEditDoc}
               onEditResend={handleEditResend}
-              showThinking={state.settings.showThinking}
+              showThinking={settings.showThinking}
             />
           )
         }}
@@ -442,13 +454,13 @@ export function ChatArea() {
       {/* AskUserQuestion / 权限授权 / 计划卡片：作为对话区内联块（非浮层），占据对话区空间把
           消息往上推，永不遮挡对话内容。限宽居中，与消息气泡对齐。三种 dialogKind 共用此包裹。
           放在 Virtuoso 之外（非虚拟化项），避免被回收。 */}
-      {state.pendingDialog && state.pendingDialog.sessionId === state.activeSessionId && (
+      {pendingDialog && pendingDialog.sessionId === activeSessionId && (
         <div style={{ width: '100%', maxWidth: 'var(--chat-max-width)', margin: '0 auto', padding: '0 28px' }}>
-          {state.pendingDialog.dialogKind === 'permission_request' ? <PermissionPanel />
-            : state.pendingDialog.dialogKind === 'plan_proposed'
+          {pendingDialog.dialogKind === 'permission_request' ? <PermissionPanel />
+            : pendingDialog.dialogKind === 'plan_proposed'
               ? <PlanCard
-                  sessionId={state.activeSessionId}
-                  pendingPlan={{ reqId: state.pendingDialog.reqId, plan: state.pendingDialog.payload?.plan ?? '', allowedPrompts: state.pendingDialog.payload?.allowedPrompts }}
+                  sessionId={activeSessionId}
+                  pendingPlan={{ reqId: pendingDialog.reqId, plan: pendingDialog.payload?.plan ?? '', allowedPrompts: pendingDialog.payload?.allowedPrompts }}
                   dispatch={dispatch}
                 />
               : <AnswerPanel />}

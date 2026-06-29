@@ -1,4 +1,4 @@
-import { createContext, useContext, useSyncExternalStore, useRef, type ReactNode } from 'react'
+import { createContext, useContext, useMemo, useSyncExternalStore, useRef, type ReactNode } from 'react'
 import { reducer, type AppState } from './reducer'
 import type { Action } from './actions'
 import type { Project } from '../types'
@@ -105,8 +105,11 @@ export function AppProvider({ children, initialProjects }: { children: ReactNode
   }
   // 订阅模块级 state，Context 里的 state 自动跟随更新（useStore 取到的永远是最新）
   const state = useSyncExternalStore(subscribe, getState, getState)
+  // 稳定化 context value：state 引用不变时复用旧 value，
+  // 避免 useStore 消费者因 value 新对象而无差别重渲。dispatch 本就稳定（模块级）。
+  const value = useMemo(() => ({ state, dispatch: dispatchAction }), [state])
   return (
-    <StoreContext.Provider value={{ state, dispatch: dispatchAction }}>
+    <StoreContext.Provider value={value}>
       {children}
     </StoreContext.Provider>
   )
