@@ -378,7 +378,6 @@ function RemoteShell({
           onPermissionChange={setCurrentPermission}
           onThinkingChange={setCurrentThinking}
           currentQueueMode={currentQueueMode}
-          onQueueModeChange={setCurrentQueueMode}
           queue={chat.queue}
           attachments={attachments}
           onAddImages={addImages}

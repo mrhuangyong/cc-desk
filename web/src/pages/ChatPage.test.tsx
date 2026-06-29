@@ -671,32 +671,7 @@ describe('ChatPage - 排队模式', () => {
     onInterrupt: () => {}, onBack: () => {},
   }
 
-  it('传入 onQueueModeChange 时渲染模式 select,选中值正确', () => {
-    render(
-      <ChatPage
-        {...baseProps}
-        currentQueueMode="guide"
-        onQueueModeChange={() => {}}
-      />,
-    )
-    const select = screen.getByLabelText('排队模式') as HTMLSelectElement
-    expect(select.value).toBe('guide')
-    expect(select.options.length).toBe(2) // queue / guide
-  })
-
-  it('改模式 select → onQueueModeChange(新值)', () => {
-    const onQueueModeChange = vi.fn()
-    render(
-      <ChatPage
-        {...baseProps}
-        currentQueueMode="queue"
-        onQueueModeChange={onQueueModeChange}
-      />,
-    )
-    fireEvent.change(screen.getByLabelText('排队模式'), { target: { value: 'guide' } })
-    expect(onQueueModeChange).toHaveBeenCalledWith('guide')
-  })
-
+  // 排队模式 select 已移除(移动端默认 queue),保留队列 chip 可见性测试
   it('queue 非空 → 渲染对应数量的排队 chip', () => {
     render(
       <ChatPage
@@ -706,10 +681,5 @@ describe('ChatPage - 排队模式', () => {
     )
     const chips = screen.getAllByText(/排队消息/)
     expect(chips.length).toBe(2)
-  })
-
-  it('未传 onQueueModeChange 时不渲染模式 select(向后兼容)', () => {
-    render(<ChatPage {...baseProps} />)
-    expect(screen.queryByLabelText('排队模式')).not.toBeInTheDocument()
   })
 })

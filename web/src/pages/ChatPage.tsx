@@ -523,23 +523,8 @@ export default function ChatPage(props: ChatPageProps) {
                 <ChevronDownIcon size={11} />
               </label>
             )}
-            {onQueueModeChange && (
-              <label className="control-pill">
-                <ListIcon size={13} />
-                <select
-                  className="param-select"
-                  value={currentQueueMode || 'queue'}
-                  onChange={(e) => onQueueModeChange(e.target.value as 'queue' | 'guide')}
-                  aria-label="排队模式"
-                >
-                  <option value="queue">排队</option>
-                  <option value="guide">中断</option>
-                </select>
-                <ChevronDownIcon size={11} />
-              </label>
-            )}
-
-            {/* 右组:模型 + 发送 */}
+            </div>
+            {/* 模型(固定在发送按钮左侧,不参与横向滚动,始终可见) */}
             {models && models.length > 0 && (
               <label className="control-pill model-pill">
                 <ChipIcon size={13} />
@@ -556,7 +541,6 @@ export default function ChatPage(props: ChatPageProps) {
                 <ChevronDownIcon size={11} />
               </label>
             )}
-            </div>
             <button
               className={`send-icon-btn ${running && !canSend ? 'stop' : ''}`}
               onClick={() => {
