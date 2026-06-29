@@ -102,7 +102,6 @@ body {
 /* ============ 应用外壳 ============ */
 .app {
   display: flex; flex-direction: column; min-height: 100%; min-height: 100dvh;
-  max-width: 100vw; overflow-x: hidden;
   padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
   background: var(--bg);
 }
@@ -363,8 +362,8 @@ body {
 
 /* ============ 对话页 ============ */
 /* dvh(动态视口高度)随键盘弹出/收起自动调整,防输入框被键盘遮挡。
-   overflow-x:hidden + max-width:100vw 防长内容撑宽页面(水平溢出根因)。 */
-.chat-page { display: flex; flex-direction: column; min-height: 100%; min-height: 100dvh; max-width: 100vw; overflow-x: hidden; }
+   fallback:不支持 dvh 的旧浏览器用 100%(回退到布局视口,不理想但不崩)。 */
+.chat-page { display: flex; flex-direction: column; min-height: 100%; min-height: 100dvh; }
 .chat-page .app-header { gap: 6px; }
 .chat-header-title {
   flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0;
@@ -418,13 +417,9 @@ body {
   font-size: 11px; padding: 0; border: 0; background: transparent;
   color: inherit; font-family: var(--font-mono);
   outline: none; cursor: pointer; appearance: none; -webkit-appearance: none;
-  padding-right: 2px; max-width: 72px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;
+  padding-right: 2px; max-width: 92px; text-overflow: ellipsis;
 }
-/* 模型 pill(在滚动区外,固定右侧):限制宽度防过宽 */
-.control-pill.model-pill {
-  flex-shrink: 0; max-width: 120px; overflow: hidden;
-}
-/* 模型 pill 已移到滚动区外(固定右侧),此处保留兼容 */
+/* 模型药丸:在滚动区内,无需 margin-left:auto(发送按钮已在滚动区外固定右侧) */
 /* 独立 select(param-select 不在药丸内时的兜底,保留旧样式) */
 .param-select {
   font-size: 11px; padding: 3px 8px; border-radius: var(--r-sm);
@@ -455,7 +450,7 @@ body {
 .icon-btn.stop svg { width: 16px; height: 16px; }
 
 .chat-body {
-  flex: 1; overflow-y: auto; overflow-x: hidden; padding: 16px 12px;
+  flex: 1; overflow-y: auto; padding: 16px 12px;
   display: flex; flex-direction: column; gap: 14px;
   /* 滚动条细 */
   scrollbar-width: thin;
@@ -466,14 +461,13 @@ body {
 }
 .chat-empty { text-align: center; color: var(--text-faint); padding: 60px 20px; font-size: 14px; line-height: 1.7; }
 
-.msg { display: flex; padding: 0; min-width: 0; }
+.msg { display: flex; padding: 0; }
 .msg.user { justify-content: flex-end; }
 .msg.assistant { justify-content: flex-start; }
 .msg.notice { justify-content: center; }
 .msg-bubble {
   max-width: 85%; padding: 10px 13px; border-radius: 18px; font-size: 14px;
-  line-height: 1.55; word-break: break-word; overflow-wrap: anywhere;
-  min-width: 0; overflow-x: auto;
+  line-height: 1.55; word-break: break-word;
 }
 .user-bubble {
   background: var(--accent); color: #fff; border-bottom-right-radius: 5px;
@@ -504,7 +498,7 @@ body {
   background: var(--error-bg);
   border-color: var(--error);
 }
-.assistant-text { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-all; }
+.assistant-text { white-space: pre-wrap; }
 .assistant-bubble code {
   background: var(--bg-sunken); padding: 1px 5px; border-radius: 4px;
   font-size: 13px; font-family: var(--font-mono); color: var(--accent-ink);
@@ -628,22 +622,21 @@ body {
 .jump-bottom-btn svg { width: 18px; height: 18px; }
 .jump-bottom-btn:active { transform: scale(.92); }
 
-/* 输入栏：固定底部,承载统一输入卡片。
-   overflow-x:hidden 防内容溢出(配合 max-width:100vw)。 */
+/* 输入栏：固定底部,承载统一输入卡片 */
 .chat-input-bar {
   flex-shrink: 0;
   display: flex; align-items: flex-end; padding: 8px 12px;
   padding-bottom: calc(10px + env(safe-area-inset-bottom));
   background: var(--bg); border-top: 1px solid var(--border);
   position: sticky; bottom: 0; z-index: 10;
-  max-width: 100vw; overflow-x: hidden;
+  max-width: var(--content-max);
   margin-inline: auto;
   width: 100%;
 }
 /* 统一输入卡片:把附件chip/排队chip/textarea/控件栏收进一个整体容器。
    对齐桌面 InputBar 的卡片感(elev 底 + 圆角 + 描边),移动端用描边(比阴影在 bg 上更清晰)。 */
 .chat-input-card {
-  flex: 1; display: flex; flex-direction: column; min-width: 0;
+  flex: 1; display: flex; flex-direction: column;
   background: var(--bg-elev); border: 1px solid var(--border-strong);
   border-radius: var(--r-md); padding: 8px 10px 6px;
   box-shadow: var(--shadow);
