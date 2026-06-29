@@ -1,19 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDown, Copy, Check, Sparkles, Pencil } from 'lucide-react'
+import { ArrowDown, Copy, Check, Sparkles } from 'lucide-react'
 import { useStore } from '../state/store'
 import { useI18n } from '../i18n/useI18n'
-import { AttachmentChip } from './AttachmentChip'
 import { BackendTaskPanel } from './BackendTaskPanel'
 import { PlanCard } from './PlanCard'
 import { InputBar } from './InputBar'
 import { InputDock } from './InputDock'
 import { AnswerPanel } from './AnswerPanel'
 import { PermissionPanel } from './PermissionPanel'
-import { PromptEditor } from '../editor/PromptEditor'
 import { serializeForPrompt } from '../editor/serialize'
 import { renderBlocks } from './blocks/BlockRenderer'
 import { Notices } from './Notices'
 import { Tooltip } from './Tooltip'
+import { MessageRow } from './MessageRow'
 
 import type { ContentBlock, DraftAttachment, Message, TaskStatus } from '../types'
 
@@ -44,7 +43,7 @@ export function extractText(blocks: ContentBlock[]): string {
   }).join('\n').trim()
 }
 
-function messageAttachments(message: Message): DraftAttachment[] {
+export function messageAttachments(message: Message): DraftAttachment[] {
   if (message.attachments?.length) return message.attachments
   if (message.attachment) return [{ type: 'pickedElement', el: message.attachment }]
   return []
@@ -393,87 +392,18 @@ export function ChatArea() {
           // streaming 进行中时,跳过 draft message(它由下方 streaming 区渲染,避免重复显示)
           if (streaming?.draftMessageId === m.id) return null
           return (
-            m.role === 'assistant' ? (
-            // AI 消息：全宽左对齐，无背景；block 之间用 hairline 分隔
-            <div key={m.id} className="msg-row is-assistant" style={{
-              alignSelf: 'flex-start', width: '100%',
-              color: 'var(--text)',
-              display: 'flex', flexDirection: 'column', gap: 0,
-              userSelect: 'text', cursor: 'text',
-            }}>
-              {messageAttachments(m).map((attachment, index) => <AttachmentChip key={index} attachment={attachment} />)}
-              <Notices notices={m.notices ?? []} />
-              {renderBlocks(m.content, false, subagentOutputByToolUseId, subagentToolUseIds)}
-              {/* 底部行：cost 元数据 + 复制钮，mono 小字 */}
-              <div className="msg-foot" style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
-                {(m.costUSD != null || m.durationMs != null) && (
-                  <div style={{ fontSize: 11, color: 'var(--text-faint)', fontFamily: 'var(--font-mono)' }}>
-                    {m.costUSD != null && `$${m.costUSD.toFixed(4)} `}
-                    {m.durationMs != null && `${(m.durationMs / 1000).toFixed(1)}s`}
-                    {m.turns != null && ` · ${m.turns} 轮`}
-                  </div>
-                )}
-                <CopyButton text={extractText(m.content)} inline />
-              </div>
-            </div>
-          ) : (
-            // 用户消息：右对齐，收紧气泡（maxWidth 限制 + 小 padding，避免占满整行）
-            <div key={m.id} className="msg-row is-user" style={{
-              alignSelf: 'flex-end', maxWidth: '75%',
-              background: 'var(--surface-1)', borderRadius: 'var(--radius)', padding: '5px 11px',
-              color: 'var(--text)',
-              display: 'flex', flexDirection: 'column', gap: 2,
-              userSelect: 'text', cursor: 'text',
-              position: 'relative',
-            }}>
-              {/* 编辑重发按钮：仅最后一条用户消息 + 非流式 + 非编辑态时显示，紧贴复制钮左侧 */}
-              {m.id === lastUserMessage?.id && !isStreaming && state.editingMessageId !== m.id && (
-                <button
-                  onClick={() => {
-                    const origText = extractText(m.content)
-                    setEditDoc({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: origText }] }] })
-                    dispatch({ type: 'SET_EDITING_MESSAGE', messageId: m.id })
-                  }}
-                  title={t('chat.edit')}
-                  className="msg-copy edit-resend-btn"
-                >
-                  <Pencil size={13} />
-                </button>
-              )}
-              {state.editingMessageId === m.id && editDoc ? (
-                /* 就地编辑态：PromptEditor + 取消/重发 */
-                <div style={{ minWidth: 280 }}>
-                  <PromptEditor
-                    doc={editDoc}
-                    placeholder=""
-                    allSlashItems={[]}
-                    getCwd={() => ''}
-                    onDocChange={(doc) => setEditDoc(doc)}
-                    onSend={handleEditResend}
-                    onEditorReady={() => {}}
-                  />
-                  <div style={{ display: 'flex', gap: 8, marginTop: 8, justifyContent: 'flex-end' }}>
-                    <button
-                      onClick={() => { setEditDoc(null); dispatch({ type: 'SET_EDITING_MESSAGE', messageId: null }) }}
-                      style={{ padding: '4px 12px', fontSize: 12, cursor: 'pointer', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', color: 'var(--text-muted)' }}
-                    >{t('chat.editCancel')}</button>
-                    <button
-                      onClick={handleEditResend}
-                      disabled={!serializeForPrompt(editDoc).trim()}
-                      style={{ padding: '4px 12px', fontSize: 12, cursor: serializeForPrompt(editDoc).trim() ? 'pointer' : 'not-allowed', border: 'none', borderRadius: 6, background: serializeForPrompt(editDoc).trim() ? 'var(--accent)' : 'var(--bg-hover)', color: serializeForPrompt(editDoc).trim() ? 'var(--accent-text)' : 'var(--text-faint)' }}
-                    >{t('chat.editSend')}</button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  {messageAttachments(m).map((attachment, index) => <AttachmentChip key={index} attachment={attachment} />)}
-                  {renderBlocks(m.content, true, subagentOutputByToolUseId, subagentToolUseIds)}
-                  <CopyButton text={extractText(m.content)} />
-                </>
-              )}
-            </div>
+            <MessageRow
+              key={m.id}
+              message={m}
+              isStreaming={isStreaming}
+              subagentOutputByToolUseId={subagentOutputByToolUseId}
+              subagentToolUseIds={subagentToolUseIds}
+              isLastUserMessage={m.id === lastUserMessage?.id}
+              editingMessageId={state.editingMessageId}
+              onEditResend={handleEditResend}
+            />
           )
-        )})}
+        })}
         {/* 流式消息：notice + blocks + 错误 + 思考中指示器 */}
         {streaming && (
           <div style={{ color: 'var(--text)', fontSize: 14, lineHeight: 1.6, padding: '0 28px', display: 'flex', flexDirection: 'column', gap: 8, userSelect: 'text' }}>
