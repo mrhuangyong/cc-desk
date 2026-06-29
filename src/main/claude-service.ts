@@ -174,15 +174,8 @@ export class ClaudeService {
         }
       })
     } finally {
-      // 释放串行锁，让下一个排队 dialog 开始
+      // 释放串行锁（无论 dialog 怎么结束——回答/abort/cancel——都要释放，否则后续 dialog 卡死）
       releaseChain()
-      // 广播「该 dialog 已被解决」给桌面 renderer：双端可弹场景下，若用户在手机端回答，
-      // 桌面端 pendingDialog 不会自动清除（ANSWER_DIALOG 只在桌面本地回答时触发）。
-      // 桌面端收到 claude:dialog-resolved 后清掉残留面板，避免「点了又一直挂着」。
-      // 该通道不在 REMOTE_FORWARD_CHANNELS，只发桌面；手机端面板由其自身 dialog.response 链路清理。
-      try {
-        webContents.send('claude:dialog-resolved', { reqId })
-      } catch { /* webContents 可能已销毁，忽略 */ }
     }
   }
 
