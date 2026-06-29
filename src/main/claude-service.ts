@@ -63,6 +63,12 @@ export class ClaudeService {
   private subagentToolUseParent = new Map<string, string>()
   // Pending onUserDialog resolvers keyed by reqId。渲染端经 claude:dialog-response 回答。
   private dialogResolvers = new Map<string, (r: any) => void>()
+  // 挂起 dialog 的可序列化快照（keyed by reqId），用于刷新后补发给渲染端。
+  // resolver 函数不可序列化，无法直接从 dialogResolvers 反推，故另存一份纯数据快照。
+  // 生命周期与 dialogResolvers 严格同步：登记于 askUserViaPanel 发 IPC 时，
+  // 移除于 resolveDialog / abort / finally。listPendingDialogs 以 resolver 存在性为准，
+  // 确保只返回真正还在挂起 Promise 的 dialog。
+  private pendingDialogInfos = new Map<string, { localSessionId?: string; dialogKind: string; payload: unknown; toolUseId?: string }>()
   // 每个 session 的 dialog 串行链：保证同一 session 一次只弹一个 dialog（AskUserQuestion /
   // 权限授权等）。pendingDialog 是渲染端单值，并发 dialog-request 会互相覆盖。askUserViaPanel
   // 入口 await 前一个 dialog 完成再发新的，FIFO 串行。key 为 localSessionId。
@@ -88,8 +94,23 @@ export class ClaudeService {
     const fn = this.dialogResolvers.get(reqId)
     if (fn) {
       this.dialogResolvers.delete(reqId)
+      this.pendingDialogInfos.delete(reqId)
       fn(result)
     }
+  }
+
+  /**
+   * 返回所有未决 dialog 的可序列化快照（刷新后渲染端补发用）。
+   * 以 dialogResolvers 存在性为准（pendingDialogInfos 可能因时序短暂残留），
+   * 确保只返回真正还在挂起 Promise、阻塞 SDK 的 dialog。
+   */
+  listPendingDialogs(): Array<{ reqId: string; localSessionId?: string; dialogKind: string; payload: unknown; toolUseId?: string }> {
+    const out: Array<{ reqId: string; localSessionId?: string; dialogKind: string; payload: unknown; toolUseId?: string }> = []
+    for (const reqId of this.dialogResolvers.keys()) {
+      const info = this.pendingDialogInfos.get(reqId)
+      if (info) out.push({ reqId, ...info })
+    }
+    return out
   }
 
   /** 该 lsid 的某个阻塞式 tool_use 是否已处理过（防 SDK 重放导致重复弹窗）。 */
@@ -157,6 +178,8 @@ export class ClaudeService {
       payload,
       toolUseId,
     })
+    // 登记可序列化快照，供刷新后 listPendingDialogs 补发（与 resolver 同生命周期）。
+    this.pendingDialogInfos.set(reqId, { localSessionId: localSessionId ?? undefined, dialogKind, payload, toolUseId })
     try {
       return await new Promise<any>((resolve) => {
         this.dialogResolvers.set(reqId, resolve)
@@ -166,6 +189,7 @@ export class ClaudeService {
             () => {
               if (this.dialogResolvers.has(reqId)) {
                 this.dialogResolvers.delete(reqId)
+                this.pendingDialogInfos.delete(reqId)
                 resolve({ behavior: 'cancelled' })
               }
             },
@@ -176,6 +200,11 @@ export class ClaudeService {
     } finally {
       // 释放串行锁（无论 dialog 怎么结束——回答/abort/cancel——都要释放，否则后续 dialog 卡死）
       releaseChain()
+      // 兜底清挂起登记（resolver 已 resolve/delete，确保 pendingDialogInfos 不残留，
+      // 避免 listPendingDialogs 在刷新后误补发已结束的 dialog）。
+      // 注：此处不再广播 claude:dialog-resolved——83f62bd 移除了它（abort/竞态时 dialog
+      // 刚弹出就被误清）。桌面端面板残留改由 ANSWER_DIALOG（桌面本地回答时触发）解决。
+      this.pendingDialogInfos.delete(reqId)
     }
   }
 
@@ -630,14 +659,21 @@ export class ClaudeService {
         // REMOTE_USER_MESSAGE 补丁通道，时序竞态易丢）。现在让 user 文本与 assistant 走同一条
         // 可靠的 claude:* 事件 → renderer 累积 → projects.json 落盘路径，桌面可见 + 移动端刷新可恢复。
         // 只提取 {type:'text'} 块（tool_result 块无 text，且其内容由下面 tool_result 逻辑处理）。
-        const rawContentArr = Array.isArray(message.message?.content) ? message.message.content : []
-        const userText = rawContentArr
-          .filter((b: any) => b?.type === 'text' && typeof b.text === 'string')
-          .map((b: any) => b.text)
-          .join('')
-          .trim()
-        if (userText) {
-          webContents.send('claude:user-message', { localSessionId: lsid, text: userText })
+        //
+        // ★ 跳过子代理的 user turn：SDKUserMessage 带 subagent_type 表示这是子代理内部对话流的
+        // 消息（含 Task 工具的 input.prompt 作为 text 块）。若不跳过，子代理 prompt 会被当作顶层
+        // 用户消息渲染到对话流右侧（回归 bug）。与 case 'assistant' 第 590 行的判断对称。
+        // （子代理 user 消息的 tool_result 仍在下方正常处理，回填 subagent 抽屉，不受影响。）
+        if (!message.subagent_type) {
+          const rawContentArr = Array.isArray(message.message?.content) ? message.message.content : []
+          const userText = rawContentArr
+            .filter((b: any) => b?.type === 'text' && typeof b.text === 'string')
+            .map((b: any) => b.text)
+            .join('')
+            .trim()
+          if (userText) {
+            webContents.send('claude:user-message', { localSessionId: lsid, text: userText })
+          }
         }
         const results = extractToolResults(message.message?.content || [])
         for (const r of results) {

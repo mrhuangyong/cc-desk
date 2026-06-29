@@ -52,13 +52,20 @@ export function InputBar() {
   const { state, dispatch } = useStore()
   const { t } = useI18n()
   const [draftDoc, setDraftDoc] = useState(state.draft.doc)
+  // draft.attachments 仍以全局 store 为单一真相源：BrowserTab 的元素拾取经
+  // ADD_DRAFT_ATTACHMENT 写 store，本地粘贴/删除也 dispatch 回 store，InputBar 的本地
+  // state 只是镜像。切会话时重置；store 变化时同步（这样外部入口的拾取能即时反映为 chip）。
   const [draftAttachments, setDraftAttachments] = useState<DraftAttachment[]>(state.draft.attachments)
 
   useEffect(() => {
     setDraftDoc(state.draft.doc)
-    setDraftAttachments(state.draft.attachments)
     setOpenMenu(null)
   }, [state.activeSessionId])
+
+  // store.attachments 变化时同步到本地镜像（BrowserTab 拾取 / 远程写入 / 切会话残留都会经此生效）。
+  useEffect(() => {
+    setDraftAttachments(state.draft.attachments)
+  }, [state.draft.attachments])
 
   // / 菜单全量缓存：组件 mount 时拉命令+技能，转成 SlashMenuItem[]
   const [allSlashItems, setAllSlashItems] = useState<SlashMenuItem[]>([])
@@ -91,18 +98,18 @@ export function InputBar() {
   const permission = activeSession?.permissionMode ?? '变更前确认'
   const thinking: 'low' | 'medium' | 'high' = activeSession?.thinking ?? 'medium'
 
-  // 粘贴/拖拽的图片/文件 → 走附件通道
+  // 粘贴/拖拽的图片/文件 → 走附件通道（写回 store，保持与拾取入口一致的单一真相源）
   const onPasteFiles = (files: File[]) => {
     files.forEach(f => {
       if (f.type.startsWith('image/')) {
         const reader = new FileReader()
         reader.onload = () => {
           const base64 = (reader.result as string).split(',')[1] ?? ''
-          setDraftAttachments(prev => [...prev, { type: 'image', name: f.name, base64, mediaType: f.type }])
+          dispatch({ type: 'ADD_DRAFT_ATTACHMENT', attachment: { type: 'image', name: f.name, base64, mediaType: f.type } })
         }
         reader.readAsDataURL(f)
       } else {
-        setDraftAttachments(prev => [...prev, { type: 'file', name: f.name, path: f.name }])
+        dispatch({ type: 'ADD_DRAFT_ATTACHMENT', attachment: { type: 'file', name: f.name, path: f.name } })
       }
     })
   }
@@ -422,7 +429,7 @@ export function InputBar() {
             <AttachmentChip
               key={i}
               attachment={att}
-              onRemove={() => setDraftAttachments(prev => prev.filter((_, idx) => idx !== i))}
+              onRemove={() => dispatch({ type: 'REMOVE_DRAFT_ATTACHMENT', index: i })}
             />
           ))}
         </div>

@@ -48,19 +48,21 @@ export function PlanCard({ sessionId, pendingPlan, dispatch }: Props) {
 
   return (
     <div style={{
-      position: 'absolute', bottom: 12, left: '50%', transform: 'translateX(-50%)',
-      zIndex: 40, width: 'min(640px, calc(100% - 32px))',
-      background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10,
-      boxShadow: '0 4px 20px rgba(0,0,0,0.18)', overflow: 'hidden',
+      width: '100%',
+      background: 'var(--bg-elevated)',
+      border: '1px solid var(--border)',
+      borderRadius: 'var(--radius-lg)',
+      boxShadow: 'var(--shadow-float)',
+      overflow: 'hidden',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>
         <strong style={{ fontSize: 13 }}>📋 计划方案（计划模式）</strong>
         <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>ExitPlanMode</span>
       </div>
-      <div style={{ maxHeight: 320, overflowY: 'auto', padding: '8px 12px', fontSize: 13 }}>
+      <div style={{ maxHeight: 320, overflowY: 'auto', padding: '10px 14px', fontSize: 13 }}>
         <MarkdownRenderer text={pendingPlan.plan} />
       </div>
-      <div style={{ padding: '8px 12px', borderTop: '1px solid var(--border)' }}>
+      <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>批准并执行：</span>
           {APPROVE_MODES.map(m => (

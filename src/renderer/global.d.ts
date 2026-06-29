@@ -35,6 +35,8 @@ interface ClaudeAPI {
   onBuiltinResult(cb: (data: any) => void): void
   onSubagentOutput(cb: (data: any) => void): void
   dialogResponse(payload: { reqId: string; result: any }): Promise<void>
+  // 刷新后拉取所有未决挂起 dialog，补回卡片（否则主进程 Promise 永久挂起、SDK 死锁）。
+  pendingDialogs(): Promise<Array<{ reqId: string; localSessionId?: string; dialogKind: string; payload: any; toolUseId?: string }>>
   setPermissionMode(opts: { localSessionId: string; permission: string }): Promise<void>
   contextUsage(localSessionId: string): Promise<any>
   onContextUsage(cb: (data: any) => void): (() => void) | undefined

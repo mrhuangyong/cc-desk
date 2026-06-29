@@ -165,12 +165,12 @@ export function ChatArea() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.activeSessionId])
 
-  // AskUserQuestion / 权限授权面板弹出时自动滚到底：面板浮在输入框上方会遮挡对话区底部，
-  // 滚到底让「触发该提问的最近消息」尽可能可见，而非被面板盖住。
+  // AskUserQuestion / 权限授权 / 计划卡片弹出时自动滚到底：面板作为对话区内联块会把
+  // 消息往上推，滚到底让「触发该提问的最近消息」与面板一同可见。
   useEffect(() => {
     const dlg = state.pendingDialog
     if (dlg && dlg.sessionId === state.activeSessionId &&
-        (dlg.dialogKind === 'ask_user_question' || dlg.dialogKind === 'permission_request')) {
+        (dlg.dialogKind === 'ask_user_question' || dlg.dialogKind === 'permission_request' || dlg.dialogKind === 'plan_proposed')) {
       // 延迟一帧，等面板渲染撑高布局后再滚，确保滚到真实底部
       requestAnimationFrame(() => scrollToBottom('smooth'))
     }
@@ -381,13 +381,6 @@ export function ChatArea() {
         activeSessionId={state.activeSessionId}
         subagentOutputByToolUseId={state.subagentOutputBySession[state.activeSessionId] ?? {}}
       />
-      <PlanCard
-        sessionId={state.activeSessionId}
-        pendingPlan={state.pendingDialog?.dialogKind === 'plan_proposed' && state.pendingDialog.sessionId === state.activeSessionId
-          ? { reqId: state.pendingDialog.reqId, plan: state.pendingDialog.payload?.plan ?? '', allowedPrompts: state.pendingDialog.payload?.allowedPrompts }
-          : null}
-        dispatch={dispatch}
-      />
       <div
         ref={scrollRef}
         onScroll={onScroll}
@@ -494,12 +487,18 @@ export function ChatArea() {
             </div>
           </div>
         )}
-        {/* AskUserQuestion / 权限授权面板：作为对话区内联块（非浮层），占据对话区空间把
-            消息往上推，永不遮挡对话内容。限宽居中，与消息气泡对齐。 */}
-        {state.pendingDialog && state.pendingDialog.sessionId === state.activeSessionId &&
-          (state.pendingDialog.dialogKind === 'ask_user_question' || state.pendingDialog.dialogKind === 'permission_request') && (
+        {/* AskUserQuestion / 权限授权 / 计划卡片：作为对话区内联块（非浮层），占据对话区空间把
+            消息往上推，永不遮挡对话内容。限宽居中，与消息气泡对齐。三种 dialogKind 共用此包裹。 */}
+        {state.pendingDialog && state.pendingDialog.sessionId === state.activeSessionId && (
           <div style={{ width: '100%', maxWidth: 'var(--chat-max-width)', margin: '0 auto', padding: '0 28px' }}>
-            {state.pendingDialog.dialogKind === 'permission_request' ? <PermissionPanel /> : <AnswerPanel />}
+            {state.pendingDialog.dialogKind === 'permission_request' ? <PermissionPanel />
+              : state.pendingDialog.dialogKind === 'plan_proposed'
+                ? <PlanCard
+                    sessionId={state.activeSessionId}
+                    pendingPlan={{ reqId: state.pendingDialog.reqId, plan: state.pendingDialog.payload?.plan ?? '', allowedPrompts: state.pendingDialog.payload?.allowedPrompts }}
+                    dispatch={dispatch}
+                  />
+                : <AnswerPanel />}
           </div>
         )}
       </div>

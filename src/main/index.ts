@@ -639,6 +639,8 @@ function registerIpcHandlers(): void {
     // dialog 解决后从 replayer 清除,避免手机重连时补发已解决的 dialog-request
     remoteReplayer?.cancel(reqId)
   })
+  // 刷新后渲染端拉取所有未决挂起 dialog，补回卡片（否则主进程 Promise 永久挂起、SDK 死锁）。
+  ipcMain.handle('claude:pending-dialogs', () => claude.listPendingDialogs())
   // 动态切换权限模式：批准计划后立即退出 plan 模式（control request 实时生效）。
   ipcMain.handle('claude:set-permission-mode', (_e, { localSessionId, permission }) => {
     return claude.setPermissionMode(localSessionId, permission)

@@ -46,6 +46,9 @@ contextBridge.exposeInMainWorld('api', {
     onSubagentOutput: (cb: (data: any) => void) => { ipcRenderer.on('claude:subagent-output', (_, data) => cb(data)) },
     onNotification: (cb: (data: any) => void) => { ipcRenderer.on('claude:notification', (_, data) => cb(data)) },
     dialogResponse: (payload: { reqId: string; result: any }) => ipcRenderer.invoke('claude:dialog-response', payload),
+    // 刷新后拉取所有未决的挂起 dialog（AskUserQuestion/ExitPlanMode/权限），补回卡片，
+    // 否则主进程 Promise 永久挂起导致 SDK 死锁。invoke 一次性查询，无需订阅/退订。
+    pendingDialogs: () => ipcRenderer.invoke('claude:pending-dialogs') as Promise<Array<{ reqId: string; localSessionId?: string; dialogKind: string; payload: any; toolUseId?: string }>>,
     setPermissionMode: (opts: { localSessionId: string; permission: string }) => ipcRenderer.invoke('claude:set-permission-mode', opts),
     contextUsage: (localSessionId: string) => ipcRenderer.invoke('claude:context-usage', localSessionId),
     removeAllListeners: () => {

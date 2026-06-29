@@ -396,4 +396,23 @@ describe('forwardEvent user 文本提取(修复移动端消息不持久化)', ()
     // tool_result 仍走 claude:blocks
     expect(calls.some(c => c.channel === 'claude:blocks' && c.data?.op === 'tool_result')).toBe(true)
   })
+
+  // 守护测试：子代理（Task 工具）的 user turn 不得触发 claude:user-message。
+  // SDKUserMessage 带 subagent_type 表示这是子代理内部对话流的消息，其 text 块是 Task 工具的
+  // input.prompt。若不跳过，子代理 prompt 会被当作顶层用户消息渲染到对话流右侧（回归 bug）。
+  // 修复前：forwardEvent 对 case 'user' 无差别提取 text，子代理 prompt 漏进 claude:user-message。
+  it('子代理 user turn（subagent_type）→ 不发 claude:user-message，避免子代理 prompt 漏入对话流', () => {
+    const svc = new ClaudeService()
+    const { wc, calls } = mockWebContents()
+    fwd(svc, {
+      type: 'user', uuid: 'u-sub1', session_id: 's1',
+      subagent_type: 'general-purpose',
+      task_description: '审查代码',
+      parent_tool_use_id: 'toolu_task1',
+      message: { role: 'user', content: [
+        { type: 'text', text: '请仔细审查 src/main 下的所有文件并报告问题' },
+      ] },
+    }, wc)
+    expect(calls.some(c => c.channel === 'claude:user-message')).toBe(false)
+  })
 })

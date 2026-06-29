@@ -173,6 +173,21 @@ export function App() {
           }
         }
       } catch { /* runningSessions 可能不存在(老版本),忽略 */ }
+
+      // 恢复刷新前未决的挂起 dialog（AskUserQuestion / ExitPlanMode / 权限请求）。
+      // 主进程 dialogResolvers 仍持有 Promise、SDK 全程阻塞等待回答，刷新后渲染端
+      // pendingDialog 归零会导致用户再也回不去那个卡片 → 会话死锁。这里从主进程补发。
+      try {
+        const dialogs = await window.api?.claude?.pendingDialogs?.()
+        if (Array.isArray(dialogs) && dialogs.length > 0) {
+          for (const d of dialogs) {
+            if (d.localSessionId) {
+              dispatch({ type: 'SHOW_DIALOG', reqId: d.reqId, sessionId: d.localSessionId,
+                         dialogKind: d.dialogKind, payload: d.payload, toolUseId: d.toolUseId })
+            }
+          }
+        }
+      } catch { /* 老版本无此通道,忽略 */ }
     })
   }, [])
 
