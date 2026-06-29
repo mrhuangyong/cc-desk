@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDown, Copy, Check, Sparkles } from 'lucide-react'
 import { useStore } from '../state/store'
 import { useI18n } from '../i18n/useI18n'
@@ -106,7 +106,7 @@ export function ChatArea() {
   const [editDoc, setEditDoc] = useState<any>(null)
 
   // 编辑重发：截断历史 + 用新文本发送
-  const handleEditResend = () => {
+  const handleEditResend = useCallback(() => {
     if (!lastUserMessage) return
     const newPrompt = editDoc ? serializeForPrompt(editDoc).trim() : ''
     if (!newPrompt) return
@@ -122,7 +122,7 @@ export function ChatArea() {
       sessionId: claudeSessionId || undefined,
       cwd,
     })
-  }
+  }, [lastUserMessage, state.activeSessionId, state.claudeSessionMap, active, state.settings?.cwd, editDoc])
 
   // ===== 滚动「贴底」逻辑 =====
   // 原则：AI 输出时若用户在底部则自动滚动跟随；用户主动上滑后停止自动滚动，

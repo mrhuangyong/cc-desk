@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Pencil } from 'lucide-react'
 import { useStore } from '../state/store'
 import { useI18n } from '../i18n/useI18n'
@@ -29,7 +30,22 @@ export interface MessageRowProps {
   onEditResend: () => void
 }
 
-export function MessageRow(props: MessageRowProps) {
+// 浅比 message + subagentOutputByToolUseId + subagentToolUseIds 引用,
+// 其余基本类型字段 Object.is 即可。自定义 areEqual 兜底,确保 Set/Record 引用稳定时跳过重渲。
+// editDoc/onEditDocChange 不参与比较——它们是编辑态交互 props,随用户编辑合法变化触发重渲。
+function arePropsEqual(prev: MessageRowProps, next: MessageRowProps): boolean {
+  return (
+    prev.message === next.message &&
+    prev.subagentOutputByToolUseId === next.subagentOutputByToolUseId &&
+    prev.subagentToolUseIds === next.subagentToolUseIds &&
+    prev.isStreaming === next.isStreaming &&
+    prev.isLastUserMessage === next.isLastUserMessage &&
+    prev.editingMessageId === next.editingMessageId &&
+    prev.onEditResend === next.onEditResend
+  )
+}
+
+export const MessageRow = memo(function MessageRow(props: MessageRowProps) {
   const { dispatch } = useStore()
   const { t } = useI18n()
   const { message: m, isStreaming, subagentOutputByToolUseId, subagentToolUseIds, isLastUserMessage, editingMessageId, editDoc, onEditDocChange, onEditResend } = props
@@ -117,4 +133,4 @@ export function MessageRow(props: MessageRowProps) {
       )}
     </div>
   )
-}
+}, arePropsEqual)
