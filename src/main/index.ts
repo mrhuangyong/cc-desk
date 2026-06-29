@@ -184,7 +184,11 @@ function startRemoteBridge(cfg: RemoteConfig): void {
   const dispatcher = createDispatcher({
     send: (opts) => claude.send({ ...opts, webContents: wc }),
     interrupt: (lsid) => { void claude.interrupt(lsid, wc) },
-    resolveDialog: (reqId, result) => claude.resolveDialog(reqId, result),
+    resolveDialog: (reqId, result) => {
+      claude.resolveDialog(reqId, result)
+      // dialog 解决后从 replayer 清除,避免手机重连时补发已解决的 dialog-request(无限弹窗根因)
+      remoteReplayer?.cancel(reqId)
+    },
     // 拉取会话历史：从 projects-store 读该会话 messages，转换后下发（真实数据，非 mock）。
     onHistoryRequest: (localSessionId, limit) => {
       try {
@@ -632,6 +636,8 @@ function registerIpcHandlers(): void {
   ipcMain.handle('claude:running-sessions', () => claude.runningSessionIds())
   ipcMain.handle('claude:dialog-response', (_e, { reqId, result }) => {
     claude.resolveDialog(reqId, result)
+    // dialog 解决后从 replayer 清除,避免手机重连时补发已解决的 dialog-request
+    remoteReplayer?.cancel(reqId)
   })
   // 动态切换权限模式：批准计划后立即退出 plan 模式（control request 实时生效）。
   ipcMain.handle('claude:set-permission-mode', (_e, { localSessionId, permission }) => {
