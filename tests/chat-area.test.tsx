@@ -9,6 +9,8 @@ let mockState: any
 const dispatch = vi.fn()
 vi.mock('../src/renderer/state/store', () => ({
   useStore: () => ({ state: mockState, dispatch }),
+  // MessageRow 已迁移到 useDispatch（不再全订阅）；测试 mock 需同步暴露
+  useDispatch: () => dispatch,
 }))
 // ---- mock i18n（ChatArea 用 useI18n）----
 vi.mock('../src/renderer/i18n/useI18n', () => ({

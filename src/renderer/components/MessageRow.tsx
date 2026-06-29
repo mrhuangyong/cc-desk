@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import { Pencil } from 'lucide-react'
-import { useStore } from '../state/store'
+import { useDispatch } from '../state/store'
 import { useI18n } from '../i18n/useI18n'
 import { AttachmentChip } from './AttachmentChip'
 import { Notices } from './Notices'
@@ -49,7 +49,7 @@ function arePropsEqual(prev: MessageRowProps, next: MessageRowProps): boolean {
 }
 
 export const MessageRow = memo(function MessageRow(props: MessageRowProps) {
-  const { dispatch } = useStore()
+  const dispatch = useDispatch()
   const { t } = useI18n()
   const { message: m, isStreaming, subagentOutputByToolUseId, subagentToolUseIds, isLastUserMessage, editingMessageId, editDoc, onEditDocChange, onEditResend, showThinking } = props
 
