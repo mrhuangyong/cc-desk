@@ -1,4 +1,4 @@
-import { createContext, useContext, useReducer, type ReactNode } from 'react'
+import { createContext, useContext, useSyncExternalStore, useRef, type ReactNode } from 'react'
 import { reducer, type AppState } from './reducer'
 import type { Action } from './actions'
 import type { Project } from '../types'
@@ -58,23 +58,83 @@ function themeFromStorage(): AppState['theme'] {
   ) as AppState['theme']
 }
 
-interface StoreContextValue {
-  state: AppState
-  dispatch: React.Dispatch<Action>
+// === 外部 store（模块级）：useSyncExternalStore 的标准外部 store 模式 ===
+// state 持有从 React 内部 useReducer 移到模块级，reducer 函数零改动。
+// 这样 useSelector 可分片订阅（未订阅切片变化不重渲），useStore 兼容入口行为不变。
+const listeners = new Set<() => void>()
+let curState: AppState = makeInitialState()
+
+function getState(): AppState {
+  return curState
+}
+function subscribe(cb: () => void): () => void {
+  listeners.add(cb)
+  return () => { listeners.delete(cb) }
+}
+// dispatch：跑 reducer + 同步通知订阅者。模块级函数，引用永远稳定。
+// 替换原 useReducer 返回的 dispatch；所有现有 dispatch 调用点拿的是 useStore().dispatch，
+// 指向这个函数，签名同为 (action: Action) => void，零影响。
+function dispatchAction(action: Action): void {
+  curState = reducer(curState, action)
+  listeners.forEach(l => l())
 }
 
+// 测试隔离用：模块级 curState 跨用例共享，测试前重置回干净初态。
+export function resetStore(initialState?: AppState): void {
+  curState = initialState ?? makeInitialState()
+  listeners.forEach(l => l())
+}
+
+export interface StoreContextValue {
+  state: AppState
+  dispatch: typeof dispatchAction
+}
 const StoreContext = createContext<StoreContextValue | null>(null)
 
 // initialProjects 仅用于测试同步播种；生产环境会话由 Claude 通过 INIT_SESSIONS 注入。
+// 每个 AppProvider 挂载时重置模块级 curState——这与原 useReducer 惰性初始化「每次 mount
+// 用 makeInitialState(initialProjects) 生成全新 state」语义一致：无 initialProjects 时回到空态，
+// 有时按 seed 播种。这保证多个测试各自 mount AppProvider 时互不串台。
+// 生产环境单一 AppProvider 挂载一次，state 后续由 INIT_SESSIONS/HYDRATE 等动作注入并持久累积。
 export function AppProvider({ children, initialProjects }: { children: ReactNode; initialProjects?: Project[] }) {
-  const [state, dispatch] = useReducer(reducer, undefined, () => makeInitialState(initialProjects))
+  const seededRef = useRef(false)
+  if (!seededRef.current) {
+    curState = makeInitialState(initialProjects)
+    listeners.forEach(l => l())
+    seededRef.current = true
+  }
+  // 订阅模块级 state，Context 里的 state 自动跟随更新（useStore 取到的永远是最新）
+  const state = useSyncExternalStore(subscribe, getState, getState)
   return (
-    <StoreContext.Provider value={{ state, dispatch }}>
+    <StoreContext.Provider value={{ state, dispatch: dispatchAction }}>
       {children}
     </StoreContext.Provider>
   )
 }
 
+// useSelector：分片订阅。getSnapshot 用 useRef 缓存 selector 结果（幂等，防无限循环）。
+// useSyncExternalStore 要求 getSnapshot 幂等（同 state 多次调用返回同引用）；
+// 返回对象的 selector 若每次新建引用 → React 判变 → 重取 → 又新引用 → 死循环，故必须缓存。
+export function useSelector<T>(selector: (state: AppState) => T): T {
+  const cacheRef = useRef<{ input: AppState; output: T } | undefined>(undefined)
+  const getSnapshot = (): T => {
+    const cur = curState
+    if (cacheRef.current && cacheRef.current.input === cur) {
+      return cacheRef.current.output
+    }
+    const next = selector(cur)
+    cacheRef.current = { input: cur, output: next }
+    return next
+  }
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
+}
+
+// useDispatch：返回稳定的模块级 dispatch。
+export function useDispatch(): typeof dispatchAction {
+  return dispatchAction
+}
+
+// useStore：兼容入口（39 处现有消费点零改动）。
 export function useStore(): StoreContextValue {
   const ctx = useContext(StoreContext)
   if (!ctx) throw new Error('useStore must be used within AppProvider')
