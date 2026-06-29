@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
+import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
+import { Virtuoso, type VirtuosoHandle, type ItemProps } from 'react-virtuoso'
 import { ArrowDown, Copy, Check, Sparkles } from 'lucide-react'
 import { useSelector, useDispatch } from '../state/store'
 import type { AppState } from '../state/reducer'
@@ -50,6 +51,20 @@ export function messageAttachments(message: Message): DraftAttachment[] {
   if (message.attachment) return [{ type: 'pickedElement', el: message.attachment }]
   return []
 }
+
+// react-virtuoso 的 Item(每条消息的外层 wrapper):默认是 block,会把子元素 stretch 到全宽,
+// 导致 MessageRow 的 alignSelf:flex-end(user 右对齐)失效。改成 display:flex,让 MessageRow
+// 的 alignSelf 相对 Item 生效:user 消息 flex-end 右对齐,assistant 消息默认 flex-start 左对齐。
+// props 用 react-virtuoso 的 ItemProps(带 data-index 等),保持类型精确匹配。
+const VirtuosoItem = forwardRef<HTMLDivElement, ItemProps<Message>>(
+  function VirtuosoItem({ children, style, ...rest }, ref) {
+    return (
+      <div ref={ref} {...rest} style={{ ...style, display: 'flex' }}>
+        {children}
+      </div>
+    )
+  },
+)
 
 export function CopyButton({ text, inline }: { text: string; inline?: boolean }) {
   const [copied, setCopied] = useState(false)
@@ -398,38 +413,40 @@ export function ChatArea() {
         <div style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: 60, flex: 1 }}>{t('chat.empty')}</div>
       )}
       {/* react-virtuoso 虚拟化消息列表：仅挂载可见区消息，草稿走方案 A（不再跳过 draftMessageId，
-          它已在 session.messages 中，由 reducer 的 syncDraftMessage 同步 content）。 */}
-      <Virtuoso
-        ref={virtuosoRef}
-        data={session.messages}
-        followOutput={(atBottom) => (atBottom ? 'smooth' : false)}
-        atBottomStateChange={(atBottom) => {
-          isAtBottomRef.current = atBottom
-          setShowScrollBtn(!atBottom)
-        }}
-        className="chat-scroll"
-        style={{ flex: 1 }}
-        components={{
-          // 列表内边距与原 scroll div 一致
-          List: ({ children, style, ...rest }) => (
-            <div {...rest} style={{ ...style, padding: '20px 28px 48px', display: 'flex', flexDirection: 'column', gap: 28, width: '100%', maxWidth: 'var(--chat-max-width)', margin: '0 auto' }}>
-              {children}
-            </div>
-          ),
-          // 流式附加区（列表底部，随列表滚动）：仅 notices + error + 思考中指示器
-          // （blocks 已在草稿 message 里）。非流式时返回 null，不占位。
-          Footer: () => streaming ? (
-            <div style={{ color: 'var(--text)', fontSize: 14, lineHeight: 1.6, padding: '0 28px', display: 'flex', flexDirection: 'column', gap: 8, userSelect: 'text' }}>
-              <Notices notices={streaming.notices ?? []} />
-              {streaming.error && <div style={{ color: '#ef4444', fontSize: 13 }}>❌ {streaming.error}</div>}
-              {/* 思考中指示器:Sparkles 图标 + 文字,呼吸式脉冲动画(参考 codex app) */}
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontSize: 13 }}>
-                <Sparkles size={14} className="cc-pulse" style={{ color: 'var(--accent)' }} />
-                <span className="cc-pulse">思考中</span>
+          它已在 session.messages 中，由 reducer 的 syncDraftMessage 同步 content）。
+          布局契约(经源码+官方示例确认):Virtuoso 必须占满父容器宽度来计算虚拟化尺寸,
+          故 maxWidth 居中 + padding 由【外层 wrapper div】承担,绝不放进 Virtuoso 或其 components
+          (前几轮反复在 Scroller/List/Item 上塞 maxWidth/padding,破坏宽度计算致布局崩溃)。
+          Virtuoso 自身 style 只设 height:100%(官方推荐),占满 wrapper。 */}
+      <div style={{ flex: 1, width: '100%', maxWidth: 'var(--chat-max-width)', margin: '0 auto', padding: '20px 28px 48px', minHeight: 0 }}>
+        <Virtuoso
+          ref={virtuosoRef}
+          data={session.messages}
+          followOutput={(atBottom) => (atBottom ? 'smooth' : false)}
+          atBottomStateChange={(atBottom) => {
+            isAtBottomRef.current = atBottom
+            setShowScrollBtn(!atBottom)
+          }}
+          className="chat-scroll"
+          style={{ height: '100%' }}
+          components={{
+            // 每条消息的外层 wrapper:display:flex,让 MessageRow 的 alignSelf:flex-end(user 右对齐)生效。
+            // 默认 Item 是 block(stretch 全宽),会让 alignSelf 失效。
+            Item: VirtuosoItem,
+            // 流式附加区（列表底部，随列表滚动）：仅 notices + error + 思考中指示器
+            // （blocks 已在草稿 message 里）。非流式时返回 null，不占位。
+            Footer: () => streaming ? (
+              <div style={{ color: 'var(--text)', fontSize: 14, lineHeight: 1.6, display: 'flex', flexDirection: 'column', gap: 8, userSelect: 'text' }}>
+                <Notices notices={streaming.notices ?? []} />
+                {streaming.error && <div style={{ color: '#ef4444', fontSize: 13 }}>❌ {streaming.error}</div>}
+                {/* 思考中指示器:Sparkles 图标 + 文字,呼吸式脉冲动画(参考 codex app) */}
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontSize: 13 }}>
+                  <Sparkles size={14} className="cc-pulse" style={{ color: 'var(--accent)' }} />
+                  <span className="cc-pulse">思考中</span>
+                </div>
               </div>
-            </div>
-          ) : null,
-        }}
+            ) : null,
+          }}
         itemContent={(index, m) => {
           // 方案 A：草稿消息正常渲染（不再跳过 draftMessageId）。草稿 content 由 reducer 同步，
           // 流式追加时它的 MessageRow 自然重渲染。notices/error/思考指示器不在草稿 message 上，
@@ -451,6 +468,7 @@ export function ChatArea() {
           )
         }}
       />
+      </div>
       {/* AskUserQuestion / 权限授权 / 计划卡片：作为对话区内联块（非浮层），占据对话区空间把
           消息往上推，永不遮挡对话内容。限宽居中，与消息气泡对齐。三种 dialogKind 共用此包裹。
           放在 Virtuoso 之外（非虚拟化项），避免被回收。 */}

@@ -80,9 +80,12 @@ export const MessageRow = memo(function MessageRow(props: MessageRowProps) {
   }
 
   // 用户消息：右对齐，收紧气泡（maxWidth 限制 + 小 padding，避免占满整行）
+  // Item wrapper 是 display:flex(默认 row),主轴水平。marginLeft:auto 在 row flex 里把气泡
+  // 推到主轴右端(右对齐),且不写死 Item 的 justify-content(assistant 仍左对齐)。
+  // 不能用 alignSelf:flex-end——那是交叉轴(垂直)对齐,在 row flex 里是底对齐,起不到右对齐作用。
   return (
     <div className="msg-row is-user" style={{
-      alignSelf: 'flex-end', maxWidth: '75%',
+      marginLeft: 'auto', maxWidth: '75%',
       background: 'var(--surface-1)', borderRadius: 'var(--radius)', padding: '5px 11px',
       color: 'var(--text)',
       display: 'flex', flexDirection: 'column', gap: 2,
