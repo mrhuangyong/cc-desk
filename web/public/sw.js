@@ -15,8 +15,8 @@
 //
 // 注册范围：scope = '/'（与 index.html 同源根，见 index.html 的注册）。
 
-const CACHE_NAME = 'cc-desk-shell-v4' // SYNC-WITH sw-cache-strategy.ts CACHE_NAME
-// v4 变更：集成 vConsole(?debug 触发) + useRelay 连接诊断日志，排查手机端连不上的问题。
+const CACHE_NAME = 'cc-desk-shell-v5' // SYNC-WITH sw-cache-strategy.ts CACHE_NAME
+// v5 变更：移除排队下拉框 + 模型固定可见 + 水平溢出修复 + 弹窗按会话过滤。强制清旧缓存。
 // 升版本号触发 activate 清掉 v1 缓存。
 
 // 预缓存的 app shell：名固定（bundle 带 hash，运行时 SWR 懒缓存）。
