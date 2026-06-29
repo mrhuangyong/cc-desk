@@ -157,6 +157,12 @@ export function App() {
             if (!session || session.messages.length === 0) continue
             const last = session.messages[session.messages.length - 1]
             if (last.role !== 'assistant') continue
+            // 必须是「未完成的草稿」才恢复 streaming——已完成的 assistant 消息(finalize 时
+            // 已带 costUSD/durationMs 等)即便主进程 query 还在收尾(runningSessions 仍返回它),
+            // 也不该重建 streaming,否则刷新后输入框误显停止态、发送进队列。
+            // 草稿消息无 finalize 标志;若已有任一标志,视作已完成,跳过。
+            const isFinalized = last.costUSD != null || last.durationMs != null || last.turns != null
+            if (isFinalized) continue
             // 把 draft message 的 content 重建为 streaming blocks
             const blocks = (last.content ?? []) as import('./state/reducer').AppState['streamingBySession'][string]['blocks']
             const notices = (last.notices ?? []) as import('./state/reducer').AppState['streamingBySession'][string]['notices']

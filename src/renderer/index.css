@@ -295,3 +295,16 @@ button {
 .cc-task-row:hover {
   background: var(--bg-hover);
 }
+
+/* ===== 虚拟化消息列表(react-virtuoso 最外层 Scroller)=====
+   禁用水平滚动:消息区只该垂直滚动。react-virtuoso 的 Scroller 默认 overflow:auto,
+   若内容(长代码块/超长无空格串)撑宽会出横向滚动条 + 不换行。
+   overflow-x:hidden 兜底;配合 minWidth:0(flex 收缩链)彻底防水平溢出。 */
+.chat-scroll {
+  overflow-x: hidden !important;
+}
+.chat-scroll :where(.msg-row) {
+  min-width: 0;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
