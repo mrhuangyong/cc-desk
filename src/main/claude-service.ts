@@ -13,6 +13,7 @@ import { normalizeBetaBlocks, extractToolResults, extractBackgroundTaskId, extra
 import { getPermissionMode } from './builtin-commands'
 import { getSkills } from './claude-config'
 import { resolveClaudeCodeExecutable } from './claude-sdk-executable'
+import { parseGoalVerdict, buildGoalEvalPrompt, type GoalVerdict } from './goal-verdict'
 
 // 「写/执行类」工具：default（变更前确认）权限模式下，这些工具调用需弹授权窗让用户批准。
 // 只读工具（Read/Glob/Grep/LS/WebSearch/TodoWrite 等）直接放行，不打扰用户。
@@ -85,9 +86,33 @@ export class ClaudeService {
   // 多次 canUseTool → 重复弹同一问题（用户看到的「点确认又弹」）。命中缓存时直接返回上次结果，
   // 不再弹窗。value 缓存 PermissionResult，让重放返回与首次一致的应答（模型行为可预期）。
   private handledBlockingToolUse = new Map<string, Map<string, { behavior: 'allow'; updatedInput: Record<string, unknown>; updatedPermissions?: any[]; toolUseID?: string } | { behavior: 'deny'; message: string; toolUseID?: string }>>()
+  // /goal: 每个 session 的当前目标条件(session 级,Stop hook 据此评估)。
+  // status='active' 时 Stop hook 评估;否则 hook no-op。一个 session 一个 goal。
+  private goalStore = new Map<string, { condition: string; status: 'active' | 'achieved' }>()
+  // goal 评估轮数(Stop hook 每评估一次 +1,IPC 下发用于状态展示)
+  private goalTurns = new Map<string, number>()
 
   setManager(m: SessionQueryManager): void { this.manager = m }
   setRegistry(r: BackendTaskRegistry): void { this.registry = r }
+
+  /** 渲染端 SET_GOAL 时经 IPC 调用:记录条件 + 重置轮数,Stop hook 据此激活评估。 */
+  setGoal(lsid: string, condition: string): void {
+    this.goalStore.set(lsid, { condition, status: 'active' })
+    this.goalTurns.set(lsid, 0)
+  }
+
+  /** 渲染端 CLEAR_GOAL 时经 IPC 调用:清除 goal,Stop hook 不再评估。 */
+  clearGoal(lsid: string): void {
+    this.goalStore.delete(lsid)
+    this.goalTurns.delete(lsid)
+  }
+
+  /** remote goal.status 查询:返回 goal 当前状态(条件/status/turns)。无 goal 返回 null。 */
+  getGoalStatus(lsid: string): { condition: string; status: string; turns: number } | null {
+    const g = this.goalStore.get(lsid)
+    if (!g) return null
+    return { condition: g.condition, status: g.status, turns: this.goalTurns.get(lsid) ?? 0 }
+  }
 
   /** 渲染端回答后经 claude:dialog-response IPC 调用，结算挂起的 dialog。 */
   resolveDialog(reqId: string, result: any): void {
@@ -477,6 +502,42 @@ export class ClaudeService {
                   permissionDecision: 'ask' as const,
                 },
               })],
+            }],
+            // /goal: 每轮结束评估条件。未满足返 additionalContext → SDK 自动续轮;
+            // 满足 → IPC 通知渲染端清除,不返 context(真正停)。
+            Stop: [{
+              hooks: [async (input: any) => {
+                const goal = this.goalStore.get(lsid)
+                if (!goal || goal.status !== 'active') return {}  // 无 goal: 正常停
+                const turns = (this.goalTurns.get(lsid) ?? 0) + 1
+                this.goalTurns.set(lsid, turns)
+                // 60s 超时兜底:评估器若挂起(网络停滞/runSideQueryAsRole 无超时),Stop hook 永不返回 → 会话卡死。
+                // 超时按未达成处理(A3 一致:默认继续),避免递归/楔住。
+                const evalWithTimeout = Promise.race([
+                  this.evaluateGoal(
+                    goal.condition,
+                    typeof input.last_assistant_message === 'string' ? input.last_assistant_message : '',
+                  ),
+                  new Promise<{ met: boolean; reason: string }>((resolve) =>
+                    setTimeout(() => resolve({ met: false, reason: '评估超时(60s),默认继续' }), 60000),
+                  ),
+                ])
+                const verdict = await evalWithTimeout
+                webContents.send('claude:goal-evaluated', { localSessionId: lsid, reason: verdict.reason, turns })
+                if (verdict.met) {
+                  this.goalStore.delete(lsid)  // 清除,防续轮后又进 hook
+                  webContents.send('claude:notice', { ...mkNotice('goal', `🎯 目标已达成:${goal.condition.slice(0, 60)}`, 'info'), localSessionId: lsid })
+                  webContents.send('claude:goal-achieved', { localSessionId: lsid })
+                  return {}  // 不返 context → SDK 真正停
+                }
+                // 未达成:返 context → SDK 自动开下一轮(官方机制)
+                return {
+                  hookSpecificOutput: {
+                    hookEventName: 'Stop' as const,
+                    additionalContext: `目标尚未达成:${verdict.reason}。请继续推进。`,
+                  },
+                }
+              }],
             }],
           },
         },
@@ -1209,11 +1270,63 @@ export class ClaudeService {
     }
   }
 
+  /**
+   * 解析「指定角色(opus/sonnet/haiku)」的模型,复用激活供应商的 env 注入。
+   * 与 resolveActiveModel 的区别:返回的 modelId 是角色映射后的模型而非激活主模型。
+   * 角色未在 modelRoleMap 映射时(用户没配 haiku 等)回退激活主模型——容错,不抛错。
+   * 返回 null 表示无可用供应商。
+   */
+  private resolveRoleModel(role: 'opus' | 'sonnet' | 'haiku'): {
+    sdkEnv: Record<string, string>
+    executable: string | undefined
+    modelId: string
+  } | null {
+    const cfg = getModelProvidersConfig()
+    const resolved = resolveActiveProviderModel(cfg)
+    if (!resolved) return null
+    const { provider, model } = resolved
+    // 查角色映射:modelRoleMap['<providerId>:haiku'] → 模型 id → sdkModelId;失败回退激活主模型。
+    const mappedModelId = cfg.modelRoleMap[`${provider.id}:${role}`]
+    const mapped = mappedModelId ? cfg.models.find(m => m.id === mappedModelId) : undefined
+    return {
+      sdkEnv: buildSdkEnv(resolved, cfg.modelRoleMap, cfg.models),
+      executable: resolveClaudeCodeExecutable(),
+      modelId: mapped?.sdkModelId || model.sdkModelId,
+    }
+  }
+
   /** 旁路 query：跑一次性摘要/生成，不复用会话 manager。 */
   private async runSideQuery(prompt: string, cwd?: string): Promise<string> {
     const active = this.resolveActiveModel()
     if (!active) throw new Error('请先在「设置 → 模型设置」中添加并启用供应商与模型')
     const { sdkEnv, executable, modelId } = active
+    const result = query({
+      prompt,
+      options: {
+        pathToClaudeCodeExecutable: executable,
+        env: { ...process.env, ...sdkEnv },
+        model: modelId,
+        cwd,
+        maxTurns: cwd ? 8 : 1,
+        permissionMode: 'bypassPermissions',
+      } as any,
+    })
+    let text = ''
+    for await (const m of result) {
+      if (m.type === 'assistant' && Array.isArray((m as any).message?.content)) {
+        text = ((m as any).message.content as any[]).filter(b => b.type === 'text').map(b => b.text).join('')
+      }
+    }
+    return text
+  }
+
+  /** 旁路 query 的角色版本:用指定角色(opus/sonnet/haiku)的模型跑,而非激活主模型。
+   *  用于 /goal 评估器:Haiku 小快模型省钱省时,不用主模型逐轮评估。
+   *  角色未映射时 resolveRoleModel 内部回退主模型,这里无需特殊处理。 */
+  private async runSideQueryAsRole(prompt: string, role: 'opus' | 'sonnet' | 'haiku', cwd?: string): Promise<string> {
+    const roleResolved = this.resolveRoleModel(role)
+    if (!roleResolved) throw new Error('请先在「设置 → 模型设置」中添加并启用供应商与模型')
+    const { sdkEnv, executable, modelId } = roleResolved
     const result = query({
       prompt,
       options: {
@@ -1253,6 +1366,21 @@ ${trimmed}`
       return cleaned || null
     } catch {
       return null   // AI 失败不阻塞 commit 流程
+    }
+  }
+
+  /**
+   * /goal 评估器:用 Haiku 判断"条件 + 最新进展"是否达成。
+   * 走 runSideQueryAsRole('haiku')——角色映射的小快模型,省钱省时;
+   * 用户未配 haiku 时 resolveRoleModel 回退激活主模型(A3 容错,不抛错)。
+   * A3 容错:runSideQueryAsRole 抛错或解析失败 → {met:false}(继续轮)。
+   */
+  async evaluateGoal(condition: string, lastAssistantMsg: string, cwd?: string): Promise<GoalVerdict> {
+    try {
+      const raw = await this.runSideQueryAsRole(buildGoalEvalPrompt(condition, lastAssistantMsg), 'haiku', cwd)
+      return parseGoalVerdict(raw)
+    } catch (err) {
+      return { met: false, reason: `评估调用失败:${String(err)},默认继续` }
     }
   }
 }

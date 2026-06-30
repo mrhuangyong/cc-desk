@@ -14,6 +14,8 @@ export interface ProjectsSnapshot {
   tabsBySession: Record<string, Tab[]>
   activeTabIdBySession: Record<string, string | null>
   claudeSessionMap: Record<string, string>
+  // /goal: 只持久化 active goal 的条件(achieved/cleared 不还原,官方)
+  goalBySession?: Record<string, { condition: string }>
   // idCounter 持久化：恢复后避免与已恢复的 ID（p1/p2/s1...）冲突
   lastSeq: number
   savedAt: number

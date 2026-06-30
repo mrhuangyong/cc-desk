@@ -15,7 +15,7 @@ const slashPluginKey = new PluginKey('slashSuggestion')
 // 「引用型」内置命令：选中后插入 /name 文本到输入框，发送时才执行（doSend 识别）。
 // 其余内置命令（打开设置/菜单、清空会话、费用/状态、压缩、resume）是即时 UI 操作，
 // 选中即执行（onBuiltinRun），引用无意义。
-const REFERABLE_BUILTIN_ACTIONS = new Set(['init-project', 'export-session', 'add-dir'])
+const REFERABLE_BUILTIN_ACTIONS = new Set(['init-project', 'export-session', 'add-dir', 'goal'])
 function isReferableBuiltin(item: SlashMenuItem): boolean {
   return item.kind === 'builtin' && !!item.builtinAction && REFERABLE_BUILTIN_ACTIONS.has(item.builtinAction.type)
 }

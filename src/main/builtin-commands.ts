@@ -24,7 +24,7 @@ export function getPermissionMode(label: string | null | undefined): PermissionM
   return (label && PERMISSION_MODE_MAP[label]) || 'default'
 }
 
-// 17 条内置命令
+// 18 条内置命令
 export const BUILTIN_COMMANDS: ClaudeBuiltinCommand[] = [
   // 跳设置面板
   { kind: 'builtin', id: 'builtin:config', name: '/config', desc: '应用设置', builtinAction: { type: 'open-settings', section: 'general' } },
@@ -45,6 +45,9 @@ export const BUILTIN_COMMANDS: ClaudeBuiltinCommand[] = [
   { kind: 'builtin', id: 'builtin:resume', name: '/resume', desc: '恢复历史会话', builtinAction: { type: 'resume' } },
   // 插入文本
   { kind: 'builtin', id: 'builtin:review', name: '/review', desc: '审查当前改动', builtinAction: { type: 'run-review' } },
+  // /goal:设定目标,Claude 持续工作直到完成。引用型命令(选中插 /goal 文本),
+  // 实际由 InputBar doSend 解析参数(set/check/clear),不走 onBuiltinRun 即时执行。
+  { kind: 'builtin', id: 'builtin:goal', name: '/goal', desc: '设定目标,Claude 持续工作直到完成', builtinAction: { type: 'goal' } },
   { kind: 'builtin', id: 'builtin:release-notes', name: '/release-notes', desc: '查看更新日志', builtinAction: { type: 'insert-text' } },
   { kind: 'builtin', id: 'builtin:feedback', name: '/feedback', desc: '提交反馈', builtinAction: { type: 'insert-text' } },
   { kind: 'builtin', id: 'builtin:bug', name: '/bug', desc: '提交 Bug', builtinAction: { type: 'insert-text' } },

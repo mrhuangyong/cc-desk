@@ -139,6 +139,16 @@ export function App() {
     window.api?.projects.get().then(async snap => {
       if (snap && snap.projects?.length > 0) {
         dispatch({ type: 'HYDRATE', snapshot: snap })
+        // /goal resume:还原未完成(active)的 goal,计数器重置(官方:条件保留,turns/timer 重置)
+        // SET_GOAL 会重置 turns/startedAt;setGoal IPC 同步主进程 goalStore,让该 session 的 Stop hook 重新激活评估
+        const goals = (snap as any).goalBySession || {}
+        for (const [gsid, g] of Object.entries(goals)) {
+          const condition = (g as any)?.condition
+          if (typeof condition === 'string' && condition) {
+            dispatch({ type: 'SET_GOAL', sessionId: gsid, condition })
+            window.api?.claude?.setGoal?.(gsid, condition)
+          }
+        }
       }
       // 无论是否恢复，加载完成后才允许保存，避免空 state 在加载前覆盖磁盘
       hydratedRef.current = true
@@ -211,6 +221,12 @@ export function App() {
         tabsBySession: state.tabsBySession,
         activeTabIdBySession: state.activeTabIdBySession,
         claudeSessionMap: state.claudeSessionMap,
+        // /goal: 只持久化 active 的 goal 条件(achieved/cleared 不还原,官方)
+        goalBySession: Object.fromEntries(
+          Object.entries(state.goalBySession)
+            .filter(([, g]) => g.status === 'active')
+            .map(([k, g]) => [k, { condition: g.condition }])
+        ),
       })
     }, 500)
     return () => {
@@ -222,6 +238,7 @@ export function App() {
     state.tabsBySession,
     state.activeTabIdBySession,
     state.claudeSessionMap,
+    state.goalBySession,
   ])
 
   // 自动归档：监听主进程定时信号，清理陈旧空会话
@@ -272,6 +289,38 @@ export function App() {
       }
     })
     return () => { unsubscribe?.() }
+  }, [dispatch])
+
+  // /goal: Stop hook 每轮评估后下发 reason/turns,联动 reducer 更新目标卡片。
+  useEffect(() => {
+    window.api?.claude?.onGoalEvaluated?.((data: any) => {
+      const sid = data?.localSessionId
+      if (!sid) return
+      dispatch({ type: 'GOAL_EVALUATED', sessionId: sid, reason: data.reason, turns: data.turns })
+    })
+  }, [dispatch])
+
+  // /goal: 评估判定达成时下发,联动 reducer 标记 status='achieved'。
+  useEffect(() => {
+    window.api?.claude?.onGoalAchieved?.((data: any) => {
+      const sid = data?.localSessionId
+      if (!sid) return
+      dispatch({ type: 'GOAL_ACHIEVED', sessionId: sid })
+    })
+  }, [dispatch])
+
+  // /goal 远程设/清：手机端发 /goal set/clear 时，主进程推 claude:goal-set-by-remote
+  // 让桌面渲染端同步状态卡片（condition=null 表示清除 → CLEAR_GOAL）。
+  useEffect(() => {
+    window.api?.claude?.onGoalSetByRemote?.((data: any) => {
+      const sid = data?.localSessionId
+      if (!sid) return
+      if (data.condition == null) {
+        dispatch({ type: 'CLEAR_GOAL', sessionId: sid })
+      } else {
+        dispatch({ type: 'SET_GOAL', sessionId: sid, condition: data.condition })
+      }
+    })
   }, [dispatch])
 
   // 应用更新状态：订阅主进程状态机推送（单次挂载，cleanup 取消订阅防泄漏）

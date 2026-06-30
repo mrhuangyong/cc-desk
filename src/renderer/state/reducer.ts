@@ -63,6 +63,11 @@ export interface AppState {
   // 上下文用量（SDK getContextUsage）：按会话分片，供输入框进度环展示。
   // null/缺失表示尚未查询或会话不存在该数据。
   contextUsageBySession: Record<string, ContextUsageInfo | null>
+  // /goal: 会话级目标条件。Stop hook 每轮评估,未满足续轮、满足清除。
+  goalBySession: Record<string, import('../types').GoalState>
+  // /goal 状态卡片开关:记录当前展开 GoalCard 的会话 id(全局单例,切换会话自动不匹配)。
+  // GoalIndicator 点击 dispatch SHOW_GOAL_STATUS 置位;GoalCard 关闭/清除 dispatch HIDE_GOAL_CARD 清空。
+  goalCardOpen: string | null
   // 就地编辑：当前正在编辑的消息 id（最后一条用户消息编辑重发）
   editingMessageId: string | null
   // 队列编辑：当前正在编辑的排队消息 id
@@ -999,7 +1004,9 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, planBySession: { ...state.planBySession, [action.sessionId]: null } }
     }
     case 'CLEAR_SESSION_MESSAGES': {
-      return patchSession(state, action.sessionId, { messages: [] })
+      // /clear 联动:开新会话清空时顺带清 goal(官方:/clear 清 goal)
+      const { [action.sessionId]: _goal, ...goalRest } = state.goalBySession
+      return { ...patchSession(state, action.sessionId, { messages: [] }), goalBySession: goalRest }
     }
     case 'SET_SESSION_PERMISSION': {
       return patchSession(state, action.sessionId, { permissionMode: action.permissionMode })
@@ -1078,6 +1085,50 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'REVIEW_CLEAR': {
       const { [action.projectId]: _gone, ...rest } = state.reviewByProject
       return { ...state, reviewByProject: rest }
+    }
+    case 'SET_GOAL': {
+      const goal = {
+        condition: action.condition.slice(0, 4000),  // 官方 4000 字符上限
+        startedAt: Date.now(),
+        turns: 0,
+        tokensBaseline: 0,
+        lastReason: '',
+        status: 'active' as const,
+      }
+      return { ...state, goalBySession: { ...state.goalBySession, [action.sessionId]: goal } }
+    }
+    case 'GOAL_EVALUATED': {
+      const prev = state.goalBySession[action.sessionId]
+      if (!prev) return state
+      return {
+        ...state,
+        goalBySession: {
+          ...state.goalBySession,
+          [action.sessionId]: { ...prev, turns: action.turns, lastReason: action.reason },
+        },
+      }
+    }
+    case 'GOAL_ACHIEVED': {
+      const prev = state.goalBySession[action.sessionId]
+      if (!prev) return state
+      return {
+        ...state,
+        goalBySession: {
+          ...state.goalBySession,
+          [action.sessionId]: { ...prev, status: 'achieved' as const },
+        },
+      }
+    }
+    case 'CLEAR_GOAL': {
+      const { [action.sessionId]: _g, ...rest } = state.goalBySession
+      return { ...state, goalBySession: rest }
+    }
+    case 'SHOW_GOAL_STATUS': {
+      // 打开目标会话的 GoalCard。GoalIndicator 点击触发,跨组件(InputBar 命令分支)也能打开。
+      return { ...state, goalCardOpen: action.sessionId }
+    }
+    case 'HIDE_GOAL_CARD': {
+      return { ...state, goalCardOpen: null }
     }
     default:
       return state
