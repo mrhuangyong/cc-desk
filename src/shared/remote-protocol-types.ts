@@ -28,6 +28,9 @@ export type ServerToClient =
   | 'session.created'     // 新建会话成功回告（payload: { localSessionId, projectId, title, cwd? }）
   | 'dialog.request'      // 批准请求（对应 claude:dialog-request）
   | 'connection.state'    // 桌面在线状态
+  | 'goal.evaluated'      // goal 一轮评估完成（payload: { localSessionId, reason, turns }）
+  | 'goal.achieved'       // goal 达成（payload: { localSessionId }）
+  | 'goal.status'         // goal 状态查询回告（payload: { localSessionId, goal: {condition,status,turns}|null }）
 
 /** 消息类型 —— 手机→桌面 */
 export type ClientToServer =

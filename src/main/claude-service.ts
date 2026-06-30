@@ -107,6 +107,13 @@ export class ClaudeService {
     this.goalTurns.delete(lsid)
   }
 
+  /** remote goal.status 查询:返回 goal 当前状态(条件/status/turns)。无 goal 返回 null。 */
+  getGoalStatus(lsid: string): { condition: string; status: string; turns: number } | null {
+    const g = this.goalStore.get(lsid)
+    if (!g) return null
+    return { condition: g.condition, status: g.status, turns: this.goalTurns.get(lsid) ?? 0 }
+  }
+
   /** 渲染端回答后经 claude:dialog-response IPC 调用，结算挂起的 dialog。 */
   resolveDialog(reqId: string, result: any): void {
     const fn = this.dialogResolvers.get(reqId)

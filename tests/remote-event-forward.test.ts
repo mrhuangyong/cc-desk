@@ -95,4 +95,44 @@ describe('出站事件转发 createEventForwarder', () => {
       localSessionId: 'remote-s-1', projectId: 'p1', title: '新会话', cwd: '/code/x',
     })
   })
+
+  it('goal-evaluated → goal.evaluated 协议消息（payload 透传 reason/turns）', async () => {
+    const { createEventForwarder } = await import('../src/main/remote-bridge')
+    const sent: any[] = []
+    const fwd = createEventForwarder((env) => sent.push(env))
+    fwd.onGoalEvaluated({ localSessionId: 's1', reason: '还差测试', turns: 2 })
+    expect(sent).toHaveLength(1)
+    expect(sent[0].type).toBe('goal.evaluated')
+    expect(sent[0].payload).toMatchObject({ localSessionId: 's1', reason: '还差测试', turns: 2 })
+  })
+
+  it('goal-achieved → goal.achieved 协议消息', async () => {
+    const { createEventForwarder } = await import('../src/main/remote-bridge')
+    const sent: any[] = []
+    const fwd = createEventForwarder((env) => sent.push(env))
+    fwd.onGoalAchieved({ localSessionId: 's1' })
+    expect(sent).toHaveLength(1)
+    expect(sent[0].type).toBe('goal.achieved')
+    expect(sent[0].payload).toMatchObject({ localSessionId: 's1' })
+  })
+
+  it('sendGoalStatus → goal.status 协议消息（含 goal 对象）', async () => {
+    const { createEventForwarder } = await import('../src/main/remote-bridge')
+    const sent: any[] = []
+    const fwd = createEventForwarder((env) => sent.push(env))
+    const goal = { condition: 'all green', status: 'active', turns: 5 }
+    fwd.sendGoalStatus({ localSessionId: 's1', goal })
+    expect(sent).toHaveLength(1)
+    expect(sent[0].type).toBe('goal.status')
+    expect(sent[0].payload).toMatchObject({ localSessionId: 's1', goal })
+  })
+
+  it('sendGoalStatus 无 goal 时 → goal.status payload.goal=null', async () => {
+    const { createEventForwarder } = await import('../src/main/remote-bridge')
+    const sent: any[] = []
+    const fwd = createEventForwarder((env) => sent.push(env))
+    fwd.sendGoalStatus({ localSessionId: 's1', goal: null })
+    expect(sent[0].type).toBe('goal.status')
+    expect(sent[0].payload.goal).toBeNull()
+  })
 })

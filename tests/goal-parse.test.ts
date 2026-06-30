@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { parseGoalCommand } from '../src/renderer/editor/goalParse'
+// 测 shared 层的规范源（主进程 remote-bridge 与渲染端 InputBar 均复用此函数）。
+// renderer/editor/goalParse.ts 仅 re-export，所以测 shared 即覆盖两端。
+import { parseGoalCommand } from '../src/shared/goal-parse'
 
 describe('parseGoalCommand', () => {
   it('/goal <条件> → set', () => {

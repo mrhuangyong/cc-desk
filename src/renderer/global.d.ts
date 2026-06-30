@@ -45,6 +45,7 @@ interface ClaudeAPI {
   clearGoal(lsid: string): Promise<void>
   onGoalEvaluated(cb: (data: any) => void): void
   onGoalAchieved(cb: (data: any) => void): void
+  onGoalSetByRemote(cb: (data: any) => void): void
   removeAllListeners(): void
 }
 

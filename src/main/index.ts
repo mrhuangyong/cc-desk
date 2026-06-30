@@ -95,12 +95,19 @@ type ForwarderHandle = {
   sendHistory(payload: { localSessionId: string; items: any[]; hasMore: boolean }): void
   sendModels(payload: { models: any[]; activeModelId: string; thinking: string }): void
   sendSessionCreated(payload: { localSessionId: string; projectId?: string; title?: string; cwd?: string }): void
+  onGoalEvaluated(data: { localSessionId: string; reason: string; turns: number }): void
+  onGoalAchieved(data: { localSessionId: string }): void
+  sendGoalStatus(payload: { localSessionId: string; goal: { condition: string; status: string; turns: number } | null }): void
 }
 
 /** 需要旁路转发给手机端的 claude:* 业务事件通道白名单。 */
 const REMOTE_FORWARD_CHANNELS = new Set([
   'claude:delta', 'claude:blocks', 'claude:notice', 'claude:result', 'claude:dialog-request',
   'claude:subagent-output',
+  // goal 评估进度/达成下发手机端（Stop hook 触发，见 claude-service.ts）。
+  // 注：claude:goal-set-by-remote 不在此列 —— 它是桌面 reducer 消费的事件，
+  // 手机端自己发的 /goal 已知 goal 内容，转发会回环。桌面端设 goal 时手机暂不感知（后续可扩展）。
+  'claude:goal-evaluated', 'claude:goal-achieved',
 ])
 
 let remoteBridge: RemoteBridge | null = null
@@ -298,6 +305,25 @@ function startRemoteBridge(cfg: RemoteConfig): void {
         console.warn('[remote-user-msg] 推送失败:', e)
       }
     },
+    // /goal set（手机端设 goal）：记录条件 + 通知桌面渲染端 SET_GOAL（让桌面 UI 同步）。
+    // condition=null 表示 clear（/goal clear 触发，桌面端走 CLEAR_GOAL）。
+    onGoalSet: (localSessionId, condition) => {
+      if (condition) {
+        claude.setGoal(localSessionId, condition)
+      } else {
+        claude.clearGoal(localSessionId)
+      }
+      // 推给桌面渲染端：reducer 据 condition 是否为 null 分派 SET_GOAL / CLEAR_GOAL。
+      try {
+        wc.send('claude:goal-set-by-remote', { localSessionId, condition })
+      } catch { /* webContents 可能已销毁，忽略 */ }
+    },
+    // /goal check：查当前 goal 状态（无 goal 返回 null）。
+    getGoalStatus: (localSessionId) => claude.getGoalStatus(localSessionId),
+    // /goal check 回告：经 forwarder 下发 goal.status 给手机端。
+    onGoalStatus: (localSessionId, goal) => {
+      forwarder?.sendGoalStatus({ localSessionId, goal })
+    },
   })
 
   // 出站转发：把 forwarder 产出的占位信封用 deviceKey 重签后发中继。
@@ -372,6 +398,8 @@ function startRemoteBridge(cfg: RemoteConfig): void {
             case 'claude:result': forwarder.onResult(args[0]); break
             case 'claude:dialog-request': forwarder.onDialogRequest(args[0]); break
             case 'claude:subagent-output': forwarder.onSubagentOutput?.(args[0]); break
+            case 'claude:goal-evaluated': forwarder.onGoalEvaluated(args[0]); break
+            case 'claude:goal-achieved': forwarder.onGoalAchieved(args[0]); break
           }
         }
       } catch {

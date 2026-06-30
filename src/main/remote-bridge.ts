@@ -14,6 +14,7 @@
 //   因 server 在 bind 失败时不关连接，本端收到 error 后主动 terminate 触发 close → 退避重连。
 import { WebSocket } from 'ws'
 import { makeEnvelope, PROTOCOL_VERSION, type Envelope, type MessageType } from '../shared/remote-protocol'
+import { parseGoalCommand } from '../shared/goal-parse'
 
 export interface BridgeDeps {
   /** 中继 ws 基地址，如 ws://host:port 或 wss://host:port。会自动追加 /ws。 */
@@ -276,6 +277,25 @@ export interface DispatchDeps {
    * 之后所有 send 用新模型（resolveActiveModel 读 activeModelId）。
    */
   onSetActiveModel?: (modelId: string) => void
+  /**
+   * 手机发 /goal set：记录 goal 条件 + 通知桌面渲染端 SET_GOAL（经 webContents 推
+   * claude:goal-set-by-remote）。由 index.ts 注入：调 claudeService.setGoal + wc.send。
+   * condition=null 表示清除（/goal clear 触发）。
+   */
+  onGoalSet?: (localSessionId: string, condition: string | null) => void
+  /**
+   * 手机发 /goal check：查当前 goal 状态。由 index.ts 注入：返回
+   * { condition, status, turns } | null（无 goal 时 null）。
+   */
+  getGoalStatus?: (localSessionId: string) =>
+    | { condition: string; status: string; turns: number }
+    | null
+    | undefined
+  /**
+   * /goal status 查询结果回告手机：经 forwarder 推 goal.status 信封。
+   * 由 index.ts 注入：forwarder.sendGoalStatus。
+   */
+  onGoalStatus?: (localSessionId: string, goal: { condition: string; status: string; turns: number } | null) => void
 }
 
 /**
@@ -300,6 +320,42 @@ export function createDispatcher(deps: DispatchDeps) {
           permission?: string
           extraDirs?: string[]
           images?: { mediaType: string; data: string; name?: string }[]
+        }
+        // /goal 拦截：手机端发 /goal 文本时走 goal 三态(set/check/clear)，不进 Claude。
+        // 复用 parseGoalCommand 保证与桌面 InputBar 口径一致。
+        const goalCmd = parseGoalCommand(p.text ?? '')
+        if (goalCmd && p.localSessionId) {
+          if (goalCmd.kind === 'set') {
+            // set：记录条件 + 通知桌面渲染端 SET_GOAL（让桌面 UI 同步显示 goal）+
+            //   启动首轮（条件作为 prompt 发给 Claude）。
+            deps.onGoalSet?.(p.localSessionId, goalCmd.condition)
+            console.warn('[remote-disp] /goal set:', p.localSessionId, goalCmd.condition.slice(0, 60))
+            // 反查 cwd/sessionId，与普通 message 同路（让首轮在正确目录 + 续接历史）。
+            const cwd = deps.resolveCwd?.(p.localSessionId)
+            const sessionId = p.claudeSessionId ?? deps.resolveClaudeSessionId?.(p.localSessionId)
+            // 把手机的 user 文本（/goal 条件）也推给桌面，桌面端能看到手机设了什么 goal。
+            deps.notifyRemoteUserMessage?.(p.localSessionId, p.text)
+            await deps.send({
+              prompt: goalCmd.condition,
+              localSessionId: p.localSessionId,
+              sessionId,
+              cwd,
+              thinking: p.thinking,
+              permission: p.permission,
+              extraDirs: p.extraDirs,
+            })
+          } else if (goalCmd.kind === 'clear') {
+            // clear：清 goal + 中断当前轮（若在跑）+ 通知桌面 CLEAR_GOAL（condition=null）。
+            deps.onGoalSet?.(p.localSessionId, null)
+            deps.interrupt(p.localSessionId)
+            console.warn('[remote-disp] /goal clear:', p.localSessionId)
+          } else {
+            // check：查当前 goal 状态，回告手机（不进 Claude）。
+            const goal = deps.getGoalStatus?.(p.localSessionId) ?? null
+            deps.onGoalStatus?.(p.localSessionId, goal)
+            console.warn('[remote-disp] /goal check:', p.localSessionId, '→', goal ? goal.status : 'no goal')
+          }
+          break  // /goal 已处理，不 fall through 到普通 send
         }
         // 反查会话所属项目的 cwd（让 SDK 在正确目录运行，否则回退到 process.cwd()）
         const cwd = deps.resolveCwd?.(p.localSessionId)
@@ -506,6 +562,18 @@ export function createEventForwarder(
     /** session.created —— 新建会话成功后回告手机（手机端据此自动进入该会话）。 */
     sendSessionCreated(payload: { localSessionId: string; projectId?: string; title?: string; cwd?: string }) {
       sendFn(placeholderEnv('session.created', payload))
+    },
+    /** goal.evaluated —— goal 一轮评估完成（Stop hook 评估后下发，手机端展示 reason/turns）。 */
+    onGoalEvaluated(data: { localSessionId: string; reason: string; turns: number }) {
+      sendFn(placeholderEnv('goal.evaluated', data))
+    },
+    /** goal.achieved —— goal 达成（手机端清除 goal 进度、提示完成）。 */
+    onGoalAchieved(data: { localSessionId: string }) {
+      sendFn(placeholderEnv('goal.achieved', data))
+    },
+    /** goal.status —— /goal check 的回告（手机端展示当前 goal 条件/状态/轮数）。 */
+    sendGoalStatus(payload: { localSessionId: string; goal: { condition: string; status: string; turns: number } | null }) {
+      sendFn(placeholderEnv('goal.status', payload))
     },
   }
 }

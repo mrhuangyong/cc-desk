@@ -153,4 +153,94 @@ describe('remote-bridge 入站分发', () => {
     await dispatch({ type: 'session.archive', deviceId: 'M', payload: { localSessionId: 's9' } } as any)
     expect(onArchive).toHaveBeenCalledWith('s9')
   })
+
+  // ===== /goal 三态拦截（手机端 /goal 经 session.message 文本触发）=====
+
+  it('/goal set → 调 onGoalSet(condition) + send(condition)，不调 getGoalStatus/onGoalStatus', async () => {
+    const { createDispatcher } = await import('../src/main/remote-bridge')
+    const send = vi.fn().mockResolvedValue(undefined)
+    const onGoalSet = vi.fn()
+    const getGoalStatus = vi.fn()
+    const onGoalStatus = vi.fn()
+    const dispatch = createDispatcher({
+      send, interrupt: vi.fn(), resolveDialog: vi.fn(),
+      onGoalSet, getGoalStatus, onGoalStatus,
+    })
+    await dispatch({ type: 'session.message', deviceId: 'M', payload: { localSessionId: 's1', text: '/goal 所有测试通过' } } as any)
+    expect(onGoalSet).toHaveBeenCalledWith('s1', '所有测试通过')
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ prompt: '所有测试通过', localSessionId: 's1' }))
+    // set 路径不应触发 status 查询
+    expect(getGoalStatus).not.toHaveBeenCalled()
+    expect(onGoalStatus).not.toHaveBeenCalled()
+  })
+
+  it('/goal clear → 调 onGoalSet(null) + interrupt，不调 send', async () => {
+    const { createDispatcher } = await import('../src/main/remote-bridge')
+    const send = vi.fn().mockResolvedValue(undefined)
+    const interrupt = vi.fn()
+    const onGoalSet = vi.fn()
+    const dispatch = createDispatcher({
+      send, interrupt, resolveDialog: vi.fn(), onGoalSet,
+    })
+    await dispatch({ type: 'session.message', deviceId: 'M', payload: { localSessionId: 's1', text: '/goal clear' } } as any)
+    expect(onGoalSet).toHaveBeenCalledWith('s1', null)
+    expect(interrupt).toHaveBeenCalledWith('s1')
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('/goal check → 调 getGoalStatus + onGoalStatus 回告，不调 send/onGoalSet', async () => {
+    const { createDispatcher } = await import('../src/main/remote-bridge')
+    const send = vi.fn().mockResolvedValue(undefined)
+    const onGoalSet = vi.fn()
+    const goal = { condition: 'cond', status: 'active', turns: 3 }
+    const getGoalStatus = vi.fn().mockReturnValue(goal)
+    const onGoalStatus = vi.fn()
+    const dispatch = createDispatcher({
+      send, interrupt: vi.fn(), resolveDialog: vi.fn(),
+      onGoalSet, getGoalStatus, onGoalStatus,
+    })
+    await dispatch({ type: 'session.message', deviceId: 'M', payload: { localSessionId: 's1', text: '/goal' } } as any)
+    expect(getGoalStatus).toHaveBeenCalledWith('s1')
+    expect(onGoalStatus).toHaveBeenCalledWith('s1', goal)
+    expect(send).not.toHaveBeenCalled()
+    expect(onGoalSet).not.toHaveBeenCalled()
+  })
+
+  it('/goal check 无 goal 时 → 回告 null', async () => {
+    const { createDispatcher } = await import('../src/main/remote-bridge')
+    const onGoalStatus = vi.fn()
+    const getGoalStatus = vi.fn().mockReturnValue(null)
+    const dispatch = createDispatcher({
+      send: vi.fn(), interrupt: vi.fn(), resolveDialog: vi.fn(),
+      onGoalSet: vi.fn(), getGoalStatus, onGoalStatus,
+    })
+    await dispatch({ type: 'session.message', deviceId: 'M', payload: { localSessionId: 's1', text: '/goal   ' } } as any)
+    expect(onGoalStatus).toHaveBeenCalledWith('s1', null)
+  })
+
+  it('/goal set 带 claudeSessionId → 透传 sessionId 给 send（首轮续接历史）', async () => {
+    const { createDispatcher } = await import('../src/main/remote-bridge')
+    const send = vi.fn().mockResolvedValue(undefined)
+    const dispatch = createDispatcher({
+      send, interrupt: vi.fn(), resolveDialog: vi.fn(), onGoalSet: vi.fn(),
+    })
+    await dispatch({ type: 'session.message', deviceId: 'M', payload: { localSessionId: 's1', text: '/goal x', claudeSessionId: 'cs-1' } } as any)
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'x', sessionId: 'cs-1' }))
+  })
+
+  it('非 /goal 文本 → 走普通 session.message（不触发 goal 拦截）', async () => {
+    const { createDispatcher } = await import('../src/main/remote-bridge')
+    const send = vi.fn().mockResolvedValue(undefined)
+    const onGoalSet = vi.fn()
+    const getGoalStatus = vi.fn()
+    const dispatch = createDispatcher({
+      send, interrupt: vi.fn(), resolveDialog: vi.fn(),
+      onGoalSet, getGoalStatus,
+    })
+    await dispatch({ type: 'session.message', deviceId: 'M', payload: { localSessionId: 's1', text: '帮我看下 /goal 这个路径' } } as any)
+    // 含 /goal 但不在开头，parseGoalCommand 返回 null，走普通 send
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ prompt: '帮我看下 /goal 这个路径' }))
+    expect(onGoalSet).not.toHaveBeenCalled()
+    expect(getGoalStatus).not.toHaveBeenCalled()
+  })
 })

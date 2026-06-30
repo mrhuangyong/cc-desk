@@ -309,6 +309,20 @@ export function App() {
     })
   }, [dispatch])
 
+  // /goal 远程设/清：手机端发 /goal set/clear 时，主进程推 claude:goal-set-by-remote
+  // 让桌面渲染端同步状态卡片（condition=null 表示清除 → CLEAR_GOAL）。
+  useEffect(() => {
+    window.api?.claude?.onGoalSetByRemote?.((data: any) => {
+      const sid = data?.localSessionId
+      if (!sid) return
+      if (data.condition == null) {
+        dispatch({ type: 'CLEAR_GOAL', sessionId: sid })
+      } else {
+        dispatch({ type: 'SET_GOAL', sessionId: sid, condition: data.condition })
+      }
+    })
+  }, [dispatch])
+
   // 应用更新状态：订阅主进程状态机推送（单次挂载，cleanup 取消订阅防泄漏）
   useEffect(() => {
     const unsubscribe = window.api?.update?.onState?.((status) => {

@@ -56,8 +56,11 @@ contextBridge.exposeInMainWorld('api', {
     clearGoal: (lsid: string) => ipcRenderer.invoke('claude:clear-goal', lsid),
     onGoalEvaluated: (cb: (data: any) => void) => { ipcRenderer.on('claude:goal-evaluated', (_, data) => cb(data)) },
     onGoalAchieved: (cb: (data: any) => void) => { ipcRenderer.on('claude:goal-achieved', (_, data) => cb(data)) },
+    // /goal 远程设/清：手机端发 /goal set/clear 时，主进程推 claude:goal-set-by-remote
+    // 让桌面渲染端同步 SET_GOAL/CLEAR_GOAL（condition=null 表示清除）。
+    onGoalSetByRemote: (cb: (data: any) => void) => { ipcRenderer.on('claude:goal-set-by-remote', (_, data) => cb(data)) },
     removeAllListeners: () => {
-      ['claude:system', 'claude:delta', 'claude:blocks', 'claude:notice', 'claude:task', 'claude:result', 'claude:error', 'claude:aborted', 'claude:dialog-request', 'claude:dialog-resolved', 'claude:remote-user-message', 'claude:user-message', 'claude:context-usage', 'claude:backend-task', 'claude:builtin-result', 'claude:subagent-output', 'claude:notification', 'claude:goal-evaluated', 'claude:goal-achieved', 'update:state']
+      ['claude:system', 'claude:delta', 'claude:blocks', 'claude:notice', 'claude:task', 'claude:result', 'claude:error', 'claude:aborted', 'claude:dialog-request', 'claude:dialog-resolved', 'claude:remote-user-message', 'claude:user-message', 'claude:context-usage', 'claude:backend-task', 'claude:builtin-result', 'claude:subagent-output', 'claude:notification', 'claude:goal-evaluated', 'claude:goal-achieved', 'claude:goal-set-by-remote', 'update:state']
         .forEach(ch => ipcRenderer.removeAllListeners(ch))
     },
   },
