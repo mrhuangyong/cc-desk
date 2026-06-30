@@ -11,7 +11,7 @@ function initialState(): AppState {
     currentView: 'workspace', activeSettingsSection: 'general', streamingBySession: {},
     settings: { apiKey: '', model: 'model-sonnet', cwd: '', providers: [], models: [], modelRoleMap: {}, theme: 'codex-light', lang: 'zh-CN', zoom: 'normal', chatWidth: 'wide', proxy: '', inheritTerminal: true, terminalFont: 'x', taskNotify: true, notifySound: true, notifyOnComplete: true, notifyOnError: true, notifyOnConfirm: true, notifyOnPermission: true, queueMode: 'queue', showThinking: true, showTodo: true, showBackendTask: true, rememberPanelPosition: true, autoArchive: true, archiveDays: '7', devTools: false, codePreview: { lightTheme: '', darkTheme: '', showLineNumbers: true, wordWrap: false, fontSize: 12 }, skills: [], mcpServers: [], plugins: [], commands: [], hooks: [] },
     claudeSessionMap: {}, pendingDialog: null, dirtyTabIds: {}, lastFileOpenedSeq: 0,
-    queueBySession: {}, tasksBySession: {}, backendTasksBySession: {}, panelFold: { root: false }, panelPosition: { x: 0, y: 0 }, subagentOutputBySession: {}, planBySession: {}, abortedBySession: {}, contextUsageBySession: {}, goalBySession: {},
+    queueBySession: {}, tasksBySession: {}, backendTasksBySession: {}, panelFold: { root: false }, panelPosition: { x: 0, y: 0 }, subagentOutputBySession: {}, planBySession: {}, abortedBySession: {}, contextUsageBySession: {}, goalBySession: {}, goalCardOpen: null,
     editingMessageId: null, editingQueueId: null, updateStatus: { state: 'idle' }, reviewByProject: {},
   }
 }
@@ -59,5 +59,14 @@ describe('goal reducer', () => {
     s = reducer(s, { type: 'SET_GOAL', sessionId: 's1', condition: 'X' })
     s = reducer(s, { type: 'CLEAR_GOAL', sessionId: 's1' })
     expect(s.goalBySession['s1']).toBeUndefined()
+  })
+
+  it('SHOW_GOAL_STATUS 置 goalCardOpen,HIDE_GOAL_CARD 清空', () => {
+    let s = initialState()
+    expect(s.goalCardOpen).toBeNull()
+    s = reducer(s, { type: 'SHOW_GOAL_STATUS', sessionId: 's1' })
+    expect(s.goalCardOpen).toBe('s1')
+    s = reducer(s, { type: 'HIDE_GOAL_CARD' })
+    expect(s.goalCardOpen).toBeNull()
   })
 })

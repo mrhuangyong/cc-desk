@@ -65,6 +65,9 @@ export interface AppState {
   contextUsageBySession: Record<string, ContextUsageInfo | null>
   // /goal: 会话级目标条件。Stop hook 每轮评估,未满足续轮、满足清除。
   goalBySession: Record<string, import('../types').GoalState>
+  // /goal 状态卡片开关:记录当前展开 GoalCard 的会话 id(全局单例,切换会话自动不匹配)。
+  // GoalIndicator 点击 dispatch SHOW_GOAL_STATUS 置位;GoalCard 关闭/清除 dispatch HIDE_GOAL_CARD 清空。
+  goalCardOpen: string | null
   // 就地编辑：当前正在编辑的消息 id（最后一条用户消息编辑重发）
   editingMessageId: string | null
   // 队列编辑：当前正在编辑的排队消息 id
@@ -1119,8 +1122,11 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, goalBySession: rest }
     }
     case 'SHOW_GOAL_STATUS': {
-      // UI state: 复用现有机制(Task 7 处理),reducer 此处 no-op
-      return state
+      // 打开目标会话的 GoalCard。GoalIndicator 点击触发,跨组件(InputBar 命令分支)也能打开。
+      return { ...state, goalCardOpen: action.sessionId }
+    }
+    case 'HIDE_GOAL_CARD': {
+      return { ...state, goalCardOpen: null }
     }
     default:
       return state

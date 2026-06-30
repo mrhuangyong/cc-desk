@@ -128,3 +128,5 @@ export type Action =
   | { type: 'GOAL_EVALUATED'; sessionId: string; reason: string; turns: number }
   | { type: 'GOAL_ACHIEVED'; sessionId: string }
   | { type: 'SHOW_GOAL_STATUS'; sessionId: string }
+  // 关闭 /goal 状态卡片（GoalCard 的 ✕/关闭/清除按钮 dispatch）
+  | { type: 'HIDE_GOAL_CARD' }

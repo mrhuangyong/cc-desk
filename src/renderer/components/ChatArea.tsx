@@ -8,6 +8,8 @@ import { useI18n } from '../i18n/useI18n'
 import { useStreamBatcher } from '../hooks/useStreamBatcher'
 import { BackendTaskPanel } from './BackendTaskPanel'
 import { PlanCard } from './PlanCard'
+import { GoalIndicator } from './GoalIndicator'
+import { GoalCard } from './GoalCard'
 import { InputBar } from './InputBar'
 import { InputDock } from './InputDock'
 import { AnswerPanel } from './AnswerPanel'
@@ -96,6 +98,8 @@ export function ChatArea() {
   const pendingDialog = useSelector((s: AppState) => s.pendingDialog)
   const editingMessageId = useSelector((s: AppState) => s.editingMessageId)
   const claudeSessionMap = useSelector((s: AppState) => s.claudeSessionMap)
+  // /goal 状态卡片开关:GoalIndicator 点击 SHOW_GOAL_STATUS 置位,GoalCard 关闭 HIDE_GOAL_CARD 清空。
+  const goalCardOpen = useSelector((s: AppState) => s.goalCardOpen)
   const { t } = useI18n()
   // 流式 delta 走 rAF 节流批处理：把高频 STREAM_DELTA 合并到每帧一次派发，
   // 降低 reducer/重渲染开销；在中断/结束事件到达时由调用方 flush() 兜底。
@@ -409,6 +413,13 @@ export function ChatArea() {
         activeSessionId={activeSessionId}
         subagentOutputByToolUseId={subagentOutputBySession[activeSessionId] ?? {}}
       />
+      {/* /goal 激活时常驻指示条(条件简述+轮数+时长),点击展开 GoalCard */}
+      <GoalIndicator onOpen={() => dispatch({ type: 'SHOW_GOAL_STATUS', sessionId: activeSessionId })} />
+      {goalCardOpen === activeSessionId && (
+        <div style={{ padding: '0 28px 12px' }}>
+          <GoalCard onClose={() => dispatch({ type: 'HIDE_GOAL_CARD' })} />
+        </div>
+      )}
       {/* 空会话提示：放在 Virtuoso 外层条件渲染（空列表时 Virtuoso 高度为 0） */}
       {session.messages.length === 0 && !streaming && (
         <div style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: 60, flex: 1 }}>{t('chat.empty')}</div>

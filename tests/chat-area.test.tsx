@@ -11,8 +11,11 @@ vi.mock('../src/renderer/state/store', () => ({
   useStore: () => ({ state: mockState, dispatch }),
   // MessageRow 已迁移到 useDispatch（不再全订阅）；测试 mock 需同步暴露
   useDispatch: () => dispatch,
-  // ChatArea 已迁移到 useSelector 分片订阅（不再 useStore 全 state）；mock 按 selector 取切片
-  useSelector: (selector: any) => selector(mockState),
+  // ChatArea 已迁移到 useSelector 分片订阅（不再 useStore 全 state）；mock 按 selector 取切片。
+  // try/catch：测试 mockState 是部分态（仅含被测字段），GoalIndicator 等组件订阅的切片
+  // （goalBySession/goalCardOpen）可能缺失，selector 访问 undefined 属性会抛——返回 undefined
+  // 让组件自身的 null 守卫处理，避免每个 mockState 都得补全全字段。
+  useSelector: (selector: any) => { try { return selector(mockState) } catch { return undefined } },
 }))
 // ---- mock i18n（ChatArea 用 useI18n）----
 vi.mock('../src/renderer/i18n/useI18n', () => ({
