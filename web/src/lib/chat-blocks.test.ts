@@ -12,46 +12,51 @@ import {
   isPlanCard,
   classifyBlock,
   mergeToolResult,
+  mergeAssistantBlocks,
   mkMessage,
 } from './chat-blocks'
+
+// 从 content 提取拼接后的 text/thinking(appendDelta 把它们作为有序块存进 content)
+const textOf = (m: ChatMessage): string =>
+  m.content.filter((b) => b.kind === 'text').map((b) => b.text ?? '').join('')
+const thinkingOf = (m: ChatMessage): string =>
+  m.content.filter((b) => b.kind === 'thinking').map((b) => b.text ?? '').join('')
 
 describe('mkMessage', () => {
   it('构造一条空的 assistant 消息', () => {
     const m = mkMessage()
     expect(m.role).toBe('assistant')
-    expect(m.text).toBe('')
-    expect(m.thinking).toBe('')
-    expect(m.blocks).toEqual([])
+    expect(m.content).toEqual([])
   })
 })
 
 describe('appendDelta - text', () => {
-  it('text delta 累加到 message.text', () => {
+  it('text delta 累加到末尾 text 块', () => {
     let m = mkMessage()
     m = appendDelta(m, { text: 'hello' })
     m = appendDelta(m, { text: ' world' })
-    expect(m.text).toBe('hello world')
+    expect(textOf(m)).toBe('hello world')
   })
 
   it('text delta 不污染 thinking', () => {
     let m = mkMessage()
     m = appendDelta(m, { text: 'a' })
-    expect(m.thinking).toBe('')
+    expect(thinkingOf(m)).toBe('')
   })
 })
 
 describe('appendDelta - thinking', () => {
-  it('thinking delta 累加到 message.thinking', () => {
+  it('thinking delta 累加到末尾 thinking 块', () => {
     let m = mkMessage()
     m = appendDelta(m, { thinking: '思考' })
     m = appendDelta(m, { thinking: '中' })
-    expect(m.thinking).toBe('思考中')
+    expect(thinkingOf(m)).toBe('思考中')
   })
 
   it('thinking delta 不污染 text', () => {
     let m = mkMessage()
     m = appendDelta(m, { thinking: 'x' })
-    expect(m.text).toBe('')
+    expect(textOf(m)).toBe('')
   })
 
   it('空 delta 不改动消息', () => {
@@ -65,15 +70,15 @@ describe('appendBlock', () => {
   it('追加块到末尾', () => {
     const m = mkMessage()
     const m2 = appendBlock(m, { kind: 'tool_use', label: 'Read', raw: { id: 't1' } })
-    expect(m2.blocks).toHaveLength(1)
-    expect(m2.blocks[0].kind).toBe('tool_use')
+    expect(m2.content).toHaveLength(1)
+    expect(m2.content[0].kind).toBe('tool_use')
   })
 
   it('保留已有块（append-only）', () => {
     let m = mkMessage()
     m = appendBlock(m, { kind: 'tool_use', label: 'A', raw: {} })
     m = appendBlock(m, { kind: 'tool_result', label: 'B', raw: {} })
-    expect(m.blocks.map((b) => b.label)).toEqual(['A', 'B'])
+    expect(m.content.map((b) => b.label)).toEqual(['A', 'B'])
   })
 })
 
@@ -182,5 +187,44 @@ describe('mergeToolResult', () => {
     const merged = mergeToolResult(blocks, 'tu2', { content: 'ok', isError: false })
     expect(merged[0].status).toBe('running')
     expect(merged[1].status).toBe('completed')
+  })
+})
+
+describe('mergeAssistantBlocks', () => {
+  const text = (t: string): ChatBlock => ({ kind: 'text', label: '', text: t, raw: null })
+
+  it('不同 uuid(多轮)顺序追加:文本B 不覆盖文本A(根治多轮覆盖)', () => {
+    const seen = new Set<string>()
+    let content: ChatBlock[] = []
+    // 轮1:文本A + 工具
+    content = mergeAssistantBlocks(content, [text('文本A'), { kind: 'tool_use', label: 'Bash: ls', id: 'tu1', name: 'Bash', status: 'running', raw: {} }], 'uuid-1', seen) ?? content
+    // 轮2:文本B(工具后)——不同 uuid,应追加而非覆盖
+    content = mergeAssistantBlocks(content, [text('文本B')], 'uuid-2', seen) ?? content
+    const texts = content.filter((b) => b.kind === 'text').map((b) => b.text)
+    expect(texts).toEqual(['文本A', '文本B']) // 两段都保留
+  })
+
+  it('同 uuid 重复事件(resume/重放)跳过:返回 null 无变化', () => {
+    const seen = new Set<string>(['uuid-x']) // 模拟该 uuid 已处理过(首轮已合入)
+    const content: ChatBlock[] = [text('A')]
+    // 同 uuid 再次到达 → null(去重,不重复合入)
+    const r = mergeAssistantBlocks(content, [text('B')], 'uuid-x', seen)
+    expect(r).toBeNull()
+  })
+
+  it('草稿剥离:合入权威版前,剥离末尾流式 text 草稿块(避免重复)', () => {
+    const seen = new Set<string>()
+    // content 末尾是流式拼出的草稿 'hello'(部分) + ' wo'(续)
+    const content: ChatBlock[] = [text('hello wo')]
+    // 权威版到:'hello world' → 替换草稿(末尾同类替换),而非追加
+    const merged = mergeAssistantBlocks(content, [text('hello world')], 'uuid-1', seen)!
+    expect(merged.filter((b) => b.kind === 'text').map((b) => b.text)).toEqual(['hello world'])
+  })
+
+  it('text 与 tool_use 交错保留(顺序不丢)', () => {
+    const seen = new Set<string>()
+    let content: ChatBlock[] = []
+    content = mergeAssistantBlocks(content, [text('前'), { kind: 'tool_use', label: 'Read', id: 'tu1', name: 'Read', status: 'running', raw: {} }, text('后')], 'uuid-1', seen)!
+    expect(content.map((b) => b.kind)).toEqual(['text', 'tool_use', 'text'])
   })
 })

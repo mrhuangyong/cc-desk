@@ -12,19 +12,20 @@
 // 与桌面端渲染端 ContentBlock 对齐（src/main/claude-normalize.ts）：
 // kind 取值：tool_use_start / assistant_blocks / tool_result。计划卡片在 tool_result.payload.plan。
 
-/** 一条 chat 消息（assistant，含流式 text + thinking + 块序列）。 */
+/** 一条 chat 消息（assistant）。
+ *  content 是有序数组：text / thinking / tool_use / plan 交错保留（对齐桌面 Message.content）。
+ *  此前用 text + thinking + blocks 三字段,丢失了 SDK content 的交错顺序(分组根因)
+ *  + 多轮 assistant 文本互相覆盖(每轮 assistant_blocks 替换整个 msg.text)。改有序数组根治。 */
 export interface ChatMessage {
   role: 'assistant'
-  text: string
-  thinking: string
-  blocks: ChatBlock[]
+  content: ChatBlock[]
 }
 
 /** 渲染块（从 session.blocks 归一化而来）。 */
 export interface ChatBlock {
-  kind: 'tool_use' | 'tool_result' | 'plan' | 'assistant' | 'text'
+  kind: 'tool_use' | 'tool_result' | 'plan' | 'assistant' | 'text' | 'thinking'
   label: string
-  text?: string  // text 块的文本内容
+  text?: string  // text/thinking 块的文本内容
   id?: string    // tool_use 的 id（合并 tool_result 的匹配键）/ tool_result 内部载体的 tool_use_id
   name?: string  // tool_use 的工具名（status 判定用，如 ExitPlanMode 特例）
   status?: 'running' | 'completed' | 'error'  // tool_use 执行状态（tool_result 合并后更新）
@@ -34,7 +35,7 @@ export interface ChatBlock {
 
 /** 构造空 assistant 消息。 */
 export function mkMessage(): ChatMessage {
-  return { role: 'assistant', text: '', thinking: '', blocks: [] }
+  return { role: 'assistant', content: [] }
 }
 
 /** session.delta payload 的结构（text / thinking 二选一，见 forwarder.onClaudeDelta）。 */
@@ -44,52 +45,121 @@ interface DeltaPayload {
 }
 
 /** 把流式 delta 累加到消息；返回新消息（不可变）。
- *  首个非空 delta 会去除前导换行（SDK 的首个 text chunk 常以 \n 开头，
- *  移动端 CSS pre-wrap 会把它渲染成顶部空行）；中间换行保留。 */
+ *  追加到 content 末尾的【同类型块】:末尾是 text 则拼接,否则 push 新 text 块(thinking 同理)。
+ *  首个非空 delta 会去除前导换行（SDK 首个 chunk 常以 \n 开头,pre-wrap 会渲染成顶部空行）。 */
 export function appendDelta(m: ChatMessage, delta: DeltaPayload): ChatMessage {
   const hasText = typeof delta.text === 'string' && delta.text.length > 0
   const hasThinking = typeof delta.thinking === 'string' && delta.thinking.length > 0
   if (!hasText && !hasThinking) return m
-  // 消息 text 还为空时，本次是首个 text chunk —— 去掉它的前导换行（避免顶部空行）
-  const textDelta = hasText && m.text.length === 0 ? delta.text!.replace(/^[\r\n]+/, '') : delta.text
-  // thinking 同理（首个思考片段去前导换行）
-  const thinkingDelta = hasThinking && m.thinking.length === 0 ? delta.thinking!.replace(/^[\r\n]+/, '') : delta.thinking
-  return {
-    ...m,
-    text: hasText ? m.text + textDelta : m.text,
-    thinking: hasThinking ? m.thinking + thinkingDelta : m.thinking,
+  let content = m.content
+  if (hasText) {
+    const last = content[content.length - 1]
+    const isFirst = !(last?.kind === 'text' && (last.text ?? '').length > 0)
+    const piece = isFirst ? delta.text!.replace(/^[\r\n]+/, '') : delta.text!
+    content = isFirst
+      ? [...content, { kind: 'text', label: '', text: piece, raw: null }]
+      : [...content.slice(0, -1), { ...last, text: (last.text ?? '') + piece }]
   }
+  if (hasThinking) {
+    const last = content[content.length - 1]
+    const isFirst = !(last?.kind === 'thinking' && (last.text ?? '').length > 0)
+    const piece = isFirst ? delta.thinking!.replace(/^[\r\n]+/, '') : delta.thinking!
+    content = isFirst
+      ? [...content, { kind: 'thinking', label: '', text: piece, raw: null }]
+      : [...content.slice(0, -1), { ...last, text: (last.text ?? '') + piece }]
+  }
+  return { ...m, content }
 }
 
 /** 追加一个块到消息末尾（append-only）。 */
 export function appendBlock(m: ChatMessage, block: ChatBlock): ChatMessage {
-  return { ...m, blocks: [...m.blocks, block] }
+  return { ...m, content: [...m.content, block] }
 }
 
 /**
- * 把 tool_result 合并进 blocks 里同 id 的 tool_use 块（更新 result + status）。
+ * 把 tool_result 合并进 content 里同 id 的 tool_use 块（更新 result + status）。
  * 对齐桌面端 reducer STREAM_TOOL_RESULT（src/renderer/state/reducer.ts）：
  *   - 按 tool_use_id 找 tool_use 块，找不到（孤儿）返回原数组——调用方据此丢弃。
  *   - ExitPlanMode 的 is_error 是 SDK 退出 plan 模式时回填的占位结果（用户授权后必经），
  *     不代表计划失败，视作 completed（与桌面 reducer 一致，避免红点误导）。
  *
- * @returns 新 blocks 数组。若 id 在 blocks 中无匹配 tool_use，原样返回（孤儿）。
+ * @returns 新 content 数组。若 id 无匹配 tool_use，原样返回（孤儿）。
  */
 export function mergeToolResult(
-  blocks: ChatBlock[],
+  content: ChatBlock[],
   id: string,
   result: { content: unknown; isError: boolean },
 ): ChatBlock[] {
-  const idx = blocks.findIndex((b) => b.kind === 'tool_use' && b.id === id)
-  if (idx < 0) return blocks // 孤儿 tool_result：保持不变，调用方丢弃
-  const tu = blocks[idx]
+  const idx = content.findIndex((b) => b.kind === 'tool_use' && b.id === id)
+  if (idx < 0) return content // 孤儿 tool_result：保持不变，调用方丢弃
+  const tu = content[idx]
   const isError = result.isError && tu.name !== 'ExitPlanMode'
   const updated: ChatBlock = {
     ...tu,
     result,
     status: isError ? 'error' : 'completed',
   }
-  return [...blocks.slice(0, idx), updated, ...blocks.slice(idx + 1)]
+  return [...content.slice(0, idx), updated, ...content.slice(idx + 1)]
+}
+
+/**
+ * 把一轮 assistant_blocks（权威版）有序合入 content。对齐桌面 STREAM_ASSISTANT_BLOCKS。
+ *
+ * - uuid 去重:同一 assistant 消息(uuid)的重复事件(resume/重放)跳过,返回 null 表示无变化。
+ *   不同 uuid = 不同轮,顺序追加(不再替换 → 消除多轮文本覆盖)。
+ * - 草稿剥离:合入前剥离 content 末尾连续的 text/thinking 块(流式 delta 拼出的临时态),
+ *   用权威版取代,否则同段文本重复。
+ * - 有序合并:tool_use 按 id 去重(保留已回填的 result/status);text/thinking 末尾同类替换否则 push。
+ *
+ * @param incoming  本轮 assistant_blocks 归一化后的块(已过 classifyBlock,但本函数按 raw.type 重新归一化更稳)
+ * @returns 新 content,或 null(uuid 已见,无变化)。
+ */
+export function mergeAssistantBlocks(
+  content: ChatBlock[],
+  incoming: ChatBlock[],
+  uuid: string | undefined,
+  seenUuids: Set<string>,
+): ChatBlock[] | null {
+  // uuid 去重:已见过本轮 → 跳过(resume/重放)。无 uuid 则不去重(保守,首次必合入)。
+  if (uuid && seenUuids.has(uuid)) return null
+  if (uuid) seenUuids.add(uuid)
+
+  // 空块(本轮全是被过滤的 tool_use,如 AskUserQuestion/TodoWrite):不剥离草稿,原样返回。
+  // 否则会误清掉主流已显示的流式文本(对齐桌面 reducer:638-640 空 blocks 守卫)。
+  if (!incoming.length) return content
+
+  let merged = [...content]
+  // 1) 剥离末尾连续的 text/thinking 草稿块(流式临时态,将由权威版取代)
+  while (merged.length) {
+    const t = merged[merged.length - 1].kind
+    if (t === 'text' || t === 'thinking') merged.pop()
+    else break
+  }
+  // 2) 顺序合入 incoming
+  for (const nb of incoming) {
+    if (nb.kind === 'tool_use') {
+      const idx = merged.findIndex((b) => b.kind === 'tool_use' && b.id === nb.id)
+      if (idx >= 0) {
+        // 校正 input/label,但不降级已有 status/result(对齐桌面 reducer:649)
+        const old = merged[idx]
+        merged[idx] = { ...nb, status: old.status ?? nb.status, result: old.result ?? nb.result }
+      } else {
+        merged.push(nb)
+      }
+    } else if (nb.kind === 'text' || nb.kind === 'thinking') {
+      // 去前导换行(SDK 权威版 text 常以 \n 开头,移动端 pre-wrap 会渲染成顶部空行)
+      const text = (nb.text ?? '').replace(/^[\r\n]+/, '')
+      const cleaned = { ...nb, text }
+      // 末尾同类替换(权威版),否则 push
+      const last = merged[merged.length - 1]
+      if (last && last.kind === nb.kind) merged[merged.length - 1] = cleaned
+      else merged.push(cleaned)
+    } else if (nb.kind === 'plan') {
+      merged.push(nb)
+    }
+    // tool_result/assistant 内部载体不在 assistant_blocks 里出现,忽略
+  }
+  return merged
 }
 
 /** 判断块 payload 是否为计划卡片（tool_result.payload.plan，与桌面端契约对齐）。 */

@@ -8,6 +8,12 @@ import { renderHook, act } from '@testing-library/react'
 import { useSessionChat } from './useSessionChat'
 import type { Envelope } from '@shared/remote-protocol-types'
 
+// 从 assistant 消息的 content 提取拼接文本 / 块数组(content 有序模型)
+const textOf = (m: any): string =>
+  (m?.content ?? []).filter((b: any) => b.kind === 'text').map((b: any) => b.text ?? '').join('')
+const thinkingOf = (m: any): string =>
+  (m?.content ?? []).filter((b: any) => b.kind === 'thinking').map((b: any) => b.text ?? '').join('')
+
 const deltaEnv = (text: string): Envelope => ({
   v: 1, type: 'session.delta', deviceId: 'd', ts: 1, nonce: 'n', sig: '',
   payload: { localSessionId: 's1', text },
@@ -41,7 +47,7 @@ describe('useSessionChat - 流式累积', () => {
       result.current.onInbound(deltaEnv(' world'))
     })
     expect(result.current.messages).toHaveLength(1)
-    expect(result.current.messages[0].text).toBe('hello world')
+    expect(textOf(result.current.messages[0])).toBe('hello world')
   })
 
   it('session.delta(thinking) 拼接到 thinking 字段', () => {
@@ -53,8 +59,8 @@ describe('useSessionChat - 流式累积', () => {
     })
     const m = result.current.messages[0]
     expect(m.role).toBe('assistant')
-    expect((m as any).thinking).toBe('思考')
-    expect((m as any).text).toBe('')
+    expect(thinkingOf(m)).toBe('思考')
+    expect(textOf(m)).toBe('')
   })
 
   it('session.result 收尾：标记 running=false，后续 delta 开新消息', () => {
@@ -69,8 +75,8 @@ describe('useSessionChat - 流式累积', () => {
       result.current.onInbound(deltaEnv('b')) // 新一轮
     })
     expect(result.current.messages).toHaveLength(2)
-    expect(result.current.messages[0].text).toBe('a')
-    expect(result.current.messages[1].text).toBe('b')
+    expect(textOf(result.current.messages[0])).toBe('a')
+    expect(textOf(result.current.messages[1])).toBe('b')
   })
 })
 
@@ -83,8 +89,9 @@ describe('useSessionChat - blocks', () => {
       result.current.onInbound(blocksEnv({ kind: 'tool_use_start', name: 'Read', id: 't1' }))
     })
     const m = result.current.messages[0] as any
-    expect(m.blocks).toHaveLength(1)
-    expect(m.blocks[0].kind).toBe('tool_use')
+    // content = [text('start'), tool_use](有序,先文本后工具)
+    expect(m.content.some((b: any) => b.kind === 'tool_use')).toBe(true)
+    expect(m.content.some((b: any) => b.kind === 'text')).toBe(true)
   })
 
   it('blocks 在无 current 消息时自动新建一条', () => {
@@ -95,7 +102,7 @@ describe('useSessionChat - blocks', () => {
     })
     expect(result.current.messages).toHaveLength(1)
     const m = result.current.messages[0] as any
-    expect(m.blocks).toHaveLength(1)
+    expect(m.content).toHaveLength(1)
   })
 
   // 修复:桌面 claude:blocks 按 op 分发(tool_use_start 带 block 单数,tool_result 无 blocks 数组),
@@ -110,9 +117,9 @@ describe('useSessionChat - blocks', () => {
       } as any)
     })
     const m = result.current.messages[0] as any
-    expect(m.blocks).toHaveLength(1)
-    expect(m.blocks[0].kind).toBe('tool_use')
-    expect(m.blocks[0].label).toBe('Bash: ls')
+    expect(m.content).toHaveLength(1)
+    expect(m.content[0].kind).toBe('tool_use')
+    expect(m.content[0].label).toBe('Bash: ls')
   })
 
   it('tool_result 合并进同 id 的 tool_use（更新 status，不新增独立块）', () => {
@@ -132,10 +139,10 @@ describe('useSessionChat - blocks', () => {
     })
     const m = result.current.messages[0] as any
     // 合并：仍是 1 个块（tool_use），status 变 completed，无独立 tool_result 块
-    expect(m.blocks).toHaveLength(1)
-    expect(m.blocks[0].kind).toBe('tool_use')
-    expect(m.blocks[0].status).toBe('completed')
-    expect(m.blocks[0].result).toEqual({ content: 'ok', isError: false })
+    expect(m.content).toHaveLength(1)
+    expect(m.content[0].kind).toBe('tool_use')
+    expect(m.content[0].status).toBe('completed')
+    expect(m.content[0].result).toEqual({ content: 'ok', isError: false })
   })
 
   it('孤儿 tool_result（无匹配 tool_use，如 AskUserQuestion）→ 静默丢弃，不冒 [出错]/[完成]', () => {
@@ -149,35 +156,42 @@ describe('useSessionChat - blocks', () => {
     })
     // 无匹配 tool_use：丢弃，blocks 为空（不渲染孤立的 tool_result）
     const m = result.current.messages[0] as any
-    expect(m.blocks).toHaveLength(0)
+    expect(m.content).toHaveLength(0)
   })
 
-  it('delta 流式拼接后，assistant_blocks 的 text 权威版到来不重复（修复消息重复）', () => {
+  it('delta 流式拼接后，assistant_blocks 的 text 权威版到来不重复（草稿剥离）', () => {
     const send = vi.fn().mockResolvedValue(true)
     const { result } = renderHook(() => useSessionChat({ send }))
     act(() => {
-      // 1) delta 流式拼出完整文本
+      // 1) delta 流式拼出完整文本(草稿)
       result.current.onInbound(deltaEnv('你好！有什么我可以帮你的吗？'))
-      // 2) assistant_blocks 带同一段文本的权威版（claude:blocks 透传，type:'text'）
-      result.current.onInbound(blocksEnv({ type: 'text', text: '你好！有什么我可以帮你的吗？' }))
+      // 2) assistant_blocks 带同一段文本的权威版(op=assistant_blocks + uuid)
+      result.current.onInbound({
+        v: 1, type: 'session.blocks', deviceId: 'd', ts: 1, nonce: 'n', sig: '',
+        payload: { localSessionId: 's1', op: 'assistant_blocks', uuid: 'u1', blocks: [{ type: 'text', text: '你好！有什么我可以帮你的吗？' }] },
+      } as any)
     })
     const m = result.current.messages[0] as any
-    // 权威版应替换流式草稿，而非追加——否则同一段文本显示两次
-    expect(m.text).toBe('你好！有什么我可以帮你的吗？')
-    expect(m.text.includes('你好！有什么我可以帮你的吗？你好')).toBe(false)
+    // 权威版应替换流式草稿(草稿剥离),而非追加——否则同一段文本显示两次
+    expect(textOf(m)).toBe('你好！有什么我可以帮你的吗？')
+    expect(textOf(m).includes('你好！有什么我可以帮你的吗？你好')).toBe(false)
   })
 
-  it('text 块带前导换行时不显示为顶部空行（修复输出空行）', () => {
+  it('assistant_blocks 的 text 块带前导换行时,剥离草稿后不重复也不以换行开头', () => {
     const send = vi.fn().mockResolvedValue(true)
     const { result } = renderHook(() => useSessionChat({ send }))
     act(() => {
-      // SDK 的 assistant text 块常以换行开头（移动端 CSS pre-wrap 会渲染成空行）
-      result.current.onInbound(blocksEnv({ type: 'text', text: '\n你好！有什么我可以帮你的吗？' }))
+      // delta 草稿(已去前导换行) + 权威版(带前导换行)
+      result.current.onInbound(deltaEnv('你好！有什么我可以帮你的吗？'))
+      result.current.onInbound({
+        v: 1, type: 'session.blocks', deviceId: 'd', ts: 1, nonce: 'n', sig: '',
+        payload: { localSessionId: 's1', op: 'assistant_blocks', uuid: 'u1', blocks: [{ type: 'text', text: '\n你好！有什么我可以帮你的吗？' }] },
+      } as any)
     })
     const m = result.current.messages[0] as any
-    // 规范化后首部不应有换行（中间换行保留）
-    expect(m.text).toBe('你好！有什么我可以帮你的吗？')
-    expect(m.text.startsWith('\n')).toBe(false)
+    // 权威版替换草稿:不重复,且首部无换行(delta 草稿已去,权威版经 mergeAssistantBlocks 替换)
+    expect(textOf(m)).toBe('你好！有什么我可以帮你的吗？')
+    expect(textOf(m).startsWith('\n')).toBe(false)
   })
 
   it('delta 增量带前导换行时，最终 text 不以换行开头', () => {
@@ -188,8 +202,8 @@ describe('useSessionChat - blocks', () => {
       result.current.onInbound(deltaEnv('世界'))
     })
     const m = result.current.messages[0] as any
-    expect(m.text).toBe('你好世界')
-    expect(m.text.startsWith('\n')).toBe(false)
+    expect(textOf(m)).toBe('你好世界')
+    expect(textOf(m).startsWith('\n')).toBe(false)
   })
 })
 
@@ -316,7 +330,10 @@ describe('useSessionChat - 历史灌入', () => {
     })
     expect(result.current.messages).toHaveLength(2)
     expect(result.current.messages[0]).toMatchObject({ role: 'user', text: '历史提问' })
-    expect(result.current.messages[1]).toMatchObject({ role: 'assistant', text: '历史回答' })
+    // assistant 历史转 content 有序数组:含 thinking/text/tool_use 块
+    expect(result.current.messages[1].role).toBe('assistant')
+    expect(textOf(result.current.messages[1])).toBe('历史回答')
+    expect(thinkingOf(result.current.messages[1])).toBe('思考')
     expect(result.current.running).toBe(false)
     expect(result.current.hasMoreHistory).toBe(true)
   })
@@ -331,7 +348,8 @@ describe('useSessionChat - 历史灌入', () => {
       result.current.onInbound(deltaEnv('新流式'))
     })
     expect(result.current.messages).toHaveLength(2)
-    expect(result.current.messages[1]).toMatchObject({ role: 'assistant', text: '新流式' })
+    expect(result.current.messages[1].role).toBe('assistant')
+    expect(textOf(result.current.messages[1])).toBe('新流式')
   })
 
   it('loadHistory 发 session.history.request', async () => {
@@ -380,7 +398,7 @@ describe('useSessionChat - 编辑重发', () => {
       }
       result.current.onInbound(historyEnv)
     })
-    expect(result.current.messages.map((m: any) => m.text)).toEqual(['回复', '原文']) // 历史前置
+    expect(result.current.messages.map((m: any) => (m.role === 'user' ? m.text : textOf(m)))).toEqual(['回复', '原文']) // 历史前置
 
     // 编辑 index 1(最后一条 user "原文"),新文本 "改后的"
     await act(async () => {
@@ -588,7 +606,7 @@ describe('useSessionChat - subagent 分流', () => {
       } as any)
     })
     const m = result.current.messages[0] as any
-    expect(m?.blocks?.some((b: any) => b.id === 'tu1')).toBe(true)
+    expect(m?.content?.some((b: any) => b.id === 'tu1')).toBe(true)
     expect(Object.keys(result.current.subagentOutput)).toHaveLength(0)
   })
 })

@@ -483,17 +483,23 @@ export default function ChatPage(props: ChatPageProps) {
           return (
             <div key={i} className="msg assistant">
               <div className="msg-bubble assistant-bubble">
-                {m.thinking && (
-                  <details className="thinking">
-                    <summary>思考</summary>
-                    <div className="thinking-text">{m.thinking}</div>
-                  </details>
-                )}
-                {m.text && <div className="assistant-text">{renderInline(m.text)}</div>}
-                {m.blocks.map((b, j) => (
-                  <BlockView key={j} block={b} subBlocks={b.id ? subagentOutput?.[b.id] : undefined} />
-                ))}
-                {running && !m.text && m.blocks.length === 0 && !m.thinking && (
+                {/* 遍历有序 content:text/thinking/tool_use 交错保留(对齐桌面 MessageRow)。
+                    不再 text/blocks 分区渲染(那是分组根因)。 */}
+                {m.content.map((b, j) => {
+                  if (b.kind === 'thinking') {
+                    return (
+                      <details key={j} className="thinking">
+                        <summary>思考</summary>
+                        <div className="thinking-text">{b.text}</div>
+                      </details>
+                    )
+                  }
+                  if (b.kind === 'text') {
+                    return <div key={j} className="assistant-text">{renderInline(b.text ?? '')}</div>
+                  }
+                  return <BlockView key={j} block={b} subBlocks={b.id ? subagentOutput?.[b.id] : undefined} />
+                })}
+                {running && m.content.length === 0 && (
                   <span className="typing">…</span>
                 )}
               </div>

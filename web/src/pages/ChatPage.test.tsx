@@ -14,12 +14,13 @@ beforeAll(() => {
   }
 })
 
-const assistantMsg = (text: string, blocks: any[] = []): AnyMessage => ({
-  role: 'assistant',
-  text,
-  thinking: '',
-  blocks,
-})
+const assistantMsg = (text: string, blocks: any[] = []): AnyMessage => {
+  // content 有序模型:text 块(若有) + blocks(交错保留)。text 为空则只有 blocks。
+  const content: any[] = []
+  if (text) content.push({ kind: 'text', label: '', text, raw: null })
+  for (const b of blocks) content.push(b)
+  return { role: 'assistant', content }
+}
 
 describe('ChatPage - 渲染', () => {
   it('无消息时显示空态', () => {
@@ -744,7 +745,7 @@ describe('ChatPage - 图片附件', () => {
 
 describe('ChatPage - 编辑重发', () => {
   const userMsg = (text: string): AnyMessage => ({ role: 'user', text })
-  const assistantMsg = (text: string): AnyMessage => ({ role: 'assistant', text, thinking: '', blocks: [] })
+  const assistantMsg = (text: string): AnyMessage => ({ role: 'assistant', content: text ? [{ kind: 'text', label: '', text, raw: null }] : [] })
   const baseProps = {
     title: 't', running: false,
     inputValue: '', onInputChange: () => {}, onSend: () => {},

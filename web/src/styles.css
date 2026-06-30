@@ -298,7 +298,7 @@ body {
 .session-list li { margin: 0; }
 /* 会话行：attach 主按钮 + 归档按钮横向排列 */
 .session-row { position: relative; display: flex; align-items: stretch; border-radius: var(--r-sm); }
-.session-row .session-item { flex: 1; }
+.session-row .session-item { flex: 1; min-width: 0; }
 .session-item {
   width: 100%; display: flex; align-items: center; gap: 11px;
   padding: 11px 10px; background: transparent; border: 0;
@@ -333,7 +333,9 @@ body {
 .session-item.status-idle .session-bar { background: transparent; }
 
 .session-content { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.session-title-row { display: flex; align-items: center; gap: 8px; }
+/* min-width:0 + flex:1:让 title-row 可收缩,内部 .session-title 的 ellipsis 才生效,
+   否则长标题撑开 flex 子项把右侧归档按钮挤出可视区(flex 截断陷阱)。 */
+.session-title-row { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
 .session-title {
   flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-family: var(--font-mono); font-size: 13.5px; color: var(--text);
@@ -536,7 +538,9 @@ body {
   padding: 4px 0 4px 8px; background: transparent;
   border-left: 2px solid var(--border);
   font-family: var(--font-mono);
-  display: flex; align-items: center; gap: 6px; max-width: 100%;
+  /* column: head 在上,展开的 detail 换行到下方(而非挤在标题同行) */
+  display: flex; flex-direction: column; align-items: stretch; gap: 0;
+  max-width: 100%;
 }
 .block svg { width: 14px; height: 14px; flex-shrink: 0; }
 .block.tool-use { color: var(--text-muted); }

@@ -24,6 +24,7 @@ import {
   appendBlock,
   classifyBlock,
   mergeToolResult,
+  mergeAssistantBlocks,
 } from '../lib/chat-blocks'
 
 /** 用户消息（与 ChatMessage 区分：role=user，无 blocks/thinking）。 */
@@ -168,6 +169,9 @@ export function useSessionChat(opts: UseSessionChatOptions): UseSessionChatHandl
   const [historyVersion, setHistoryVersion] = useState(0)
   // 当前轮次是否已收尾（收到 session.result）。true 时下一条 delta/blocks 强制开新 assistant 消息。
   const finishedRef = useRef(true)
+  // 已处理的 assistant_blocks uuid 集合(轮次去重):同一 uuid 的重复事件(resume/重放)跳过,
+  // 不同 uuid 是不同轮 → 追加而非替换(消除多轮文本覆盖)。session.result 后清空。
+  const seenUuidsRef = useRef<Set<string>>(new Set())
   // 排队模式:流式中 queue 模式发送的消息暂存队列,AI 结束后自动发队首。
   const [queue, setQueue] = useState<QueuedMessage[]>([])
   // 自动出队的 useEffect 需 localSessionId,但 hook 不持有它(sendMessage 参数传入)。
@@ -186,13 +190,14 @@ export function useSessionChat(opts: UseSessionChatOptions): UseSessionChatHandl
         const items = Array.isArray(p.items) ? p.items : []
         const mapped: AnyMessage[] = items.map((it) => {
           if (it.role === 'user') return { role: 'user', text: it.text ?? '' }
-          return {
-            role: 'assistant',
-            // trim 首尾换行（防御：磁盘数据可能残留前导换行，移动端 pre-wrap 会显示空行）
-            text: (it.text ?? '').replace(/^[\r\n]+/, '').replace(/[\r\n]+$/, ''),
-            thinking: it.thinking ?? '',
-            blocks: (it.blocks ?? []).map((b) => ({ ...b, raw: null })),
-          }
+          // 历史转有序 content:thinking → text → blocks(历史无交错,这样足够)。
+          const content: ChatBlock[] = []
+          const thinking = (it.thinking ?? '').replace(/^[\r\n]+/, '').replace(/[\r\n]+$/, '')
+          if (thinking) content.push({ kind: 'thinking', label: '', text: thinking, raw: null })
+          const text = (it.text ?? '').replace(/^[\r\n]+/, '').replace(/[\r\n]+$/, '')
+          if (text) content.push({ kind: 'text', label: '', text, raw: null })
+          for (const b of (it.blocks ?? [])) content.push({ ...b, raw: null })
+          return { role: 'assistant', content }
         })
         setMessages((prev) => [...mapped, ...prev])
         setHasMoreHistory(!!p.hasMore)
@@ -233,59 +238,51 @@ export function useSessionChat(opts: UseSessionChatOptions): UseSessionChatHandl
           return
         }
         setRunning(true)
-        const blocks = extractBlocks(env.payload)
+        const ep2 = env.payload as any
+        const op = ep2?.op
         const startNew = finishedRef.current
         finishedRef.current = false
-        // 先把本轮 assistant_blocks 里的所有 text 块聚合成权威文本。
-        // delta 流式只是这段文本的实时前体，assistant_blocks 到来时是权威完整版——
-        // 若直接追加到 msg.text 会导致同一段文本显示两次（delta 拼一次 + 权威版再拼一次）。
-        // 故权威版替换流式草稿（对齐桌面端 STREAM_ASSISTANT_BLOCKS 的去重语义）。
-        const authoritativeText = blocks
-          .filter((raw: any) => raw?.type === 'text' && typeof raw.text === 'string')
-          .map((raw: any) => raw.text)
-          .join('')
-          // 去除整段首尾换行（SDK 的 text 块常以 \n 开头，移动端 pre-wrap 会渲染成空行）
-          .replace(/^[\r\n]+/, '')
-          .replace(/[\r\n]+$/, '')
         setMessages((prev) => {
           let working = prev
           let needNew = startNew || working[working.length - 1]?.role !== 'assistant'
+
+          if (op === 'assistant_blocks') {
+            // 整轮权威 blocks:按 uuid 去重 + 有序合入 content(mergeAssistantBlocks)。
+            // 不再用 authoritativeText 替换 msg.text(那会覆盖前几轮文本)。
+            const uuid = typeof ep2.uuid === 'string' ? ep2.uuid : undefined
+            const incoming: ChatBlock[] = []
+            for (const raw of (Array.isArray(ep2.blocks) ? ep2.blocks : [])) {
+              const b = classifyBlock(raw)
+              if (b && b.kind !== 'tool_result') incoming.push(b) // tool_result 不在 assistant_blocks,防御
+            }
+            if (needNew) { working = [...working, mkMessage()]; needNew = false }
+            const cur = working.length - 1
+            const msg = working[cur] as ChatMessage
+            const merged = mergeAssistantBlocks(msg.content, incoming, uuid, seenUuidsRef.current)
+            if (merged) {
+              working = [...working.slice(0, cur), { ...msg, content: merged }, ...working.slice(cur + 1)]
+            }
+            return working
+          }
+
+          // tool_use_start / tool_result:逐块处理(extractBlocks 归一化)
+          const blocks = extractBlocks(env.payload)
           for (const raw of blocks) {
             const b = classifyBlock(raw)
             if (!b) continue
-            if (needNew) {
-              working = [...working, mkMessage()]
-              needNew = false
-            }
+            if (needNew) { working = [...working, mkMessage()]; needNew = false }
             const cur = working.length - 1
-            if (b.kind === 'text') {
-              const msg = working[cur] as ChatMessage
-              // 权威版替换流式草稿（不追加），避免重复
-              working = [
-                ...working.slice(0, cur),
-                { ...msg, text: authoritativeText },
-                ...working.slice(cur + 1),
-              ]
-            } else if (b.kind === 'tool_result' && b.id) {
-              // tool_result 合并进同 id 的 tool_use（更新 result/status），不新增独立块。
-              // 对齐桌面 STREAM_TOOL_RESULT。孤儿（无匹配 tool_use，如 AskUserQuestion/ExitPlanMode
-              // 的 tool_use 被桌面过滤）静默丢弃——mergeToolResult 找不到时返回原 blocks。
-              const msg = working[cur] as ChatMessage
-              const merged = mergeToolResult(msg.blocks, b.id, b.result!)
-              working = [
-                ...working.slice(0, cur),
-                { ...msg, blocks: merged },
-                ...working.slice(cur + 1),
-              ]
+            const msg = working[cur] as ChatMessage
+            if (b.kind === 'tool_result' && b.id) {
+              // tool_result 合并进同 id 的 tool_use(更新 result/status)。孤儿(无匹配 tool_use,
+              // 如 AskUserQuestion/ExitPlanMode)静默丢弃——mergeToolResult 找不到时返回原 content。
+              const merged = mergeToolResult(msg.content, b.id, b.result!)
+              working = [...working.slice(0, cur), { ...msg, content: merged }, ...working.slice(cur + 1)]
             } else if (b.kind === 'tool_result') {
-              // tool_result 无 id（异常 payload）：静默丢弃，避免独立渲染成 [完成]/[出错]
-              continue
+              continue // tool_result 无 id(异常):丢弃
             } else {
-              working = [
-                ...working.slice(0, cur),
-                appendBlock(working[cur] as ChatMessage, b),
-                ...working.slice(cur + 1),
-              ]
+              // tool_use / plan / text 块:追加到 content 末尾(保留交错顺序)
+              working = [...working.slice(0, cur), appendBlock(msg, b), ...working.slice(cur + 1)]
             }
           }
           return working
@@ -295,6 +292,7 @@ export function useSessionChat(opts: UseSessionChatOptions): UseSessionChatHandl
       if (env.type === 'session.result') {
         setRunning(false)
         finishedRef.current = true // 收尾：下一次 delta 开新轮次
+        seenUuidsRef.current = new Set() // 新 query:清轮次去重,允许新一轮 assistant_blocks 合入
         return
       }
       if (env.type === 'session.notice') {
@@ -426,6 +424,7 @@ export function useSessionChat(opts: UseSessionChatOptions): UseSessionChatHandl
     setHistoryVersion(0)
     setSubagentOutput({})
     finishedRef.current = true
+    seenUuidsRef.current = new Set()
   }, [])
 
   return { messages, running, hasMoreHistory, historyVersion, onInbound, sendMessage, interrupt, loadHistory, reset, editingIndex, setEditing, editAndResend, queue, subagentOutput }
