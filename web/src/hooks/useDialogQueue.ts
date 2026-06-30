@@ -13,11 +13,11 @@
 //   - 发：dialog.response（payload: { reqId, result }）
 //   result 形态按 dialogKind 构造（见 lib/dialog-result.ts），与桌面端 askUserViaPanel
 //   的三类 dialog 处理逻辑对齐：permission→completed、plan→completed+permissionMode、
-//   ask→cancelled（UI 无答案输入的遗留缺口）。
+//   ask→completed+answers（由 AskQuestionSheet 收集后经 opts 透传）。
 import { useCallback, useRef, useState } from 'react'
 import type { Envelope, MessageType } from '@shared/remote-protocol-types'
 import { createDialogQueue, parseDialogRequest, type DialogRequest } from '../lib/dialog-queue'
-import { buildDialogResult } from '../lib/dialog-result'
+import { buildDialogResult, type ApproveOpts } from '../lib/dialog-result'
 
 /** useRelay.send 的最小签名（仅本 hook 用到的子集，便于注入测试）。 */
 export type SendFn = (
@@ -39,8 +39,8 @@ export interface UseDialogQueueHandle {
    * 仅识别 dialog.request，其余信封静默忽略。
    */
   onInbound(env: Envelope): void
-  /** 批准：发 dialog.response(approve) 并出队。 */
-  approve(reqId: string): Promise<void>
+  /** 批准：发 dialog.response(approve) 并出队。opts 携带 plan 的 permissionMode / ask 的 answers。 */
+  approve(reqId: string, opts?: ApproveOpts): Promise<void>
   /** 拒绝：发 dialog.response(deny) 并出队。 */
   deny(reqId: string): Promise<void>
   /** 忽略：仅出队，不回 dialog.response（用户主动跳过）。 */
@@ -76,9 +76,9 @@ export function useDialogQueue(opts: UseDialogQueueOptions): UseDialogQueueHandl
     return queueRef.current.state().items.find((d) => d.reqId === reqId)?.dialogKind
   }, [])
 
-  const approve = useCallback(async (reqId: string) => {
+  const approve = useCallback(async (reqId: string, opts?: ApproveOpts) => {
     const dialogKind = dialogKindOf(reqId) ?? ''
-    const ok = await send('dialog.response', { reqId, result: buildDialogResult(dialogKind, 'approve') })
+    const ok = await send('dialog.response', { reqId, result: buildDialogResult(dialogKind, 'approve', opts) })
     // I1：send 失败（未连接/中继不可达）时保留队列项，让用户重连后重试，
     // 避免卡片消失但桌面端未收到 → 重连补发后又突兀出现。
     if (!ok) return

@@ -16,6 +16,8 @@ import type { DialogRequest } from '../lib/dialog-queue'
 import type { ChatBlock } from '../lib/chat-blocks'
 import type { ImageAttachment } from '../lib/read-image'
 import EdgeSwipeBack from '../components/EdgeSwipeBack'
+import AskQuestionSheet from '../components/AskQuestionSheet'
+import PlanSheet from '../components/PlanSheet'
 import {
   ArrowLeftIcon,
   ArrowDownIcon,
@@ -58,7 +60,8 @@ export interface ChatPageProps {
   onBack: () => void
   /** 当前挂起的批准请求（队首）；无则不展示卡片。 */
   currentDialog?: DialogRequest | null
-  onApprove?: (reqId: string) => void
+  /** 批准：plan 传 permissionMode、ask 传 answers（透传给 dialog.approve）。 */
+  onApprove?: (reqId: string, opts?: { permissionMode?: string; answers?: any[] }) => void
   onDeny?: (reqId: string) => void
   /** 当前权限模式(对齐桌面)。B 子项目渲染下拉控件用。 */
   currentPermission?: string
@@ -559,53 +562,74 @@ export default function ChatPage(props: ChatPageProps) {
     </div>
     </EdgeSwipeBack>
 
-    {/* 批准/权限请求：底部弹出模态（不挤压对话区） */}
-    {currentDialog && (() => {
-      const meta = dialogMeta(currentDialog.dialogKind)
-      const detail = dialogDetail(currentDialog)
-      return (
-        <div className="dialog-overlay" role="dialog" aria-modal="true" aria-label={meta.label}>
-          <div className="dialog-sheet">
-            <div className="dialog-grab" aria-hidden="true" />
-            <div className="dialog-sheet-head">
-              <span className="dialog-kind-badge">{meta.icon}</span>
-              <span className="dialog-kind">{meta.label}</span>
-            </div>
-            <div className="dialog-question">
-              {detail.title ? (
-                <>
-                  <div className="dialog-tool-name">{detail.title}</div>
-                  {detail.desc && <div className="dialog-tool-desc">{detail.desc}</div>}
-                </>
-              ) : (
-                meta.question
-              )}
-            </div>
-            {detail.inputLines && (
-              <div className="dialog-tool-input">
-                {detail.inputLines.map((line, i) => (
-                  <div className="dialog-input-line mono" key={i}>{line}</div>
-                ))}
+    {/* 批准/权限请求：底部弹出模态（不挤压对话区）。
+        按 dialogKind 分流：
+          - ask_user_question → AskQuestionSheet（逐步向导式问答，对齐桌面 AnswerPanel）
+          - plan_proposed     → PlanSheet（计划文本 + 权限模式二选一，对齐桌面 PlanCard）
+          - permission_request / 未知 → 现有「拒绝/批准」授权确认框 */}
+    {currentDialog && currentDialog.dialogKind === 'ask_user_question' && (
+      <AskQuestionSheet
+        dialog={currentDialog}
+        onSubmit={(reqId, answers) => onApprove?.(reqId, { answers })}
+        onCancel={(reqId) => onDeny?.(reqId)}
+      />
+    )}
+    {currentDialog && currentDialog.dialogKind === 'plan_proposed' && (
+      <PlanSheet
+        dialog={currentDialog}
+        onApprove={(reqId, permissionMode) => onApprove?.(reqId, { permissionMode })}
+        onDeny={(reqId) => onDeny?.(reqId)}
+      />
+    )}
+    {currentDialog
+      && currentDialog.dialogKind !== 'ask_user_question'
+      && currentDialog.dialogKind !== 'plan_proposed'
+      && (() => {
+        const meta = dialogMeta(currentDialog.dialogKind)
+        const detail = dialogDetail(currentDialog)
+        return (
+          <div className="dialog-overlay" role="dialog" aria-modal="true" aria-label={meta.label}>
+            <div className="dialog-sheet">
+              <div className="dialog-grab" aria-hidden="true" />
+              <div className="dialog-sheet-head">
+                <span className="dialog-kind-badge">{meta.icon}</span>
+                <span className="dialog-kind">{meta.label}</span>
               </div>
-            )}
-            <div className="dialog-actions">
-              <button
-                className="dialog-btn deny"
-                onClick={() => onDeny?.(currentDialog.reqId)}
-              >
-                拒绝
-              </button>
-              <button
-                className="dialog-btn approve"
-                onClick={() => onApprove?.(currentDialog.reqId)}
-              >
-                批准
-              </button>
+              <div className="dialog-question">
+                {detail.title ? (
+                  <>
+                    <div className="dialog-tool-name">{detail.title}</div>
+                    {detail.desc && <div className="dialog-tool-desc">{detail.desc}</div>}
+                  </>
+                ) : (
+                  meta.question
+                )}
+              </div>
+              {detail.inputLines && (
+                <div className="dialog-tool-input">
+                  {detail.inputLines.map((line, i) => (
+                    <div className="dialog-input-line mono" key={i}>{line}</div>
+                  ))}
+                </div>
+              )}
+              <div className="dialog-actions">
+                <button
+                  className="dialog-btn deny"
+                  onClick={() => onDeny?.(currentDialog.reqId)}
+                >
+                  拒绝
+                </button>
+                <button
+                  className="dialog-btn approve"
+                  onClick={() => onApprove?.(currentDialog.reqId)}
+                >
+                  批准
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )
-    })()}
+        )
+      })()}
     </>
   )
 }

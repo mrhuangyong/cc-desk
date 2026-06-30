@@ -30,12 +30,26 @@ describe('buildDialogResult - approve: plan_proposed', () => {
     expect(r.result?.permissionMode).toBe(DEFAULT_PLAN_PERMISSION_MODE)
     expect(DEFAULT_PLAN_PERMISSION_MODE).toBe('自动编辑')
   })
+
+  it('批准 → 透传 opts.permissionMode（用户选定完全访问）', () => {
+    const r = buildDialogResult('plan_proposed', 'approve', { permissionMode: '完全访问' })
+    expect(r.behavior).toBe('completed')
+    expect(r.result?.permissionMode).toBe('完全访问')
+  })
 })
 
 describe('buildDialogResult - approve: ask_user_question', () => {
-  it('批准 → cancelled（UI 无答案输入框的遗留缺口，避免模型卡死）', () => {
+  it('批准 → completed + result.answers（透传用户答案，不再 cancelled）', () => {
+    const answers = [{ questionIndex: 0, selected: { index: 1, label: 'x' } }]
+    const r = buildDialogResult('ask_user_question', 'approve', { answers })
+    expect(r.behavior).toBe('completed')
+    expect(r.result?.answers).toEqual(answers)
+  })
+
+  it('批准 → 未传 answers 时退化为空数组（AskQuestionSheet 必传，此为兜底）', () => {
     const r = buildDialogResult('ask_user_question', 'approve')
-    expect(r.behavior).toBe('cancelled')
+    expect(r.behavior).toBe('completed')
+    expect(r.result?.answers).toEqual([])
   })
 })
 

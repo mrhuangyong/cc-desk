@@ -288,15 +288,15 @@ describe('ChatPage - 交互', () => {
   })
 })
 
-describe('ChatPage - 批准卡片', () => {
+describe('ChatPage - 批准卡片（permission_request 授权框）', () => {
   const dialog: DialogRequest = {
     reqId: 'r1',
     localSessionId: 's1',
-    dialogKind: 'plan_proposed',
-    payload: { question: '是否授权?' },
+    dialogKind: 'permission_request',
+    payload: { toolName: 'Write', displayName: '写文件', input: { file_path: '/a/b.txt' } },
   }
 
-  it('有 current dialog 时展示批准卡片', () => {
+  it('permission_request 时展示授权确认框（拒绝/批准）', () => {
     render(
       <ChatPage
         title="t"
@@ -310,12 +310,12 @@ describe('ChatPage - 批准卡片', () => {
         currentDialog={dialog}
       />,
     )
-    expect(screen.getByText('是否批准此计划？')).toBeInTheDocument()
+    expect(screen.getByText('写文件')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '批准' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '拒绝' })).toBeInTheDocument()
   })
 
-  it('点批准触发 onApprove(reqId)', () => {
+  it('点批准触发 onApprove(reqId)（无额外 opts）', () => {
     const onApprove = vi.fn()
     render(
       <ChatPage
@@ -353,6 +353,164 @@ describe('ChatPage - 批准卡片', () => {
     )
     fireEvent.click(screen.getByRole('button', { name: '拒绝' }))
     expect(onDeny).toHaveBeenCalledWith('r1')
+  })
+})
+
+describe('ChatPage - AskQuestionSheet（ask_user_question 问答向导）', () => {
+  const dialog: DialogRequest = {
+    reqId: 'a1',
+    localSessionId: 's1',
+    dialogKind: 'ask_user_question',
+    payload: {
+      questions: [
+        {
+          question: '用哪个库？',
+          header: '依赖',
+          options: [{ label: 'lodash', description: '工具函数' }, { label: 'ramda' }],
+        },
+      ],
+    },
+  }
+
+  it('ask_user_question 时渲染问题文本与选项', () => {
+    render(
+      <ChatPage
+        title="t"
+        messages={[]}
+        running={false}
+        inputValue=""
+        onInputChange={() => {}}
+        onSend={() => {}}
+        onInterrupt={() => {}}
+        onBack={() => {}}
+        currentDialog={dialog}
+        onApprove={() => {}}
+        onDeny={() => {}}
+      />,
+    )
+    expect(screen.getByText('用哪个库？')).toBeInTheDocument()
+    expect(screen.getByText('lodash')).toBeInTheDocument()
+    expect(screen.getByText('ramda')).toBeInTheDocument()
+  })
+
+  it('选中选项后点提交 → onApprove(reqId, {answers})', () => {
+    const onApprove = vi.fn()
+    render(
+      <ChatPage
+        title="t"
+        messages={[]}
+        running={false}
+        inputValue=""
+        onInputChange={() => {}}
+        onSend={() => {}}
+        onInterrupt={() => {}}
+        onBack={() => {}}
+        currentDialog={dialog}
+        onApprove={onApprove}
+        onDeny={() => {}}
+      />,
+    )
+    fireEvent.click(screen.getByText('lodash'))
+    fireEvent.click(screen.getByRole('button', { name: /提交/ }))
+    expect(onApprove).toHaveBeenCalledWith('a1', {
+      answers: [{ questionIndex: 0, selected: { index: 0, label: 'lodash' } }],
+    })
+  })
+
+  it('点取消按钮 → onDeny(reqId)', () => {
+    const onDeny = vi.fn()
+    render(
+      <ChatPage
+        title="t"
+        messages={[]}
+        running={false}
+        inputValue=""
+        onInputChange={() => {}}
+        onSend={() => {}}
+        onInterrupt={() => {}}
+        onBack={() => {}}
+        currentDialog={dialog}
+        onApprove={() => {}}
+        onDeny={onDeny}
+      />,
+    )
+    fireEvent.click(screen.getByLabelText('取消'))
+    expect(onDeny).toHaveBeenCalledWith('a1')
+  })
+})
+
+describe('ChatPage - PlanSheet（plan_proposed 计划批准）', () => {
+  const dialog: DialogRequest = {
+    reqId: 'p1',
+    localSessionId: 's1',
+    dialogKind: 'plan_proposed',
+    payload: { plan: '第一步：**重构** 入口\n第二步：加测试' },
+  }
+
+  it('plan_proposed 时渲染计划文本（markdown 行内）', () => {
+    render(
+      <ChatPage
+        title="t"
+        messages={[]}
+        running={false}
+        inputValue=""
+        onInputChange={() => {}}
+        onSend={() => {}}
+        onInterrupt={() => {}}
+        onBack={() => {}}
+        currentDialog={dialog}
+        onApprove={() => {}}
+        onDeny={() => {}}
+      />,
+    )
+    // 粗体渲染：**重构** → strong
+    expect(screen.getByText('重构')).toBeInTheDocument()
+    // 权限模式两选项
+    expect(screen.getByText('自动编辑')).toBeInTheDocument()
+    expect(screen.getByText('完全访问')).toBeInTheDocument()
+  })
+
+  it('点批准 → onApprove(reqId, {permissionMode})（默认自动编辑）', () => {
+    const onApprove = vi.fn()
+    render(
+      <ChatPage
+        title="t"
+        messages={[]}
+        running={false}
+        inputValue=""
+        onInputChange={() => {}}
+        onSend={() => {}}
+        onInterrupt={() => {}}
+        onBack={() => {}}
+        currentDialog={dialog}
+        onApprove={onApprove}
+        onDeny={() => {}}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '批准' }))
+    expect(onApprove).toHaveBeenCalledWith('p1', { permissionMode: '自动编辑' })
+  })
+
+  it('选「完全访问」后批准 → onApprove(reqId, {permissionMode:"完全访问"})', () => {
+    const onApprove = vi.fn()
+    render(
+      <ChatPage
+        title="t"
+        messages={[]}
+        running={false}
+        inputValue=""
+        onInputChange={() => {}}
+        onSend={() => {}}
+        onInterrupt={() => {}}
+        onBack={() => {}}
+        currentDialog={dialog}
+        onApprove={onApprove}
+        onDeny={() => {}}
+      />,
+    )
+    fireEvent.click(screen.getByText('完全访问'))
+    fireEvent.click(screen.getByRole('button', { name: '批准' }))
+    expect(onApprove).toHaveBeenCalledWith('p1', { permissionMode: '完全访问' })
   })
 })
 

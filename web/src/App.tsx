@@ -371,7 +371,7 @@ function RemoteShell({
             chat.reset()
           }}
           currentDialog={dialog.current}
-          onApprove={(reqId) => void dialog.approve(reqId)}
+          onApprove={(reqId, opts) => void dialog.approve(reqId, opts)}
           onDeny={(reqId) => void dialog.deny(reqId)}
           currentPermission={currentPermission}
           currentThinking={currentThinking}
