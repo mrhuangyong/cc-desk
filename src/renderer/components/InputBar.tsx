@@ -264,9 +264,25 @@ export function InputBar() {
         clearLocalDraft()
         return
       }
-      // set: 记 goal + 立即把条件作为 prompt 发给 Claude 启动第一轮。
-      // 不 return —— 让下方 dispatch SEND_MESSAGE_WITH_DRAFT + send 走完(条件文本作为 prompt)。
+      // set: 记 goal + 立即把【条件文本】(不含 /goal 前缀)作为 prompt 发给 Claude 启动第一轮。
+      // 官方语义:条件本身作为 directive。不能 fall-through 到下方通用流(那条用 prompt,含 /goal 前缀)。
       dispatch({ type: 'SET_GOAL', sessionId: state.activeSessionId, condition: goalCmd.condition })
+      const goalClaudeSessionId = state.claudeSessionMap?.[state.activeSessionId]
+      const goalCwd = project?.path || state.settings?.cwd || undefined
+      dispatch({ type: 'SEND_MESSAGE_WITH_DRAFT', doc: draftDoc, attachments: draftAttachments })
+      dispatch({ type: 'STREAM_START', sessionId: state.activeSessionId })
+      window.api?.claude?.send({
+        prompt: buildPromptWithAttachments(goalCmd.condition, draftAttachments),
+        images: collectImages(draftAttachments),
+        localSessionId: state.activeSessionId,
+        sessionId: goalClaudeSessionId || undefined,
+        cwd: goalCwd,
+        permission,
+        thinking,
+        extraDirs: activeSession?.extraDirs,
+      })
+      clearLocalDraft()
+      return
     }
     const hostBuiltin = allSlashItems.find(
       it => it.kind === 'builtin' && it.builtinAction
