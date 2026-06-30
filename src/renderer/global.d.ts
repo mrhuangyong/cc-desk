@@ -40,6 +40,11 @@ interface ClaudeAPI {
   setPermissionMode(opts: { localSessionId: string; permission: string }): Promise<void>
   contextUsage(localSessionId: string): Promise<any>
   onContextUsage(cb: (data: any) => void): (() => void) | undefined
+  // /goal: set/clear 同步主进程 goalStore;evaluated/achieved 下行通知。
+  setGoal(lsid: string, condition: string): Promise<void>
+  clearGoal(lsid: string): Promise<void>
+  onGoalEvaluated(cb: (data: any) => void): void
+  onGoalAchieved(cb: (data: any) => void): void
   removeAllListeners(): void
 }
 

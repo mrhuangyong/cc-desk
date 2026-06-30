@@ -51,8 +51,13 @@ contextBridge.exposeInMainWorld('api', {
     pendingDialogs: () => ipcRenderer.invoke('claude:pending-dialogs') as Promise<Array<{ reqId: string; localSessionId?: string; dialogKind: string; payload: any; toolUseId?: string }>>,
     setPermissionMode: (opts: { localSessionId: string; permission: string }) => ipcRenderer.invoke('claude:set-permission-mode', opts),
     contextUsage: (localSessionId: string) => ipcRenderer.invoke('claude:context-usage', localSessionId),
+    // /goal: set/clear 同步主进程 goalStore;evaluated/achieved 是 Stop hook 评估结果的下行通知。
+    setGoal: (lsid: string, condition: string) => ipcRenderer.invoke('claude:set-goal', lsid, condition),
+    clearGoal: (lsid: string) => ipcRenderer.invoke('claude:clear-goal', lsid),
+    onGoalEvaluated: (cb: (data: any) => void) => { ipcRenderer.on('claude:goal-evaluated', (_, data) => cb(data)) },
+    onGoalAchieved: (cb: (data: any) => void) => { ipcRenderer.on('claude:goal-achieved', (_, data) => cb(data)) },
     removeAllListeners: () => {
-      ['claude:system', 'claude:delta', 'claude:blocks', 'claude:notice', 'claude:task', 'claude:result', 'claude:error', 'claude:aborted', 'claude:dialog-request', 'claude:dialog-resolved', 'claude:remote-user-message', 'claude:user-message', 'claude:context-usage', 'claude:backend-task', 'claude:builtin-result', 'claude:subagent-output', 'claude:notification', 'update:state']
+      ['claude:system', 'claude:delta', 'claude:blocks', 'claude:notice', 'claude:task', 'claude:result', 'claude:error', 'claude:aborted', 'claude:dialog-request', 'claude:dialog-resolved', 'claude:remote-user-message', 'claude:user-message', 'claude:context-usage', 'claude:backend-task', 'claude:builtin-result', 'claude:subagent-output', 'claude:notification', 'claude:goal-evaluated', 'claude:goal-achieved', 'update:state']
         .forEach(ch => ipcRenderer.removeAllListeners(ch))
     },
   },

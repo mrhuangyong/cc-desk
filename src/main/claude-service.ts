@@ -86,9 +86,26 @@ export class ClaudeService {
   // 多次 canUseTool → 重复弹同一问题（用户看到的「点确认又弹」）。命中缓存时直接返回上次结果，
   // 不再弹窗。value 缓存 PermissionResult，让重放返回与首次一致的应答（模型行为可预期）。
   private handledBlockingToolUse = new Map<string, Map<string, { behavior: 'allow'; updatedInput: Record<string, unknown>; updatedPermissions?: any[]; toolUseID?: string } | { behavior: 'deny'; message: string; toolUseID?: string }>>()
+  // /goal: 每个 session 的当前目标条件(session 级,Stop hook 据此评估)。
+  // status='active' 时 Stop hook 评估;否则 hook no-op。一个 session 一个 goal。
+  private goalStore = new Map<string, { condition: string; status: 'active' | 'achieved' }>()
+  // goal 评估轮数(Stop hook 每评估一次 +1,IPC 下发用于状态展示)
+  private goalTurns = new Map<string, number>()
 
   setManager(m: SessionQueryManager): void { this.manager = m }
   setRegistry(r: BackendTaskRegistry): void { this.registry = r }
+
+  /** 渲染端 SET_GOAL 时经 IPC 调用:记录条件 + 重置轮数,Stop hook 据此激活评估。 */
+  setGoal(lsid: string, condition: string): void {
+    this.goalStore.set(lsid, { condition, status: 'active' })
+    this.goalTurns.set(lsid, 0)
+  }
+
+  /** 渲染端 CLEAR_GOAL 时经 IPC 调用:清除 goal,Stop hook 不再评估。 */
+  clearGoal(lsid: string): void {
+    this.goalStore.delete(lsid)
+    this.goalTurns.delete(lsid)
+  }
 
   /** 渲染端回答后经 claude:dialog-response IPC 调用，结算挂起的 dialog。 */
   resolveDialog(reqId: string, result: any): void {
@@ -478,6 +495,36 @@ export class ClaudeService {
                   permissionDecision: 'ask' as const,
                 },
               })],
+            }],
+            // /goal: 每轮结束评估条件。未满足返 additionalContext → SDK 自动续轮;
+            // 满足 → IPC 通知渲染端清除,不返 context(真正停)。
+            Stop: [{
+              hooks: [async (input: any) => {
+                const goal = this.goalStore.get(lsid)
+                if (!goal || goal.status !== 'active') return {}  // 无 goal: 正常停
+                // stop_hook_active 兜底:SDK 在"续轮后的下一次 stop"置 true。
+                // 若 goal 已被清除(用户 clear)而 stop_hook_active 仍 true,避免无限续。
+                if (input.stop_hook_active && !this.goalStore.has(lsid)) return {}
+                const turns = (this.goalTurns.get(lsid) ?? 0) + 1
+                this.goalTurns.set(lsid, turns)
+                const verdict = await this.evaluateGoal(
+                  goal.condition,
+                  typeof input.last_assistant_message === 'string' ? input.last_assistant_message : '',
+                )
+                webContents.send('claude:goal-evaluated', { localSessionId: lsid, reason: verdict.reason, turns })
+                if (verdict.met) {
+                  this.goalStore.delete(lsid)  // 清除,防续轮后又进 hook
+                  webContents.send('claude:goal-achieved', { localSessionId: lsid })
+                  return {}  // 不返 context → SDK 真正停
+                }
+                // 未达成:返 context → SDK 自动开下一轮(官方机制)
+                return {
+                  hookSpecificOutput: {
+                    hookEventName: 'Stop' as const,
+                    additionalContext: `目标尚未达成:${verdict.reason}。请继续推进。`,
+                  },
+                }
+              }],
             }],
           },
         },

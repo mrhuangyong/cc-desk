@@ -274,6 +274,24 @@ export function App() {
     return () => { unsubscribe?.() }
   }, [dispatch])
 
+  // /goal: Stop hook 每轮评估后下发 reason/turns,联动 reducer 更新目标卡片。
+  useEffect(() => {
+    window.api?.claude?.onGoalEvaluated?.((data: any) => {
+      const sid = data?.localSessionId
+      if (!sid) return
+      dispatch({ type: 'GOAL_EVALUATED', sessionId: sid, reason: data.reason, turns: data.turns })
+    })
+  }, [dispatch])
+
+  // /goal: 评估判定达成时下发,联动 reducer 标记 status='achieved'。
+  useEffect(() => {
+    window.api?.claude?.onGoalAchieved?.((data: any) => {
+      const sid = data?.localSessionId
+      if (!sid) return
+      dispatch({ type: 'GOAL_ACHIEVED', sessionId: sid })
+    })
+  }, [dispatch])
+
   // 应用更新状态：订阅主进程状态机推送（单次挂载，cleanup 取消订阅防泄漏）
   useEffect(() => {
     const unsubscribe = window.api?.update?.onState?.((status) => {

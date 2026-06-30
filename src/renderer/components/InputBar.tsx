@@ -260,6 +260,7 @@ export function InputBar() {
       }
       if (goalCmd.kind === 'clear') {
         dispatch({ type: 'CLEAR_GOAL', sessionId: state.activeSessionId })
+        window.api?.claude?.clearGoal?.(state.activeSessionId)  // 同步主进程 goalStore,Stop hook 不再评估
         window.api?.claude?.stop(state.activeSessionId)
         clearLocalDraft()
         return
@@ -267,6 +268,7 @@ export function InputBar() {
       // set: 记 goal + 立即把【条件文本】(不含 /goal 前缀)作为 prompt 发给 Claude 启动第一轮。
       // 官方语义:条件本身作为 directive。不能 fall-through 到下方通用流(那条用 prompt,含 /goal 前缀)。
       dispatch({ type: 'SET_GOAL', sessionId: state.activeSessionId, condition: goalCmd.condition })
+      window.api?.claude?.setGoal?.(state.activeSessionId, goalCmd.condition)  // 同步主进程 goalStore,激活 Stop hook 评估
       const goalClaudeSessionId = state.claudeSessionMap?.[state.activeSessionId]
       const goalCwd = project?.path || state.settings?.cwd || undefined
       dispatch({ type: 'SEND_MESSAGE_WITH_DRAFT', doc: draftDoc, attachments: draftAttachments })

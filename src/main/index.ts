@@ -647,6 +647,9 @@ function registerIpcHandlers(): void {
   })
   // 查询当前会话上下文用量（SDK getContextUsage control request），供输入框进度环展示。
   ipcMain.handle('claude:context-usage', (_e, localSessionId: string) => claude.getContextUsage(localSessionId))
+  // /goal: 渲染端 set/clear 时同步主进程 goalStore，Stop hook 据此评估续轮。
+  ipcMain.handle('claude:set-goal', (_e, lsid: string, condition: string) => claude.setGoal(lsid, condition))
+  ipcMain.handle('claude:clear-goal', (_e, lsid: string) => claude.clearGoal(lsid))
   ipcMain.handle('cc:builtin:compact', (_e, localSessionId: string) => claude.compactSession(localSessionId, getActiveWin()!.webContents))
   ipcMain.handle('cc:builtin:init', (_e, opts: { cwd: string }) => claude.initProject(opts.cwd, getActiveWin()!.webContents))
   ipcMain.handle('cc:builtin:export', (_e, localSessionId: string) => claude.exportSession(localSessionId, getActiveWin()!.webContents))
