@@ -122,3 +122,9 @@ export type Action =
   | { type: 'REVIEW_CLEAR'; projectId: string }
   // 上下文用量（SDK getContextUsage）：更新指定会话的进度环数据
   | { type: 'SET_CONTEXT_USAGE'; sessionId: string; usage: import('./reducer').ContextUsageInfo | null }
+  // /goal: 会话级目标(Stop hook 每轮评估)
+  | { type: 'SET_GOAL'; sessionId: string; condition: string }
+  | { type: 'CLEAR_GOAL'; sessionId: string }
+  | { type: 'GOAL_EVALUATED'; sessionId: string; reason: string; turns: number }
+  | { type: 'GOAL_ACHIEVED'; sessionId: string }
+  | { type: 'SHOW_GOAL_STATUS'; sessionId: string }

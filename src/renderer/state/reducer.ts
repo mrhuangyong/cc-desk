@@ -63,6 +63,8 @@ export interface AppState {
   // 上下文用量（SDK getContextUsage）：按会话分片，供输入框进度环展示。
   // null/缺失表示尚未查询或会话不存在该数据。
   contextUsageBySession: Record<string, ContextUsageInfo | null>
+  // /goal: 会话级目标条件。Stop hook 每轮评估,未满足续轮、满足清除。
+  goalBySession: Record<string, import('../types').GoalState>
   // 就地编辑：当前正在编辑的消息 id（最后一条用户消息编辑重发）
   editingMessageId: string | null
   // 队列编辑：当前正在编辑的排队消息 id
@@ -1078,6 +1080,47 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'REVIEW_CLEAR': {
       const { [action.projectId]: _gone, ...rest } = state.reviewByProject
       return { ...state, reviewByProject: rest }
+    }
+    case 'SET_GOAL': {
+      const goal = {
+        condition: action.condition.slice(0, 4000),  // 官方 4000 字符上限
+        startedAt: Date.now(),
+        turns: 0,
+        tokensBaseline: 0,
+        lastReason: '',
+        status: 'active' as const,
+      }
+      return { ...state, goalBySession: { ...state.goalBySession, [action.sessionId]: goal } }
+    }
+    case 'GOAL_EVALUATED': {
+      const prev = state.goalBySession[action.sessionId]
+      if (!prev) return state
+      return {
+        ...state,
+        goalBySession: {
+          ...state.goalBySession,
+          [action.sessionId]: { ...prev, turns: action.turns, lastReason: action.reason },
+        },
+      }
+    }
+    case 'GOAL_ACHIEVED': {
+      const prev = state.goalBySession[action.sessionId]
+      if (!prev) return state
+      return {
+        ...state,
+        goalBySession: {
+          ...state.goalBySession,
+          [action.sessionId]: { ...prev, status: 'achieved' as const },
+        },
+      }
+    }
+    case 'CLEAR_GOAL': {
+      const { [action.sessionId]: _g, ...rest } = state.goalBySession
+      return { ...state, goalBySession: rest }
+    }
+    case 'SHOW_GOAL_STATUS': {
+      // UI state: 复用现有机制(Task 7 处理),reducer 此处 no-op
+      return state
     }
     default:
       return state

@@ -342,3 +342,13 @@ export interface ReviewState {
   // 主进程 claude:notice 带 localSessionId:'' 会被消费者丢弃，故由 ReviewState 自管。
   notice: { kind: 'success' | 'error'; text: string } | null
 }
+
+// /goal: 会话级目标条件，Stop hook 每轮评估，未满足续轮、满足清除。
+export interface GoalState {
+  condition: string        // 目标条件文本(<=4000 字符,官方限制)
+  startedAt: number        // 启动时间戳(ms,用于"已运行 Xm")
+  turns: number            // 已评估轮数
+  tokensBaseline: number   // 启动时 token 基线(用于计算花费,首版可记 0)
+  lastReason: string       // 评估器最近一次理由
+  status: 'active' | 'achieved' | 'cleared'
+}

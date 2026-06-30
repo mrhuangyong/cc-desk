@@ -25,7 +25,7 @@ function initialState(): AppState {
     panelFold: { root: false }, panelPosition: { x: 0, y: 0 },
     subagentOutputBySession: {},
     planBySession: {},
-    abortedBySession: {}, contextUsageBySession: {},
+    abortedBySession: {}, contextUsageBySession: {}, goalBySession: {},
     editingMessageId: null, editingQueueId: null,
     updateStatus: { state: 'idle' },
     reviewByProject: {},

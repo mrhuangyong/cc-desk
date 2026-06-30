@@ -37,6 +37,7 @@ function makeInitialState(seedProjects?: Project[]): AppState {
     planBySession: {},
     abortedBySession: {},
     contextUsageBySession: {},
+    goalBySession: {},
     editingMessageId: null, editingQueueId: null,
     updateStatus: { state: 'idle' },
     reviewByProject: {},
