@@ -1004,7 +1004,9 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, planBySession: { ...state.planBySession, [action.sessionId]: null } }
     }
     case 'CLEAR_SESSION_MESSAGES': {
-      return patchSession(state, action.sessionId, { messages: [] })
+      // /clear 联动:开新会话清空时顺带清 goal(官方:/clear 清 goal)
+      const { [action.sessionId]: _goal, ...goalRest } = state.goalBySession
+      return { ...patchSession(state, action.sessionId, { messages: [] }), goalBySession: goalRest }
     }
     case 'SET_SESSION_PERMISSION': {
       return patchSession(state, action.sessionId, { permissionMode: action.permissionMode })

@@ -69,4 +69,19 @@ describe('goal reducer', () => {
     s = reducer(s, { type: 'HIDE_GOAL_CARD' })
     expect(s.goalCardOpen).toBeNull()
   })
+
+  it('CLEAR_SESSION_MESSAGES 联动清 goal 且不影响其他会话 goal', () => {
+    let s = initialState()
+    s = reducer(s, { type: 'SET_GOAL', sessionId: 's1', condition: 'X' })
+    s = reducer(s, { type: 'SET_GOAL', sessionId: 's3', condition: 'Y' })
+    expect(s.goalBySession['s1']).toBeDefined()
+    // /clear s1:应清掉 s1 的 goal,保留 s3
+    s = reducer(s, { type: 'CLEAR_SESSION_MESSAGES', sessionId: 's1' })
+    expect(s.goalBySession['s1']).toBeUndefined()
+    expect(s.goalBySession['s3']).toBeDefined()
+    expect(s.goalBySession['s3'].condition).toBe('Y')
+    // 同时确认 CLEAR_SESSION_MESSAGES 原有行为(清空 messages)未被破坏
+    const sess = s.projects.flatMap(p => p.sessions).find(x => x.id === 's1')!
+    expect(sess.messages).toEqual([])
+  })
 })

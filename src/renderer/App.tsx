@@ -139,6 +139,16 @@ export function App() {
     window.api?.projects.get().then(async snap => {
       if (snap && snap.projects?.length > 0) {
         dispatch({ type: 'HYDRATE', snapshot: snap })
+        // /goal resume:还原未完成(active)的 goal,计数器重置(官方:条件保留,turns/timer 重置)
+        // SET_GOAL 会重置 turns/startedAt;setGoal IPC 同步主进程 goalStore,让该 session 的 Stop hook 重新激活评估
+        const goals = (snap as any).goalBySession || {}
+        for (const [gsid, g] of Object.entries(goals)) {
+          const condition = (g as any)?.condition
+          if (typeof condition === 'string' && condition) {
+            dispatch({ type: 'SET_GOAL', sessionId: gsid, condition })
+            window.api?.claude?.setGoal?.(gsid, condition)
+          }
+        }
       }
       // 无论是否恢复，加载完成后才允许保存，避免空 state 在加载前覆盖磁盘
       hydratedRef.current = true
@@ -211,6 +221,12 @@ export function App() {
         tabsBySession: state.tabsBySession,
         activeTabIdBySession: state.activeTabIdBySession,
         claudeSessionMap: state.claudeSessionMap,
+        // /goal: 只持久化 active 的 goal 条件(achieved/cleared 不还原,官方)
+        goalBySession: Object.fromEntries(
+          Object.entries(state.goalBySession)
+            .filter(([, g]) => g.status === 'active')
+            .map(([k, g]) => [k, { condition: g.condition }])
+        ),
       })
     }, 500)
     return () => {
@@ -222,6 +238,7 @@ export function App() {
     state.tabsBySession,
     state.activeTabIdBySession,
     state.claudeSessionMap,
+    state.goalBySession,
   ])
 
   // 自动归档：监听主进程定时信号，清理陈旧空会话

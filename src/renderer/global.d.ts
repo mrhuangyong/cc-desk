@@ -73,6 +73,8 @@ interface ProjectsSnapshot {
   tabsBySession: Record<string, Tab[]>
   activeTabIdBySession: Record<string, string | null>
   claudeSessionMap: Record<string, string>
+  // /goal: 只持久化 active goal 的条件(achieved/cleared 不还原,官方)
+  goalBySession?: Record<string, { condition: string }>
 }
 
 interface ProjectsAPI {
