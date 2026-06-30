@@ -796,21 +796,35 @@ export interface ModelsPayload {
 
 /** buildModelsPayload 的输入：cc-desk-store 的模型配置子集。 */
 export interface ModelsInput {
-  models: { id: string; sdkModelId: string; enabled?: boolean }[]
+  models: { id: string; sdkModelId: string; providerId?: string; enabled?: boolean }[]
+  /** providers 含 enabled 状态：模型所属 provider 禁用时不下发(否则用户选到永远跑不起来的模型)。 */
+  providers?: { id: string; enabled?: boolean }[]
   activeModelId: string
 }
 
 /**
  * 从 cc-desk-store 配置构造 session.models payload（纯函数，可单测）。
- * 只取 enabled 的模型；activeModelId 原样回传（手机端据此高亮当前）。
- * thinking 由调用方注入（桌面端当前没有全局 thinking 配置，默认 medium，后续可扩展）。
+ *
+ * 模型过滤:model.enabled !== false 且其 provider enabled。provider 禁用时模型不下发
+ * (用户选了也跑不起来——resolveActiveProviderModel 会回退到别的 provider)。
+ *
+ * activeModelId 校正:若 cfg.activeModelId 指向的模型未通过过滤(如 provider 被禁用),
+ * ClaudeService.send 实际会经 resolveActiveProviderModel 回退到首个 enabled provider 的模型。
+ * 下发前在此对齐:activeModelId 不在过滤后列表时,取列表首项,保证「显示 = 实际使用的模型」。
+ *
+ * thinking 由调用方注入。
  */
 export function buildModelsPayload(
   input: ModelsInput,
   thinking: 'low' | 'medium' | 'high' = 'medium',
 ): ModelsPayload {
+  const enabledProviderIds = new Set((input.providers ?? []).filter((p) => p.enabled !== false).map((p) => p.id))
   const models: ModelOption[] = (input.models ?? [])
     .filter((m) => m.enabled !== false)
+    .filter((m) => !m.providerId || enabledProviderIds.has(m.providerId))
     .map((m) => ({ id: m.id, name: m.sdkModelId }))
-  return { models, activeModelId: input.activeModelId ?? '', thinking }
+  // activeModelId 校正:不在过滤后列表(失效)→ 取首项(对齐 resolveActiveProviderModel 的回退)
+  const listed = input.activeModelId && models.some((m) => m.id === input.activeModelId)
+  const activeModelId = listed ? input.activeModelId : (models[0]?.id ?? '')
+  return { models, activeModelId, thinking }
 }

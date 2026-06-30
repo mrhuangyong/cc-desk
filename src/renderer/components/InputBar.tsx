@@ -157,11 +157,19 @@ export function InputBar() {
   // 模型列表来自 cc-desk 多供应商配置（仅 enabled 模型），本地 state 持有
   // contextLength 用于上下文进度环的 maxTokens 兜底（SDK getContextUsage 的 maxTokens 缺失时）。
   const [modelCfg, setModelCfg] = useState<{ models: { id: string; name: string; contextLength?: string }[]; activeModelId: string } | null>(null)
-  useEffect(() => {
+  // 拉取模型配置(封装成函数,供初始加载 + 模型变更事件复用)
+  const refreshModelCfg = () => {
     window.api?.ccDesk.model.get().then(c => setModelCfg({
       models: c.models.filter((m: any) => m.enabled).map((m: any) => ({ id: m.id, name: m.sdkModelId, contextLength: m.contextLength })),
       activeModelId: c.activeModelId,
     }))
+  }
+  useEffect(() => { refreshModelCfg() }, [])
+  // 订阅模型变更(桌面/手机任一端切换时主进程广播 cc-desk:model:changed)→ 刷新本地 modelCfg。
+  // 否则手机切模型时桌面 InputBar 仍显示旧模型(不同步)。
+  useEffect(() => {
+    const unsubscribe = window.api?.ccDesk?.model?.onChange?.(() => refreshModelCfg())
+    return () => { unsubscribe?.() }
   }, [])
 
   const [openMenu, setOpenMenu] = useState<MenuId | null>(null)

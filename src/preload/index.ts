@@ -60,7 +60,7 @@ contextBridge.exposeInMainWorld('api', {
     // 让桌面渲染端同步 SET_GOAL/CLEAR_GOAL（condition=null 表示清除）。
     onGoalSetByRemote: (cb: (data: any) => void) => { ipcRenderer.on('claude:goal-set-by-remote', (_, data) => cb(data)) },
     removeAllListeners: () => {
-      ['claude:system', 'claude:delta', 'claude:blocks', 'claude:notice', 'claude:task', 'claude:result', 'claude:error', 'claude:aborted', 'claude:dialog-request', 'claude:dialog-resolved', 'claude:remote-user-message', 'claude:user-message', 'claude:context-usage', 'claude:backend-task', 'claude:builtin-result', 'claude:subagent-output', 'claude:notification', 'claude:goal-evaluated', 'claude:goal-achieved', 'claude:goal-set-by-remote', 'update:state']
+      ['claude:system', 'claude:delta', 'claude:blocks', 'claude:notice', 'claude:task', 'claude:result', 'claude:error', 'claude:aborted', 'claude:dialog-request', 'claude:dialog-resolved', 'claude:remote-user-message', 'claude:user-message', 'claude:context-usage', 'claude:backend-task', 'claude:builtin-result', 'claude:subagent-output', 'claude:notification', 'claude:goal-evaluated', 'claude:goal-achieved', 'claude:goal-set-by-remote', 'cc-desk:model:changed', 'update:state']
         .forEach(ch => ipcRenderer.removeAllListeners(ch))
     },
   },
@@ -72,6 +72,12 @@ contextBridge.exposeInMainWorld('api', {
     model: {
       get: () => ipcRenderer.invoke('cc-desk:model:get'),
       save: (patch: any) => ipcRenderer.invoke('cc-desk:model:save', patch),
+      // 模型配置变更(桌面/手机任一端切换)时主进程广播,renderer 据此刷新本地 modelCfg。
+      onChange: (cb: () => void) => {
+        const handler = () => cb()
+        ipcRenderer.on('cc-desk:model:changed', handler)
+        return () => ipcRenderer.removeListener('cc-desk:model:changed', handler)
+      },
     },
   },
   projects: {

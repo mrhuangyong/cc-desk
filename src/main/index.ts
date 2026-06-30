@@ -112,6 +112,9 @@ const REMOTE_FORWARD_CHANNELS = new Set([
 
 let remoteBridge: RemoteBridge | null = null
 let remoteReplayer: DialogReplayer | null = null
+// startRemoteBridge 内部 pushModels 的引用,提升到模块级供顶层 ipcMain handler 调用
+// (cc-desk:model:save 在 startRemoteBridge 外部,无法直接访问其闭包内的 forwarder)。
+let pushModelsRef: (() => void) | null = null
 /** 原始 webContents.send 的引用，停止 bridge 时还原。 */
 let originalSend: ((channel: string, ...args: any[]) => void) | null = null
 /** 当前已包装 send 的 webContents，用于判断是否需要重新包装（窗口刷新时 webContents 对象不变）。 */
@@ -172,10 +175,18 @@ function startRemoteBridge(cfg: RemoteConfig): void {
       const cfg = getModelProvidersConfig()
       const payload = buildModelsPayload({
         models: cfg.models,
+        providers: cfg.providers,
         activeModelId: cfg.activeModelId,
       })
       forwarder?.sendModels(payload)
     } catch { /* 读配置失败不影响其他逻辑 */ }
+  }
+  pushModelsRef = pushModels // 提升到模块级供顶层 ipcMain handler 调用
+  // 模型配置变更(桌面/手机任一端切换)后:推手机(session.models) + 广播桌面 renderer 刷新 InputBar。
+  // 双向同步:getActiveWin 取顶层窗口(此处可能在内/外层调用,统一用顶层函数)。
+  const notifyModelChanged = () => {
+    pushModels()
+    try { getActiveWin()?.webContents.send('cc-desk:model:changed') } catch { /* webContents 可能已销毁 */ }
   }
 
   // 远程写操作（新建/归档）改变了 projects.json，但 renderer reducer 不知情
@@ -227,8 +238,8 @@ function startRemoteBridge(cfg: RemoteConfig): void {
     onSetActiveModel: (modelId) => {
       try {
         saveModelProvidersConfig({ activeModelId: modelId })
-        // 推一次模型列表让手机确认切换成功
-        pushModels()
+        // 推手机确认 + 广播桌面 renderer 刷新(双向同步)
+        notifyModelChanged()
       } catch {
         // 保存失败不抛异常，手机端超时/缺省处理
       }
@@ -701,7 +712,12 @@ function registerIpcHandlers(): void {
 
   // cc-desk 自有配置（模型供应商，存 ~/.cc-desk/config.json）
   ipcMain.handle('cc-desk:model:get', () => getModelProvidersConfig())
-  ipcMain.handle('cc-desk:model:save', (_e, patch) => saveModelProvidersConfig(patch))
+  // 桌面切模型:存盘后通知两端同步(推手机 session.models + 广播桌面 renderer 刷新 InputBar)
+  ipcMain.handle('cc-desk:model:save', (_e, patch) => {
+    saveModelProvidersConfig(patch)
+    pushModelsRef?.()
+    try { getActiveWin()?.webContents.send('cc-desk:model:changed') } catch { /* webContents 可能已销毁 */ }
+  })
 
   // 工作区快照（projects 含会话/消息，独立于 settings 存储）
   ipcMain.handle('projects:get', () => getProjectsSnapshot())

@@ -62,6 +62,8 @@ interface CcDeskModelAPI {
     activeModelId: string
   }>
   save(patch: { providers?: ModelProvider[]; models?: ModelItem[]; modelRoleMap?: Record<string, string>; activeModelId?: string }): Promise<void>
+  /** 模型配置变更(桌面/手机任一端切换)时订阅刷新。返回取消订阅函数。 */
+  onChange(cb: () => void): () => void
 }
 interface CcDeskAPI {
   model: CcDeskModelAPI

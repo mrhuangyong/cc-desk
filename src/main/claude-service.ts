@@ -86,6 +86,10 @@ export class ClaudeService {
   // 多次 canUseTool → 重复弹同一问题（用户看到的「点确认又弹」）。命中缓存时直接返回上次结果，
   // 不再弹窗。value 缓存 PermissionResult，让重放返回与首次一致的应答（模型行为可预期）。
   private handledBlockingToolUse = new Map<string, Map<string, { behavior: 'allow'; updatedInput: Record<string, unknown>; updatedPermissions?: any[]; toolUseID?: string } | { behavior: 'deny'; message: string; toolUseID?: string }>>()
+  // 最近一轮 assistant 的纯文本(按 localSessionId 缓存)。ExitPlanMode 的 plan 文本不在
+  // input(SDK ExitPlanModeInput 无 plan 字段),而在本轮 assistant 的 text 块里(模型先写
+  // 计划再调 ExitPlanMode)。canUseTool 拿不到 assistant 文本,故在此缓存供其回退读取。
+  private lastAssistantText = new Map<string, string>()
   // /goal: 每个 session 的当前目标条件(session 级,Stop hook 据此评估)。
   // status='active' 时 Stop hook 评估;否则 hook no-op。一个 session 一个 goal。
   private goalStore = new Map<string, { condition: string; status: 'active' | 'achieved' }>()
@@ -305,7 +309,11 @@ export class ClaudeService {
       return r
     }
     if (toolName === 'ExitPlanMode') {
-      const plan = typeof input.plan === 'string' ? input.plan : ''
+      // SDK ExitPlanModeInput 无 plan 字段(只有 allowedPrompts);plan 文本在本轮 assistant
+      // 的 text 块里(模型先写计划再调 ExitPlanMode),已由 forwardEvent case 'assistant' 缓存。
+      // 优先 input.plan(防御未来 SDK 改版),空则回退缓存,再空则空串。
+      const inputPlan = typeof input.plan === 'string' ? input.plan : ''
+      const plan = inputPlan || this.lastAssistantText.get(localSessionId) || ''
       const allowedPrompts = Array.isArray(input.allowedPrompts) ? input.allowedPrompts : undefined
       let result: any
       try {
@@ -706,6 +714,16 @@ export class ClaudeService {
           }
         }
         webContents.send('claude:blocks', { localSessionId: lsid, op: 'assistant_blocks', blocks, uuid: message.uuid })
+        // 缓存本轮 assistant 纯文本(ExitPlanMode 的 plan 回退源:模型先写计划再调 ExitPlanMode)。
+        // subagent 消息(subagent_type)不缓存(其文本是子代理内部输出,非主流计划)。
+        if (!message.subagent_type) {
+          const text = (Array.isArray(aContent) ? aContent : [])
+            .filter((b: any) => b?.type === 'text' && typeof b.text === 'string')
+            .map((b: any) => b.text)
+            .join('')
+            .trim()
+          if (text) this.lastAssistantText.set(lsid, text)
+        }
 
         // AskUserQuestion / ExitPlanMode 的用户作答已由 canUseTool 统一处理（PreToolUse hook
         // 返回 'ask' → CLI 发 can_use_tool → handlePermissionRequest 在 canUseTool 内 await 弹窗

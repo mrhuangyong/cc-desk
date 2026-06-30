@@ -270,13 +270,18 @@ export function useSessionChat(opts: UseSessionChatOptions): UseSessionChatHandl
           for (const raw of blocks) {
             const b = classifyBlock(raw)
             if (!b) continue
+            // [diag] Task 假完成排查:打印每个 tool_use/tool_result 的关键字段
+            console.warn('[diag-block]', op, b.kind, 'id=', b.id, 'name=', b.name, 'status=', b.status, b.kind === 'tool_result' ? `isError=${b.result?.isError}` : '')
             if (needNew) { working = [...working, mkMessage()]; needNew = false }
             const cur = working.length - 1
             const msg = working[cur] as ChatMessage
             if (b.kind === 'tool_result' && b.id) {
               // tool_result 合并进同 id 的 tool_use(更新 result/status)。孤儿(无匹配 tool_use,
               // 如 AskUserQuestion/ExitPlanMode)静默丢弃——mergeToolResult 找不到时返回原 content。
+              const before = msg.content.find((x) => x.kind === 'tool_use' && x.id === b.id)?.status
               const merged = mergeToolResult(msg.content, b.id, b.result!)
+              const after = merged.find((x) => x.kind === 'tool_use' && x.id === b.id)?.status
+              console.warn('[diag-merge] tool_result', b.id, `status ${before} → ${after}`)
               working = [...working.slice(0, cur), { ...msg, content: merged }, ...working.slice(cur + 1)]
             } else if (b.kind === 'tool_result') {
               continue // tool_result 无 id(异常):丢弃
