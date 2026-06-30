@@ -37,3 +37,4 @@ export type BuiltinAction =
   | { type: 'resume' }
   | { type: 'run-review' }
   | { type: 'insert-text' }
+  | { type: 'goal' }  // /goal 三态命令:set/check/clear(引用型,选中插 /goal 文本,发送时由 InputBar 解析)

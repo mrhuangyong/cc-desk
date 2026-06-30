@@ -5,6 +5,7 @@ import { useI18n } from '../i18n/useI18n'
 import { AttachmentChip } from './AttachmentChip'
 import { PromptEditor } from '../editor/PromptEditor'
 import { serializeForPrompt } from '../editor/serialize'
+import { parseGoalCommand } from '../editor/goalParse'
 import { runBuiltin } from './builtinCommands'
 import { Tooltip } from './Tooltip'
 import { ContextUsageRing, parseContextLength } from './ContextUsageRing'
@@ -248,6 +249,25 @@ export function InputBar() {
     // （探索项目 + 写 CLAUDE.md）。早期实现把 /init 也走宿主 runBuiltin（runSideQuery 旁路生成），
     // 经代理卡死且偏离原生行为，故 /init 改回普通发送。
     const trimmed = prompt.trim()
+    // /goal 三态:set 立即发条件启动 + 记 goal;check 弹状态卡片;clear 清 goal + 中断。
+    // 放在 hostBuiltin 之前:/goal 带参数,需前缀解析而非精确匹配。
+    const goalCmd = parseGoalCommand(trimmed)
+    if (goalCmd) {
+      if (goalCmd.kind === 'check') {
+        dispatch({ type: 'SHOW_GOAL_STATUS', sessionId: state.activeSessionId })
+        clearLocalDraft()
+        return
+      }
+      if (goalCmd.kind === 'clear') {
+        dispatch({ type: 'CLEAR_GOAL', sessionId: state.activeSessionId })
+        window.api?.claude?.stop(state.activeSessionId)
+        clearLocalDraft()
+        return
+      }
+      // set: 记 goal + 立即把条件作为 prompt 发给 Claude 启动第一轮。
+      // 不 return —— 让下方 dispatch SEND_MESSAGE_WITH_DRAFT + send 走完(条件文本作为 prompt)。
+      dispatch({ type: 'SET_GOAL', sessionId: state.activeSessionId, condition: goalCmd.condition })
+    }
     const hostBuiltin = allSlashItems.find(
       it => it.kind === 'builtin' && it.builtinAction
         && ['export-session', 'add-dir'].includes(it.builtinAction.type)

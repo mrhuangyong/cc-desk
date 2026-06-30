@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { BUILTIN_COMMANDS, PERMISSION_MODE_MAP, getPermissionMode } from '../src/main/builtin-commands'
 
 describe('BUILTIN_COMMANDS', () => {
-  it('包含 17 条命令，每条有 id/name/desc/builtinAction', () => {
-    expect(BUILTIN_COMMANDS).toHaveLength(17)
+  it('包含 18 条命令，每条有 id/name/desc/builtinAction', () => {
+    expect(BUILTIN_COMMANDS).toHaveLength(18)
     for (const c of BUILTIN_COMMANDS) {
       expect(c.kind).toBe('builtin')
       expect(c.id).toBeTruthy()
