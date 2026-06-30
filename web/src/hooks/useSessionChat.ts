@@ -23,6 +23,7 @@ import {
   appendDelta,
   appendBlock,
   classifyBlock,
+  mergeToolResult,
 } from '../lib/chat-blocks'
 
 /** 用户消息（与 ChatMessage 区分：role=user，无 blocks/thinking）。 */
@@ -104,6 +105,8 @@ export interface UseSessionChatHandle {
   editAndResend(localSessionId: string, index: number, newText: string): Promise<void>
   /** 排队中的消息文本(queue 模式流式时发送的消息,AI 结束后自动发)。 */
   queue: QueuedMessage[]
+  /** 子代理(Task 工具)输出:按父 Task 的 toolUseId 聚合其内部块,供 Task 卡片展开内嵌显示。 */
+  subagentOutput: Record<string, ChatBlock[]>
 }
 
 /** 从 session.blocks payload 取出 blocks 数组（容错，归一化桌面端 claude:blocks 的三种 op）。
@@ -153,6 +156,10 @@ export function useSessionChat(opts: UseSessionChatOptions): UseSessionChatHandl
   const { send } = opts
   const [messages, setMessages] = useState<AnyMessage[]>([])
   const [running, setRunning] = useState(false)
+  // 子代理(Task 工具)输出:按父 Task 的 toolUseId 聚合其内部块(text/工具)。
+  // 来自 subagent-output 转发的 session.blocks(payload.op=tool_use_start 且带 payload.toolUseId)。
+  // ChatPage 据此在 Task tool_use 展开时内嵌显示子代理过程,不污染主流 blocks。
+  const [subagentOutput, setSubagentOutput] = useState<Record<string, ChatBlock[]>>({})
   // 编辑重发态:正在编辑的 user 消息 index(null=非编辑态)。仅最后一条 user 可编辑。
   const [editingIndex, setEditing] = useState<number | null>(null)
   const [hasMoreHistory, setHasMoreHistory] = useState(false)
@@ -210,6 +217,21 @@ export function useSessionChat(opts: UseSessionChatOptions): UseSessionChatHandl
         return
       }
       if (env.type === 'session.blocks') {
+        // 子代理(Task 工具)过程块分流:subagent-output 转发的信封 payload 带 toolUseId(父 Task id)
+        // 且 op=tool_use_start。这些块是子代理内部的 text/工具,不该进主流(否则污染对话流)。
+        // 归入 subagentOutput[parentToolUseId],Task tool_use 展开时内嵌显示。
+        // 主流 Task tool_use_start 的 payload 无 toolUseId 字段(只有 block),不会误命中。
+        const ep = env.payload as any
+        if (ep?.op === 'tool_use_start' && typeof ep.toolUseId === 'string' && ep.block) {
+          const b = classifyBlock(ep.block)
+          if (b) {
+            setSubagentOutput((prev) => {
+              const arr = prev[ep.toolUseId] ?? []
+              return { ...prev, [ep.toolUseId]: [...arr, b] }
+            })
+          }
+          return
+        }
         setRunning(true)
         const blocks = extractBlocks(env.payload)
         const startNew = finishedRef.current
@@ -244,6 +266,20 @@ export function useSessionChat(opts: UseSessionChatOptions): UseSessionChatHandl
                 { ...msg, text: authoritativeText },
                 ...working.slice(cur + 1),
               ]
+            } else if (b.kind === 'tool_result' && b.id) {
+              // tool_result 合并进同 id 的 tool_use（更新 result/status），不新增独立块。
+              // 对齐桌面 STREAM_TOOL_RESULT。孤儿（无匹配 tool_use，如 AskUserQuestion/ExitPlanMode
+              // 的 tool_use 被桌面过滤）静默丢弃——mergeToolResult 找不到时返回原 blocks。
+              const msg = working[cur] as ChatMessage
+              const merged = mergeToolResult(msg.blocks, b.id, b.result!)
+              working = [
+                ...working.slice(0, cur),
+                { ...msg, blocks: merged },
+                ...working.slice(cur + 1),
+              ]
+            } else if (b.kind === 'tool_result') {
+              // tool_result 无 id（异常 payload）：静默丢弃，避免独立渲染成 [完成]/[出错]
+              continue
             } else {
               working = [
                 ...working.slice(0, cur),
@@ -388,8 +424,9 @@ export function useSessionChat(opts: UseSessionChatOptions): UseSessionChatHandl
     setRunning(false)
     setHasMoreHistory(false)
     setHistoryVersion(0)
+    setSubagentOutput({})
     finishedRef.current = true
   }, [])
 
-  return { messages, running, hasMoreHistory, historyVersion, onInbound, sendMessage, interrupt, loadHistory, reset, editingIndex, setEditing, editAndResend, queue }
+  return { messages, running, hasMoreHistory, historyVersion, onInbound, sendMessage, interrupt, loadHistory, reset, editingIndex, setEditing, editAndResend, queue, subagentOutput }
 }

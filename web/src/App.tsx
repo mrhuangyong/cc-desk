@@ -379,6 +379,7 @@ function RemoteShell({
           onThinkingChange={setCurrentThinking}
           currentQueueMode={currentQueueMode}
           queue={chat.queue}
+          subagentOutput={chat.subagentOutput}
           attachments={attachments}
           onAddImages={addImages}
           onRemoveImage={removeImage}

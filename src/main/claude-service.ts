@@ -726,7 +726,13 @@ export class ClaudeService {
         // 用户消息渲染到对话流右侧（回归 bug）。与 case 'assistant' 第 590 行的判断对称。
         // （子代理 user 消息的 tool_result 仍在下方正常处理，回填 subagent 抽屉，不受影响。）
         if (!message.subagent_type) {
-          const rawContentArr = Array.isArray(message.message?.content) ? message.message.content : []
+          // content 可能是数组(SDKContentBlock[])或字符串(无图片时 pushMessage 传 prompt 字符串)。
+          // 此前只认数组,导致纯文本 user 消息(手机/本地无图发送)的 claude:user-message 永不发送,
+          // 兜底落盘源失效,依赖 REMOTE_USER_MESSAGE 补丁通道(竞态易丢)。补 string 分支恢复兜底。
+          const raw = message.message?.content
+          const rawContentArr: any[] = Array.isArray(raw)
+            ? raw
+            : (typeof raw === 'string' ? [{ type: 'text' as const, text: raw }] : [])
           // 过滤 SDK 注入的非用户真实输入(skill 内容、system-reminder 等)。
           // SDK 给 SDKUserMessage 提供了语义字段(非内容猜测):
           //   - isSynthetic: true 表示合成的非用户输入(如 skill 加载注入的 SKILL.md 全文)

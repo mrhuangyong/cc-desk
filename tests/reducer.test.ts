@@ -29,7 +29,7 @@ function initialState(): AppState {
     },
     claudeSessionMap: {},
     pendingDialog: null,
-    dirtyTabIds: {}, lastFileOpenedSeq: 0, queueBySession: {}, tasksBySession: {}, backendTasksBySession: {}, panelFold: { root: false }, panelPosition: { x: 0, y: 0 }, subagentOutputBySession: {}, planBySession: {}, abortedBySession: {}, contextUsageBySession: {}, goalBySession: {}, goalCardOpen: null,
+    dirtyTabIds: {}, lastFileOpenedSeq: 0, queueBySession: {}, tasksBySession: {}, backendTasksBySession: {}, panelFold: { root: false }, panelPosition: { x: 0, y: 0 }, subagentOutputBySession: {}, planBySession: {}, abortedBySession: {}, pendingRemoteMessages: {}, contextUsageBySession: {}, goalBySession: {}, goalCardOpen: null,
     editingMessageId: null, editingQueueId: null,
     updateStatus: { state: 'idle' },
     reviewByProject: {},
@@ -52,9 +52,35 @@ describe('reducer', () => {
     expect(JSON.stringify(last.content)).toContain('从手机发的问题')
   })
 
-  it('REMOTE_USER_MESSAGE 目标会话不存在时不抛错（静默，等 HYDRATE）', () => {
+  it('REMOTE_USER_MESSAGE 目标会话不存在时暂存到 pendingRemoteMessages（不丢，等 HYDRATE 回放）', () => {
+    // 根因:新建会话 HYDRATE 竞态——session 尚未进 state 时 updateSession 静默丢失。
+    // 修复:暂存到 pendingRemoteMessages[sessionId],HYDRATE 把 session 加入后回放。
     const state = initialState()
-    expect(() => reducer(state, { type: 'REMOTE_USER_MESSAGE', sessionId: 'not-exist', text: 'x' })).not.toThrow()
+    const next = reducer(state, { type: 'REMOTE_USER_MESSAGE', sessionId: 'not-exist', text: 'x' })
+    expect(next.pendingRemoteMessages['not-exist']).toEqual(['x'])
+    // 多条累积 FIFO
+    const next2 = reducer(next, { type: 'REMOTE_USER_MESSAGE', sessionId: 'not-exist', text: 'y' })
+    expect(next2.pendingRemoteMessages['not-exist']).toEqual(['x', 'y'])
+  })
+
+  it('HYDRATE 回放 pendingRemoteMessages:session 进入 state 后追加暂存消息并清空', () => {
+    const state = initialState()
+    // 1) session 不存在(用一个 seed 里没有的 id),消息暂存
+    const pending = reducer(state, { type: 'REMOTE_USER_MESSAGE', sessionId: 'new-remote-s', text: '手机问的' })
+    expect(pending.pendingRemoteMessages['new-remote-s']).toEqual(['手机问的'])
+    // 2) HYDRATE 快照现在包含该 session(模拟主进程已创建 + workspace:changed 触发 HYDRATE)
+    const newSession = { id: 'new-remote-s', title: '新会话', messages: [], updatedAt: 0 }
+    const snapshot = {
+      projects: pending.projects.map(p => ({ ...p, sessions: [...p.sessions, newSession] })),
+      tabsBySession: {}, activeTabIdBySession: {},
+      claudeSessionMap: {}, lastSeq: 100, savedAt: 0,
+    }
+    const afterHydrate = reducer(pending, { type: 'HYDRATE', snapshot } as any)
+    // new-remote-s 现在应有暂存的 user 消息
+    const ns = afterHydrate.projects.flatMap(p => p.sessions).find(s => s.id === 'new-remote-s')!
+    expect(ns.messages.some((m: any) => m.role === 'user' && m.content?.some((b: any) => b.text === '手机问的'))).toBe(true)
+    // 暂存已清空
+    expect(afterHydrate.pendingRemoteMessages['new-remote-s']).toBeUndefined()
   })
 
   it('REMOTE_USER_MESSAGE 末条已是相同 user 文本时去重（多源触发不重复）', () => {

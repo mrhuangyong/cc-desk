@@ -4,15 +4,15 @@ import { describe, it, expect } from 'vitest'
 import { toHistoryMessages, type HistoryInputMessage } from '../src/main/remote-bridge'
 
 describe('toHistoryMessages', () => {
-  it('user 消息取 text，assistant 取 text+thinking+blocks', () => {
+  it('user 消息取 text，assistant 取 text+thinking+blocks（tool_result 合并进 tool_use）', () => {
     const messages: HistoryInputMessage[] = [
       { id: 'u1', role: 'user', content: [{ type: 'text', text: '帮我修 bug' }] },
       {
         id: 'a1', role: 'assistant', content: [
           { type: 'thinking', text: '分析中' },
           { type: 'text', text: '已修复' },
-          { type: 'tool_use', name: 'Bash', input: { command: 'git status' }, status: 'completed' },
-          { type: 'tool_result', content: 'ok', isError: false },
+          { type: 'tool_use', id: 'tu1', name: 'Bash', input: { command: 'git status' }, status: 'completed' },
+          { type: 'tool_result', tool_use_id: 'tu1', content: 'ok', isError: false },
         ],
       },
     ]
@@ -23,9 +23,9 @@ describe('toHistoryMessages', () => {
     expect(items[1].role).toBe('assistant')
     expect(items[1].text).toBe('已修复')
     expect(items[1].thinking).toBe('分析中')
-    expect(items[1].blocks).toHaveLength(2)
-    expect(items[1].blocks?.[0]).toMatchObject({ kind: 'tool_use', label: 'Bash: git status' })
-    expect(items[1].blocks?.[1]).toMatchObject({ kind: 'tool_result', label: '完成' })
+    // tool_result 合并进 tool_use，不再独立成块
+    expect(items[1].blocks).toHaveLength(1)
+    expect(items[1].blocks?.[0]).toMatchObject({ kind: 'tool_use', label: 'Bash: git status · 完成' })
   })
 
   it('ExitPlanMode 工具调用 → plan 块', () => {
@@ -40,28 +40,57 @@ describe('toHistoryMessages', () => {
     expect(items[0].blocks?.[0]).toMatchObject({ kind: 'plan', label: '计划' })
   })
 
-  it('toolUseLabel 友好化：Edit 取文件名，Bash 取首行', () => {
+  it('toolUseLabel 友好化：Edit 取文件名，Bash 取首行（无配对 tool_result → 进行中）', () => {
     const messages: HistoryInputMessage[] = [
       {
         id: 'a1', role: 'assistant', content: [
-          { type: 'tool_use', name: 'Edit', input: { file_path: '/a/b/c.ts' }, status: 'completed' },
-          { type: 'tool_use', name: 'Bash', input: { command: 'npm test\nmore' }, status: 'completed' },
-          { type: 'tool_use', name: 'Unknown', input: {}, status: 'completed' },
+          { type: 'tool_use', id: 't1', name: 'Edit', input: { file_path: '/a/b/c.ts' }, status: 'completed' },
+          { type: 'tool_use', id: 't2', name: 'Bash', input: { command: 'npm test\nmore' }, status: 'completed' },
+          { type: 'tool_use', id: 't3', name: 'Unknown', input: {}, status: 'completed' },
         ],
       },
     ]
     const { items } = toHistoryMessages(messages)
-    expect(items[0].blocks?.[0].label).toBe('Edit: c.ts')
-    expect(items[0].blocks?.[1].label).toBe('Bash: npm test')
-    expect(items[0].blocks?.[2].label).toBe('Unknown')
+    // 无配对 tool_result（tool_use_id 缺失）→ 状态「进行中」
+    expect(items[0].blocks?.[0].label).toBe('Edit: c.ts · 进行中')
+    expect(items[0].blocks?.[1].label).toBe('Bash: npm test · 进行中')
+    expect(items[0].blocks?.[2].label).toBe('Unknown · 进行中')
   })
 
-  it('tool_result 出错 → label=出错', () => {
+  it('tool_result 配对 tool_use：isError → 状态出错', () => {
     const messages: HistoryInputMessage[] = [
-      { id: 'a1', role: 'assistant', content: [{ type: 'tool_result', content: 'fail', isError: true }] },
+      {
+        id: 'a1', role: 'assistant', content: [
+          { type: 'tool_use', id: 'tu1', name: 'Bash', input: { command: 'npm test' }, status: 'completed' },
+          { type: 'tool_result', tool_use_id: 'tu1', content: 'fail', isError: true },
+        ],
+      },
     ]
     const { items } = toHistoryMessages(messages)
-    expect(items[0].blocks?.[0].label).toBe('出错')
+    expect(items[0].blocks).toHaveLength(1)
+    expect(items[0].blocks?.[0].label).toBe('Bash: npm test · 出错')
+  })
+
+  it('ExitPlanMode 的 is_error 视作完成（用户授权后必经的占位结果）', () => {
+    const messages: HistoryInputMessage[] = [
+      {
+        id: 'a1', role: 'assistant', content: [
+          { type: 'tool_use', id: 'tu1', name: 'ExitPlanMode', input: {}, status: 'completed' },
+          { type: 'tool_result', tool_use_id: 'tu1', content: 'Exit plan mode?', isError: true },
+        ],
+      },
+    ]
+    const { items } = toHistoryMessages(messages)
+    expect(items[0].blocks?.[0].label).toBe('计划批准 · 完成')
+  })
+
+  it('孤儿 tool_result（无匹配 tool_use）→ 跳过，不独立成块', () => {
+    const messages: HistoryInputMessage[] = [
+      { id: 'a1', role: 'assistant', content: [{ type: 'tool_result', tool_use_id: 'orphan', content: 'fail', isError: true }] },
+    ]
+    const { items } = toHistoryMessages(messages)
+    // 无匹配 tool_use：不渲染独立 tool_result 块（避免孤立的「出错」）
+    expect(items[0].blocks).toHaveLength(0)
   })
 
   it('limit 分页：超限时取最后 N 条，hasMore=true', () => {

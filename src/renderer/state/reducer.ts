@@ -60,6 +60,9 @@ export interface AppState {
   // 用户主动中止的 session 标志:interrupt 可能不立即生效,SDK 续推的 delta 会被忽略,
   // 直到用户发新消息(STREAM_START)清除。避免停止后 streaming 被重建(停止按钮闪烁)。
   abortedBySession: Record<string, boolean>
+  // 远程(手机)user 消息暂存:手机发消息时若目标 session 尚未进 state(新建会话 HYDRATE 竞态),
+  // updateSession 找不到会静默丢失。这里按 sessionId 暂存,HYDRATE 把 session 加入后回放。
+  pendingRemoteMessages: Record<string, string[]>
   // 上下文用量（SDK getContextUsage）：按会话分片，供输入框进度环展示。
   // null/缺失表示尚未查询或会话不存在该数据。
   contextUsageBySession: Record<string, ContextUsageInfo | null>
@@ -490,15 +493,20 @@ export function reducer(state: AppState, action: Action): AppState {
       // 远程（手机）发来的 user 文本，直接追加到目标会话。与本地 SEND_MESSAGE 不同：
       // 不走 draft、不切换 activeSessionId（桌面可能正看别的会话），只把这条 user
       // 消息塞进指定 session，让桌面端对话里除了 AI 回复也能看到「手机问的问题」。
-      // 目标会话不存在时静默（HYDRATE 竞态窗口内可能先于会话节点到达），由后续
-      // STREAM_ASSISTANT_BLOCKS / HYDRATE 校正，不抛错。
+      // 目标会话不存在时(手机新建会话的 HYDRATE 竞态:updateSession 找不到会静默丢失),
+      // 暂存到 pendingRemoteMessages,HYDRATE 把 session 加入后回放(见 HYDRATE case)。
       //
       // 去重：本 action 有三个来源——① REMOTE_USER_MESSAGE 补丁(dispatcher 收到 session.message)
       // ② claude:user-message(SDK user turn 回放,可靠落盘源) ③ 本地 SEND_MESSAGE 也会加 user。
       // 同一条用户输入可能被多源触发,按「该 session 末条消息已是相同文本的 user」去重,避免重复。
       const existed = updateSession(state, action.sessionId, s => s).projects
       const sess = existed.flatMap(p => p.sessions).find(s => s.id === action.sessionId)
-      const last = sess?.messages?.[sess.messages.length - 1]
+      if (!sess) {
+        // session 尚未进 state:暂存文本,等 HYDRATE 回放。按 sessionId 累积(FIFO)。
+        const prev = state.pendingRemoteMessages[action.sessionId] ?? []
+        return { ...state, pendingRemoteMessages: { ...state.pendingRemoteMessages, [action.sessionId]: [...prev, action.text] } }
+      }
+      const last = sess.messages?.[sess.messages.length - 1]
       const lastText = last?.role === 'user' ? (last as any).content?.map((b: any) => b.text ?? '').join('') : undefined
       if (lastText !== undefined && lastText === action.text) {
         return state // 末条已是相同 user 文本,跳过(去重)
@@ -800,6 +808,30 @@ export function reducer(state: AppState, action: Action): AppState {
       if (!survivingActive) {
         const ensured = ensureAliveSession(mergedProjects, null, state.tabsBySession, state.activeTabIdBySession)
         if (ensured) return { ...base, ...ensured }
+      }
+      // 回放 pendingRemoteMessages:HYDRATE 前 session 不在 state 时暂存的远程 user 消息,
+      // 此时快照加载后 session 可能已进 projects,把暂存消息追加进去并清空。
+      // 仍在的 session 才回放;仍未出现的(快照也没有)保留暂存等下次 HYDRATE。
+      const pending = state.pendingRemoteMessages
+      const pendingIds = Object.keys(pending).filter(sid => aliveSessionIds.has(sid) && pending[sid].length)
+      if (pendingIds.length) {
+        const replayedProjects = base.projects.map(p => ({
+          ...p,
+          sessions: p.sessions.map(sess => {
+            const texts = pending[sess.id]
+            if (!texts?.length) return sess
+            // 去重:末条已是相同 user 文本则不重复加(与 REMOTE_USER_MESSAGE 一致)
+            const last = sess.messages?.[sess.messages.length - 1]
+            const lastText = last?.role === 'user' ? (last as any).content?.map((b: any) => b.text ?? '').join('') : undefined
+            const toAdd = texts.filter((t, i) => !(i === texts.length - 1 && lastText === t))
+            if (!toAdd.length) return sess
+            const newMsgs = toAdd.map(t => ({ id: nextId('m'), role: 'user' as const, content: [{ type: 'text' as const, text: t }] }))
+            return { ...sess, messages: [...(sess.messages ?? []), ...newMsgs] }
+          }),
+        }))
+        const clearedPending = { ...pending }
+        for (const sid of pendingIds) delete clearedPending[sid]
+        return { ...base, projects: replayedProjects, pendingRemoteMessages: clearedPending }
       }
       return base
     }

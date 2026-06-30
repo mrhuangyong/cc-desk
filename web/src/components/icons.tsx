@@ -174,6 +174,25 @@ export function ArrowRightIcon({ size = '1em', className }: IconProps) {
   )
 }
 
+/** 转圈（工具执行中 running）。CSS .icon-spin 驱动旋转动画。 */
+export function SpinnerIcon({ size = '1em', className }: IconProps) {
+  return (
+    <svg {...base(size, className)} className={`icon-spin${className ? ` ${className}` : ''}`}>
+      <path d="M12 3a9 9 0 1 0 9 9" />
+    </svg>
+  )
+}
+
+/** 错误（工具执行失败 error）。 */
+export function ErrorIcon({ size = '1em', className }: IconProps) {
+  return (
+    <svg {...base(size, className)}>
+      <path d="M12 8v5M12 16.5v.5" />
+      <circle cx="12" cy="12" r="9" />
+    </svg>
+  )
+}
+
 /** 盾牌（权限请求）。 */
 export function ShieldIcon({ size = '1em', className }: IconProps) {
   return (

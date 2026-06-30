@@ -103,6 +103,38 @@ describe('ChatPage - 渲染', () => {
     expect(screen.getByText(/Read|工具/)).toBeInTheDocument()
   })
 
+  it('tool_use 块按 status 渲染对应状态类名（completed/error/running）', () => {
+    const mk = (status: any) => assistantMsg('ok', [{ kind: 'tool_use', label: 'Bash: ls', status, raw: {} }])
+    const { rerender } = render(<ChatPage title="t" messages={[mk('completed')]} running={false} inputValue="" onInputChange={() => {}} onSend={() => {}} onInterrupt={() => {}} onBack={() => {}} />)
+    expect(document.querySelector('.block.tool-use.status-completed')).toBeTruthy()
+    rerender(<ChatPage title="t" messages={[mk('error')]} running={false} inputValue="" onInputChange={() => {}} onSend={() => {}} onInterrupt={() => {}} onBack={() => {}} />)
+    expect(document.querySelector('.block.tool-use.status-error')).toBeTruthy()
+    rerender(<ChatPage title="t" messages={[mk('running')]} running={false} inputValue="" onInputChange={() => {}} onSend={() => {}} onInterrupt={() => {}} onBack={() => {}} />)
+    expect(document.querySelector('.block.tool-use.status-running')).toBeTruthy()
+  })
+
+  it('tool_use 块点击展开显示入参+结果', () => {
+    const block = {
+      kind: 'tool_use', label: 'Bash: ls', status: 'completed', name: 'Bash',
+      raw: { input: { command: 'ls -la' } },
+      result: { content: 'file1\nfile2', isError: false },
+    }
+    render(
+      <ChatPage title="t" messages={[assistantMsg('ok', [block] as any)]} running={false}
+        inputValue="" onInputChange={() => {}} onSend={() => {}} onInterrupt={() => {}} onBack={() => {}} />,
+    )
+    // 初始未展开:详情不可见
+    expect(document.querySelector('.block-detail')).toBeNull()
+    // 点击 head 展开
+    fireEvent.click(document.querySelector('.block-head')!)
+    expect(document.querySelector('.block-detail')).toBeTruthy()
+    expect(screen.getByText('入参')).toBeInTheDocument()
+    expect(screen.getByText('结果')).toBeInTheDocument()
+    // pre 里含结果文本(testing-library 折叠空白,用 querySelector 取 textContent)
+    const pres = document.querySelectorAll('.block-detail-pre')
+    expect(Array.from(pres).some(p => (p as HTMLElement).textContent?.includes('file1'))).toBe(true)
+  })
+
   it('渲染计划卡片块', () => {
     render(
       <ChatPage

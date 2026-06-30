@@ -115,17 +115,41 @@ describe('useSessionChat - blocks', () => {
     expect(m.blocks[0].label).toBe('Bash: ls')
   })
 
-  it('session.blocks payload 是 {op:tool_result, toolUseId, result} → 归一化为 tool_result 块', () => {
+  it('tool_result 合并进同 id 的 tool_use（更新 status，不新增独立块）', () => {
     const send = vi.fn().mockResolvedValue(true)
     const { result } = renderHook(() => useSessionChat({ send }))
     act(() => {
+      // 先来 tool_use_start
+      result.current.onInbound({
+        v: 1, type: 'session.blocks', deviceId: 'd', ts: 1, nonce: 'n', sig: '',
+        payload: { localSessionId: 's1', op: 'tool_use_start', block: { type: 'tool_use', id: 'tu1', name: 'Bash', input: { command: 'ls' } } },
+      } as any)
+      // 再来同 id 的 tool_result
       result.current.onInbound({
         v: 1, type: 'session.blocks', deviceId: 'd', ts: 1, nonce: 'n', sig: '',
         payload: { localSessionId: 's1', op: 'tool_result', toolUseId: 'tu1', result: { content: 'ok', isError: false } },
       } as any)
     })
     const m = result.current.messages[0] as any
-    expect(m.blocks.some((b: any) => b.kind === 'tool_result')).toBe(true)
+    // 合并：仍是 1 个块（tool_use），status 变 completed，无独立 tool_result 块
+    expect(m.blocks).toHaveLength(1)
+    expect(m.blocks[0].kind).toBe('tool_use')
+    expect(m.blocks[0].status).toBe('completed')
+    expect(m.blocks[0].result).toEqual({ content: 'ok', isError: false })
+  })
+
+  it('孤儿 tool_result（无匹配 tool_use，如 AskUserQuestion）→ 静默丢弃，不冒 [出错]/[完成]', () => {
+    const send = vi.fn().mockResolvedValue(true)
+    const { result } = renderHook(() => useSessionChat({ send }))
+    act(() => {
+      result.current.onInbound({
+        v: 1, type: 'session.blocks', deviceId: 'd', ts: 1, nonce: 'n', sig: '',
+        payload: { localSessionId: 's1', op: 'tool_result', toolUseId: 'orphan', result: { content: 'deny msg', isError: true } },
+      } as any)
+    })
+    // 无匹配 tool_use：丢弃，blocks 为空（不渲染孤立的 tool_result）
+    const m = result.current.messages[0] as any
+    expect(m.blocks).toHaveLength(0)
   })
 
   it('delta 流式拼接后，assistant_blocks 的 text 权威版到来不重复（修复消息重复）', () => {
@@ -533,5 +557,38 @@ describe('useSessionChat - 系统提示', () => {
       text: 'API 重试中',
       level: 'warn',
     }))
+  })
+})
+
+describe('useSessionChat - subagent 分流', () => {
+  it('带 payload.toolUseId 的 tool_use_start 归 subagentOutput,不污染主流 blocks', () => {
+    const send = vi.fn().mockResolvedValue(true)
+    const { result } = renderHook(() => useSessionChat({ send }))
+    act(() => {
+      // subagent-output 转发的信封:op=tool_use_start + toolUseId(父 Task id)
+      result.current.onInbound({
+        v: 1, type: 'session.blocks', deviceId: 'd', ts: 1, nonce: 'n', sig: '',
+        payload: { localSessionId: 's1', op: 'tool_use_start', toolUseId: 'task-1', block: { type: 'tool_use', id: 'inner-bash', name: 'Bash', input: { command: 'ls' } } },
+      } as any)
+    })
+    // 子代理块单独到达时不创建主流消息(分流 return,不进 blocks)
+    const blocks = (result.current.messages[0] as any)?.blocks ?? []
+    expect(blocks.some((b: any) => b.id === 'inner-bash')).toBe(false)
+    // subagentOutput 按父 Task id 聚合
+    expect(result.current.subagentOutput['task-1']?.some((b: any) => b.label === 'Bash: ls')).toBe(true)
+  })
+
+  it('主流 tool_use_start(无 payload.toolUseId)正常进 blocks,不进 subagentOutput', () => {
+    const send = vi.fn().mockResolvedValue(true)
+    const { result } = renderHook(() => useSessionChat({ send }))
+    act(() => {
+      result.current.onInbound({
+        v: 1, type: 'session.blocks', deviceId: 'd', ts: 1, nonce: 'n', sig: '',
+        payload: { localSessionId: 's1', op: 'tool_use_start', block: { type: 'tool_use', id: 'tu1', name: 'Read', input: { file_path: '/a' } } },
+      } as any)
+    })
+    const m = result.current.messages[0] as any
+    expect(m?.blocks?.some((b: any) => b.id === 'tu1')).toBe(true)
+    expect(Object.keys(result.current.subagentOutput)).toHaveLength(0)
   })
 })
