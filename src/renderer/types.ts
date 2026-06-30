@@ -35,7 +35,7 @@ export interface SystemNotice {
   id: string
   kind:
     | 'permission_denied' | 'api_retry' | 'status' | 'hook_progress'
-    | 'task' | 'error' | 'info' | 'compact' | 'auth'
+    | 'task' | 'error' | 'info' | 'compact' | 'auth' | 'goal'
   text: string
   level: 'info' | 'warn' | 'error'
 }

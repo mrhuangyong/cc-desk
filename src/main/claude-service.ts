@@ -511,13 +511,22 @@ export class ClaudeService {
                 if (!goal || goal.status !== 'active') return {}  // 无 goal: 正常停
                 const turns = (this.goalTurns.get(lsid) ?? 0) + 1
                 this.goalTurns.set(lsid, turns)
-                const verdict = await this.evaluateGoal(
-                  goal.condition,
-                  typeof input.last_assistant_message === 'string' ? input.last_assistant_message : '',
-                )
+                // 60s 超时兜底:评估器若挂起(网络停滞/runSideQueryAsRole 无超时),Stop hook 永不返回 → 会话卡死。
+                // 超时按未达成处理(A3 一致:默认继续),避免递归/楔住。
+                const evalWithTimeout = Promise.race([
+                  this.evaluateGoal(
+                    goal.condition,
+                    typeof input.last_assistant_message === 'string' ? input.last_assistant_message : '',
+                  ),
+                  new Promise<{ met: boolean; reason: string }>((resolve) =>
+                    setTimeout(() => resolve({ met: false, reason: '评估超时(60s),默认继续' }), 60000),
+                  ),
+                ])
+                const verdict = await evalWithTimeout
                 webContents.send('claude:goal-evaluated', { localSessionId: lsid, reason: verdict.reason, turns })
                 if (verdict.met) {
                   this.goalStore.delete(lsid)  // 清除,防续轮后又进 hook
+                  webContents.send('claude:notice', { ...mkNotice('goal', `🎯 目标已达成:${goal.condition.slice(0, 60)}`, 'info'), localSessionId: lsid })
                   webContents.send('claude:goal-achieved', { localSessionId: lsid })
                   return {}  // 不返 context → SDK 真正停
                 }
@@ -1261,11 +1270,63 @@ export class ClaudeService {
     }
   }
 
+  /**
+   * 解析「指定角色(opus/sonnet/haiku)」的模型,复用激活供应商的 env 注入。
+   * 与 resolveActiveModel 的区别:返回的 modelId 是角色映射后的模型而非激活主模型。
+   * 角色未在 modelRoleMap 映射时(用户没配 haiku 等)回退激活主模型——容错,不抛错。
+   * 返回 null 表示无可用供应商。
+   */
+  private resolveRoleModel(role: 'opus' | 'sonnet' | 'haiku'): {
+    sdkEnv: Record<string, string>
+    executable: string | undefined
+    modelId: string
+  } | null {
+    const cfg = getModelProvidersConfig()
+    const resolved = resolveActiveProviderModel(cfg)
+    if (!resolved) return null
+    const { provider, model } = resolved
+    // 查角色映射:modelRoleMap['<providerId>:haiku'] → 模型 id → sdkModelId;失败回退激活主模型。
+    const mappedModelId = cfg.modelRoleMap[`${provider.id}:${role}`]
+    const mapped = mappedModelId ? cfg.models.find(m => m.id === mappedModelId) : undefined
+    return {
+      sdkEnv: buildSdkEnv(resolved, cfg.modelRoleMap, cfg.models),
+      executable: resolveClaudeCodeExecutable(),
+      modelId: mapped?.sdkModelId || model.sdkModelId,
+    }
+  }
+
   /** 旁路 query：跑一次性摘要/生成，不复用会话 manager。 */
   private async runSideQuery(prompt: string, cwd?: string): Promise<string> {
     const active = this.resolveActiveModel()
     if (!active) throw new Error('请先在「设置 → 模型设置」中添加并启用供应商与模型')
     const { sdkEnv, executable, modelId } = active
+    const result = query({
+      prompt,
+      options: {
+        pathToClaudeCodeExecutable: executable,
+        env: { ...process.env, ...sdkEnv },
+        model: modelId,
+        cwd,
+        maxTurns: cwd ? 8 : 1,
+        permissionMode: 'bypassPermissions',
+      } as any,
+    })
+    let text = ''
+    for await (const m of result) {
+      if (m.type === 'assistant' && Array.isArray((m as any).message?.content)) {
+        text = ((m as any).message.content as any[]).filter(b => b.type === 'text').map(b => b.text).join('')
+      }
+    }
+    return text
+  }
+
+  /** 旁路 query 的角色版本:用指定角色(opus/sonnet/haiku)的模型跑,而非激活主模型。
+   *  用于 /goal 评估器:Haiku 小快模型省钱省时,不用主模型逐轮评估。
+   *  角色未映射时 resolveRoleModel 内部回退主模型,这里无需特殊处理。 */
+  private async runSideQueryAsRole(prompt: string, role: 'opus' | 'sonnet' | 'haiku', cwd?: string): Promise<string> {
+    const roleResolved = this.resolveRoleModel(role)
+    if (!roleResolved) throw new Error('请先在「设置 → 模型设置」中添加并启用供应商与模型')
+    const { sdkEnv, executable, modelId } = roleResolved
     const result = query({
       prompt,
       options: {
@@ -1310,12 +1371,13 @@ ${trimmed}`
 
   /**
    * /goal 评估器:用 Haiku 判断"条件 + 最新进展"是否达成。
-   * 复用 runSideQuery(激活供应商的模型;Haiku 角色由 modelRoleMap 映射)。
-   * A3 容错:runSideQuery 抛错或解析失败 → {met:false}(继续轮)。
+   * 走 runSideQueryAsRole('haiku')——角色映射的小快模型,省钱省时;
+   * 用户未配 haiku 时 resolveRoleModel 回退激活主模型(A3 容错,不抛错)。
+   * A3 容错:runSideQueryAsRole 抛错或解析失败 → {met:false}(继续轮)。
    */
   async evaluateGoal(condition: string, lastAssistantMsg: string, cwd?: string): Promise<GoalVerdict> {
     try {
-      const raw = await this.runSideQuery(buildGoalEvalPrompt(condition, lastAssistantMsg), cwd)
+      const raw = await this.runSideQueryAsRole(buildGoalEvalPrompt(condition, lastAssistantMsg), 'haiku', cwd)
       return parseGoalVerdict(raw)
     } catch (err) {
       return { met: false, reason: `评估调用失败:${String(err)},默认继续` }
