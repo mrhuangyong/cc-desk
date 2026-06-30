@@ -174,6 +174,7 @@ function RemoteShell({
         const p = env.payload as { localSessionId: string; projectId?: string; title?: string; cwd?: string }
         const projectId = p.projectId ?? ''
         const projectName = projectsMeta.find((m) => m.projectId === projectId)?.projectName ?? ''
+        console.warn('[diag-created] session.created projectId=', projectId, 'projectName=', projectName, 'cwd=', p.cwd, 'projectsMeta ids=', projectsMeta.map(m=>m.projectId))
         const newItem: SessionListItem = {
           localSessionId: p.localSessionId,
           title: p.title ?? '新会话',

@@ -397,13 +397,10 @@ export function createDispatcher(deps: DispatchDeps) {
         break
       }
       case 'session.create': {
-        // 真实现：交由注入的 onSessionCreate（主进程有建会话能力时）。
-        // 未注入时不 mock —— 静默忽略（最小特权），由手机端超时/缺省处理。
-        // 注：signature 加 projectId 参数（从 payload 提取），手机端 create 会带 projectId。
         const c = env.payload as { projectId?: string }
+        console.warn('[diag-create] session.create 收到 projectId=', c.projectId)
         const created = deps.onSessionCreate?.(c.projectId)
-        // 建会话成功：回告手机新会话信息（session.created），手机端据此自动进入会话。
-        // 返回 null/undefined（不支持远程新建）时静默，不回告。
+        console.warn('[diag-create] onSessionCreate 返回=', created ? { id: created.localSessionId, projectId: created.projectId, cwd: created.cwd } : null)
         if (created) {
           deps.onSessionCreated?.(created)
         }

@@ -290,9 +290,11 @@ function startRemoteBridge(cfg: RemoteConfig): void {
         const snap = getProjectsSnapshot()
         for (const p of snap.projects) {
           if (p.sessions?.some((s: any) => s.id === localSessionId)) {
+            console.warn('[diag-cwd] resolveCwd', localSessionId.slice(-12), '→ project', p.name, 'path=', p.path)
             return p.path
           }
         }
+        console.warn('[diag-cwd] resolveCwd', localSessionId.slice(-12), '→ 未找到所属 project(回退)')
       } catch {
         // 读快照失败回退 undefined（send 用默认 process.cwd()）
       }
