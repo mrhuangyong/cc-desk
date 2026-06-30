@@ -502,9 +502,6 @@ export class ClaudeService {
               hooks: [async (input: any) => {
                 const goal = this.goalStore.get(lsid)
                 if (!goal || goal.status !== 'active') return {}  // 无 goal: 正常停
-                // stop_hook_active 兜底:SDK 在"续轮后的下一次 stop"置 true。
-                // 若 goal 已被清除(用户 clear)而 stop_hook_active 仍 true,避免无限续。
-                if (input.stop_hook_active && !this.goalStore.has(lsid)) return {}
                 const turns = (this.goalTurns.get(lsid) ?? 0) + 1
                 this.goalTurns.set(lsid, turns)
                 const verdict = await this.evaluateGoal(
