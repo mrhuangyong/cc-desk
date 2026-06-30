@@ -23,7 +23,6 @@ import {
   ArrowDownIcon,
   SquareIcon,
   SendIcon,
-  WrenchIcon,
   CheckIcon,
   ListIcon,
   ShieldIcon,
@@ -32,6 +31,8 @@ import {
   ChevronDownIcon,
   BrainIcon,
   ChipIcon,
+  SpinnerIcon,
+  ErrorIcon,
 } from '../components/icons'
 
 /** 权限模式选项(对齐桌面 InputBar.tsx:16,中文标签经主进程 getPermissionMode 翻译)。 */
@@ -91,6 +92,8 @@ export interface ChatPageProps {
   onQueueModeChange?: (mode: 'queue' | 'guide') => void
   /** 排队中的消息文本(流式时 queue 模式发送的,AI 结束后自动发)。 */
   queue?: QueuedMessage[]
+  /** 子代理输出:按父 Task toolUseId 聚合的内部块,Task 卡片展开内嵌显示。 */
+  subagentOutput?: Record<string, ChatBlock[]>
   /** header 右侧额外控件(主题切换等)。 */
   headerExtra?: React.ReactNode
 }
@@ -124,15 +127,105 @@ function renderInline(text: string): React.ReactNode[] {
   return out
 }
 
-function BlockView({ block }: { block: ChatBlock }) {
+// tool_use 可读化入参:提取关键字段(Bash command / Edit file_path 等),其余兜底 JSON。
+function toolUseInputText(raw: any): string {
+  const input = raw?.input
+  if (!input || typeof input !== 'object') return ''
+  if (typeof input.command === 'string') return input.command
+  if (typeof input.file_path === 'string') return input.file_path
+  if (typeof input.path === 'string') return input.path
+  if (typeof input.pattern === 'string') return input.pattern
+  if (typeof input.prompt === 'string') return input.prompt.slice(0, 200)
+  try { return JSON.stringify(input, null, 2) } catch { return '' }
+}
+
+// plan 块文本提取:plan 卡片的 raw 结构因来源而异(流式 tool_result.payload.plan / 历史块)。
+// 兼容 plan 为 string 或 {steps:[]|text:string} 等对象,兜底 JSON。
+function planText(raw: any): string {
+  const plan = raw?.payload?.plan ?? raw?.plan
+  if (typeof plan === 'string') return plan
+  if (plan && typeof plan === 'object') {
+    if (typeof plan.text === 'string') return plan.text
+    try { return JSON.stringify(plan, null, 2) } catch { return '' }
+  }
+  return ''
+}
+
+// tool_result content 可读化:可能是 string / array of {type,text} / 其它。
+function resultContentText(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) {
+    return content
+      .map((c: any) => (c?.type === 'text' && typeof c.text === 'string') ? c.text : '')
+      .filter(Boolean)
+      .join('\n')
+  }
+  if (content && typeof content === 'object') { try { return JSON.stringify(content, null, 2) } catch { return '' } }
+  return ''
+}
+
+function BlockView({ block, subBlocks }: { block: ChatBlock; subBlocks?: ChatBlock[] }) {
+  const [expanded, setExpanded] = useState(false)
+  const toggle = () => setExpanded((v) => !v)
+
   if (block.kind === 'plan') {
-    return <div className="block plan-card"><ListIcon />{block.label}</div>
+    return (
+      <div className="block plan-card">
+        <button className="block-head" onClick={toggle} type="button">
+          <ListIcon /><span className="block-label">{block.label}</span>
+          <ChevronDownIcon size={12} className={`block-chev${expanded ? ' open' : ''}`} />
+        </button>
+        {expanded && <div className="block-detail">{renderInline(planText(block.raw))}</div>}
+      </div>
+    )
   }
+  // tool_use：状态图标(running转圈/completed绿勾/error红感叹) + 工具标签,可展开看入参+结果。
+  // tool_result 已在 useSessionChat 按 tool_use_id 合并进此块（mergeToolResult）。
   if (block.kind === 'tool_use') {
-    return <div className="block tool-use"><WrenchIcon />{block.label}</div>
-  }
-  if (block.kind === 'tool_result') {
-    return <div className="block tool-result"><CheckIcon />{block.label}</div>
+    const status = block.status ?? 'running'
+    const icon = status === 'error' ? <ErrorIcon /> : status === 'completed' ? <CheckIcon /> : <SpinnerIcon />
+    const inputText = toolUseInputText(block.raw)
+    const resultText = block.result ? resultContentText(block.result.content) : ''
+    const isTask = block.name === 'Task'
+    const sub = isTask && subBlocks?.length ? subBlocks : undefined
+    const hasDetail = !!(inputText || resultText || sub)
+    return (
+      <div className={`block tool-use status-${status}`}>
+        <button className="block-head" onClick={hasDetail ? toggle : undefined} type="button" disabled={!hasDetail}>
+          {icon}<span className="block-label">{block.label}</span>
+          {hasDetail && <ChevronDownIcon size={12} className={`block-chev${expanded ? ' open' : ''}`} />}
+        </button>
+        {expanded && hasDetail && (
+          <div className="block-detail">
+            {inputText && (
+              <div className="block-detail-section">
+                <div className="block-detail-label">入参</div>
+                <pre className="block-detail-pre">{inputText}</pre>
+              </div>
+            )}
+            {sub && (
+              <div className="block-detail-section">
+                <div className="block-detail-label">子代理输出</div>
+                <div className="block-subagent">
+                  {sub.map((sb, i) => (
+                    <div key={i} className="block-subagent-row">
+                      {sb.kind === 'text' ? <span className="block-subagent-text">{sb.text}</span>
+                        : <span className="block-subagent-tool">{sb.label}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {resultText && (
+              <div className="block-detail-section">
+                <div className={`block-detail-label${block.result?.isError ? ' err' : ''}`}>{block.result?.isError ? '出错' : '结果'}</div>
+                <pre className="block-detail-pre">{resultText.slice(0, 2000)}</pre>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    )
   }
   return null
 }
@@ -170,6 +263,7 @@ export default function ChatPage(props: ChatPageProps) {
     currentQueueMode,
     onQueueModeChange,
     queue,
+    subagentOutput,
   } = props
 
   const canSend = inputValue.trim().length > 0 || (attachments?.length ?? 0) > 0
@@ -397,7 +491,7 @@ export default function ChatPage(props: ChatPageProps) {
                 )}
                 {m.text && <div className="assistant-text">{renderInline(m.text)}</div>}
                 {m.blocks.map((b, j) => (
-                  <BlockView key={j} block={b} />
+                  <BlockView key={j} block={b} subBlocks={b.id ? subagentOutput?.[b.id] : undefined} />
                 ))}
                 {running && !m.text && m.blocks.length === 0 && !m.thinking && (
                   <span className="typing">…</span>

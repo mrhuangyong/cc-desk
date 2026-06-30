@@ -36,6 +36,7 @@ function makeInitialState(seedProjects?: Project[]): AppState {
     subagentOutputBySession: {},
     planBySession: {},
     abortedBySession: {},
+    pendingRemoteMessages: {},
     contextUsageBySession: {},
     goalBySession: {},
     goalCardOpen: null,

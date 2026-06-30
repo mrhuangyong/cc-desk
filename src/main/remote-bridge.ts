@@ -686,6 +686,8 @@ export interface HistoryInputBlock {
   name?: string         // tool_use 的工具名
   input?: any           // tool_use 的入参
   status?: string       // tool_use 的状态
+  id?: string           // tool_use 的 id（与 tool_result.tool_use_id 配对合并）
+  tool_use_id?: string  // tool_result 所属的 tool_use id
   content?: string      // tool_result 的内容
   isError?: boolean
   planFilePath?: string // tool_use(ExitPlanMode) 的计划路径
@@ -718,7 +720,11 @@ function toolUseLabel(name: string | undefined, input: any): string {
  * 把桌面端 Message[] 转成手机端历史消息（精简、可渲染、省带宽）。
  *
  * - 跳过空消息（content 全空）。
- * - tool_use 带结果时合并为一个 block（label 含状态）。
+ * - tool_result 按 tool_use_id 合并进对应 tool_use 块（label 追加「· 完成/出错/进行中」），
+ *   不再独立成块（对齐桌面 STREAM_TOOL_RESULT + BlockRenderer 不渲染 tool_result）。
+ *   ExitPlanMode 的 is_error 视作完成（用户授权后必经的占位结果，不代表失败）。
+ * - 找不到 tool_use 的孤儿 tool_result（如 AskUserQuestion，其 tool_use 在流式阶段被过滤）
+ *   跳过，避免历史里出现孤立的「完成/出错」。
  * - ExitPlanMode（planFilePath）→ plan 块。
  * - 分页：取最后 limit 条（beforeTs 暂未用，保留扩展）；hasMore 表示是否还有更早的。
  *
@@ -745,20 +751,28 @@ export function toHistoryMessages(
     // assistant：text + thinking + blocks
     const text = m.content.filter((b) => b.type === 'text').map((b) => b.text ?? '').join('\n').trim()
     const thinking = m.content.filter((b) => b.type === 'thinking').map((b) => b.text ?? '').join('\n').trim()
+    // 先按 tool_use_id 建工具结果索引（同消息内 tool_result 配对 tool_use）
+    const resultById = new Map<string, { isError: boolean }>()
+    for (const b of m.content) {
+      if (b.type === 'tool_result' && b.tool_use_id) {
+        resultById.set(b.tool_use_id, { isError: !!b.isError })
+      }
+    }
     const blocks: HistoryBlock[] = []
     for (const b of m.content) {
       if (b.type === 'tool_use') {
         if (b.planFilePath) {
           blocks.push({ kind: 'plan', label: '计划' })
         } else {
-          blocks.push({ kind: 'tool_use', label: toolUseLabel(b.name, b.input) })
+          // 合并同 id 的 tool_result 状态到 label（不再独立 tool_result 块）
+          const r = b.id ? resultById.get(b.id) : undefined
+          // ExitPlanMode 的 is_error 视作完成（与桌面 reducer 一致）
+          const isError = r?.isError && b.name !== 'ExitPlanMode'
+          const status = r ? (isError ? '出错' : '完成') : '进行中'
+          blocks.push({ kind: 'tool_use', label: `${toolUseLabel(b.name, b.input)} · ${status}` })
         }
-      } else if (b.type === 'tool_result') {
-        blocks.push({
-          kind: 'tool_result',
-          label: b.isError ? '出错' : '完成',
-        })
       }
+      // tool_result 不再独立 push（已合并进 tool_use）；孤儿（无匹配 tool_use）自然跳过
     }
     return { role: 'assistant', text: text || undefined, thinking: thinking || undefined, blocks }
   })

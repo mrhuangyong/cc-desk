@@ -509,6 +509,12 @@ body {
   background: var(--bg-sunken); padding: 1px 5px; border-radius: 4px;
   font-size: 13px; font-family: var(--font-mono); color: var(--accent-ink);
 }
+/* assistant 消息流: 文本与工具块连贯一条,不分组。
+   thinking/text/blocks 同属一个 bubble,工具块用轻量样式(透明背景+左边框)融入消息流,
+   而非独立卡片背景,避免「文本一块、工具一块」的割裂感(对齐桌面 MessageRow 连贯渲染)。 */
+.assistant-bubble > .assistant-text + .block,
+.assistant-bubble .block + .block,
+.assistant-bubble .block + .assistant-text { margin-top: 8px; }
 /* 思考折叠 */
 .thinking { margin-bottom: 6px; }
 .thinking summary {
@@ -523,20 +529,65 @@ body {
 .thinking[open] summary::before { transform: rotate(90deg); }
 .thinking-text { color: var(--text-muted); font-size: 13px; margin-top: 6px; white-space: pre-wrap; padding-left: 15px; border-left: 2px solid var(--border); }
 
-/* 工具块（tool_use / tool_result / plan） */
+/* 工具块（tool_use / plan）：融入 assistant 消息流,不独立成卡片。
+   透明背景 + 左侧色条线索,让工具调用是消息的一部分而非割裂的卡片块。 */
 .block {
   margin-top: 8px; font-size: 12px; color: var(--text-muted);
-  padding: 6px 9px; background: var(--bg-sunken); border-radius: var(--r-sm);
+  padding: 4px 0 4px 8px; background: transparent;
+  border-left: 2px solid var(--border);
   font-family: var(--font-mono);
-  display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+  display: flex; align-items: center; gap: 6px; max-width: 100%;
 }
 .block svg { width: 14px; height: 14px; flex-shrink: 0; }
 .block.tool-use { color: var(--text-muted); }
-.block.tool-use svg { color: var(--accent); }
-.block.tool-result { color: var(--success); }
-.block.tool-result svg { color: var(--success); }
+/* tool_use 状态图标色：running=主色转圈、completed=绿勾、error=红感叹 */
+.block.tool-use.status-running svg { color: var(--accent); }
+.block.tool-use.status-completed svg { color: var(--success); }
+.block.tool-use.status-error svg { color: #e53e3e; }
+.block.tool-use.status-error { color: #e53e3e; }
 .block.plan-card { color: var(--text-muted); }
 .block.plan-card svg { color: var(--accent); }
+/* 可展开块:头部(可点) + 展开详情 */
+.block-head {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: transparent; border: 0; padding: 0; cursor: pointer;
+  color: inherit; font: inherit; text-align: left; max-width: 100%;
+}
+.block-head:disabled { cursor: default; }
+.block-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.block-chev { transition: transform .15s; opacity: .6; flex-shrink: 0; }
+.block-chev.open { transform: rotate(180deg); }
+.block-detail {
+  margin-top: 6px; padding-left: 0; width: 100%;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.block-detail-section { display: flex; flex-direction: column; gap: 3px; }
+.block-detail-label {
+  font-size: 10px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .05em;
+}
+.block-detail-label.err { color: #e53e3e; }
+.block-detail-pre {
+  margin: 0; padding: 6px 8px; background: var(--bg-sunken); border-radius: var(--r-sm);
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);
+  white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-all;
+  max-height: 240px; overflow-y: auto;
+}
+/* Task 子代理输出(内嵌) */
+.block-subagent {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 6px 8px; background: var(--bg-sunken); border-radius: var(--r-sm);
+  max-height: 240px; overflow-y: auto;
+}
+.block-subagent-row { font-size: 11px; line-height: 1.4; }
+.block-subagent-text { color: var(--text-muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+.block-subagent-tool {
+  font-family: var(--font-mono); color: var(--text-faint);
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.block-subagent-tool::before { content: '↳ '; opacity: .6; }
+/* 工具执行中：图标旋转 */
+.icon-spin { animation: icon-spin 1s linear infinite; }
+@keyframes icon-spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
 .typing { color: var(--text-faint); }
 
 /* 批准/权限请求：底部弹出模态 */

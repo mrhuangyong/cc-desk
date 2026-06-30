@@ -195,6 +195,11 @@ function startRemoteBridge(cfg: RemoteConfig): void {
       claude.resolveDialog(reqId, result)
       // dialog 解决后从 replayer 清除,避免手机重连时补发已解决的 dialog-request(无限弹窗根因)
       remoteReplayer?.cancel(reqId)
+      // 手机远程回答后通知桌面渲染端清 pendingDialog。
+      // 安全性:dispatcher resolveDialog 只被手机远程回答调用;abort 走 askUserViaPanel
+      // 的 signal.addEventListener('abort') 直接 resolve,不经此处。故不会重蹈 83f62bd
+      // (abort/竞态时 dialog 刚弹就被误清)。renderer 的 DIALOG_RESOLVED 按 reqId 精确匹配清。
+      wc.send('claude:dialog-resolved', { reqId })
     },
     // 拉取会话历史：从 projects-store 读该会话 messages，转换后下发（真实数据，非 mock）。
     onHistoryRequest: (localSessionId, limit) => {
