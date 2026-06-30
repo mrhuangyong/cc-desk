@@ -13,6 +13,7 @@ import { normalizeBetaBlocks, extractToolResults, extractBackgroundTaskId, extra
 import { getPermissionMode } from './builtin-commands'
 import { getSkills } from './claude-config'
 import { resolveClaudeCodeExecutable } from './claude-sdk-executable'
+import { parseGoalVerdict, buildGoalEvalPrompt, type GoalVerdict } from './goal-verdict'
 
 // 「写/执行类」工具：default（变更前确认）权限模式下，这些工具调用需弹授权窗让用户批准。
 // 只读工具（Read/Glob/Grep/LS/WebSearch/TodoWrite 等）直接放行，不打扰用户。
@@ -1253,6 +1254,20 @@ ${trimmed}`
       return cleaned || null
     } catch {
       return null   // AI 失败不阻塞 commit 流程
+    }
+  }
+
+  /**
+   * /goal 评估器:用 Haiku 判断"条件 + 最新进展"是否达成。
+   * 复用 runSideQuery(激活供应商的模型;Haiku 角色由 modelRoleMap 映射)。
+   * A3 容错:runSideQuery 抛错或解析失败 → {met:false}(继续轮)。
+   */
+  async evaluateGoal(condition: string, lastAssistantMsg: string, cwd?: string): Promise<GoalVerdict> {
+    try {
+      const raw = await this.runSideQuery(buildGoalEvalPrompt(condition, lastAssistantMsg), cwd)
+      return parseGoalVerdict(raw)
+    } catch (err) {
+      return { met: false, reason: `评估调用失败:${String(err)},默认继续` }
     }
   }
 }
