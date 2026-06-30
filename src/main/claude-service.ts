@@ -666,13 +666,28 @@ export class ClaudeService {
         // （子代理 user 消息的 tool_result 仍在下方正常处理，回填 subagent 抽屉，不受影响。）
         if (!message.subagent_type) {
           const rawContentArr = Array.isArray(message.message?.content) ? message.message.content : []
-          const userText = rawContentArr
-            .filter((b: any) => b?.type === 'text' && typeof b.text === 'string')
-            .map((b: any) => b.text)
-            .join('')
-            .trim()
-          if (userText) {
-            webContents.send('claude:user-message', { localSessionId: lsid, text: userText })
+          // 过滤 SDK 注入的非用户真实输入(skill 内容、system-reminder 等)。
+          // SDK 给 SDKUserMessage 提供了语义字段(非内容猜测):
+          //   - isSynthetic: true 表示合成的非用户输入(如 skill 加载注入的 SKILL.md 全文)
+          //   - origin.kind: 标识消息来源;非 'human' 的(channel/peer)是注入
+          // 用这两个字段区分,不靠内容长度/前缀猜测——用户输多长都不会误判。
+          // 保守原则:只在「明确标识为非人类」时过滤(isSynthetic=true 或 origin.kind 明确非 human);
+          // 字段缺省时(老版本/某些路径)按真实用户输入处理,宁可漏过滤(skill 显示)也不误杀(正常消息消失)。
+          const isRealUserInput = (msg: any): boolean => {
+            if (msg?.isSynthetic === true) return false
+            const kind = msg?.origin?.kind
+            if (kind !== undefined && kind !== 'human') return false
+            return true
+          }
+          if (isRealUserInput(message)) {
+            const userText = rawContentArr
+              .filter((b: any) => b?.type === 'text' && typeof b.text === 'string')
+              .map((b: any) => b.text)
+              .join('')
+              .trim()
+            if (userText) {
+              webContents.send('claude:user-message', { localSessionId: lsid, text: userText })
+            }
           }
         }
         const results = extractToolResults(message.message?.content || [])
