@@ -166,6 +166,14 @@ export function ArrowDownIcon({ size = '1em', className }: IconProps) {
   )
 }
 
+export function ArrowRightIcon({ size = '1em', className }: IconProps) {
+  return (
+    <svg {...base(size, className)}>
+      <path d="M5 12h14M12 5l7 7-7 7" />
+    </svg>
+  )
+}
+
 /** 盾牌（权限请求）。 */
 export function ShieldIcon({ size = '1em', className }: IconProps) {
   return (

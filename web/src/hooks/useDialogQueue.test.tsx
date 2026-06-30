@@ -119,6 +119,40 @@ describe('useDialogQueue - resolve（批准/拒绝）', () => {
     })
   })
 
+  it('ask_user_question 批准透传 opts.answers → result 含 answers（非 cancelled）', async () => {
+    const send = vi.fn().mockResolvedValue(true)
+    const { result } = renderHook(() => useDialogQueue({ send }))
+    act(() => {
+      result.current.onInbound({
+        ...mkDialogEnv('r1'),
+        payload: { reqId: 'r1', localSessionId: 's1', dialogKind: 'ask_user_question', payload: { questions: [] } },
+      })
+    })
+    const answers = [{ questionIndex: 0, selected: { index: 1, label: 'x' } }]
+    await act(async () => {
+      await result.current.approve('r1', { answers })
+    })
+    expect(send).toHaveBeenCalledWith('dialog.response', {
+      reqId: 'r1',
+      result: { behavior: 'completed', result: { answers } },
+    })
+  })
+
+  it('plan_proposed 批准透传 opts.permissionMode → result 用选定模式', async () => {
+    const send = vi.fn().mockResolvedValue(true)
+    const { result } = renderHook(() => useDialogQueue({ send }))
+    act(() => {
+      result.current.onInbound(mkDialogEnv('r1')) // plan_proposed
+    })
+    await act(async () => {
+      await result.current.approve('r1', { permissionMode: '完全访问' })
+    })
+    expect(send).toHaveBeenCalledWith('dialog.response', {
+      reqId: 'r1',
+      result: { behavior: 'completed', result: { permissionMode: '完全访问' } },
+    })
+  })
+
   it('send 失败（未连接）时保留队列项，不移除', async () => {
     // I1：useRelay.send 未连接时返回 false（静默丢弃）。断线时点批准不应让卡片消失。
     const send = vi.fn().mockResolvedValue(false)

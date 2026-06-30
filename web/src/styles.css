@@ -611,6 +611,97 @@ body {
 }
 .dialog-btn.deny:active { background: var(--bg-sunken); }
 
+/* ===== AskQuestionSheet 问答向导 ===== */
+/* 进度行：左进度 + 右取消 */
+.ask-head { justify-content: space-between; margin-bottom: 6px; }
+.ask-progress {
+  font-size: 12px; color: var(--text-muted); font-weight: 600;
+}
+.ask-cancel-btn {
+  border: 0; background: transparent; color: var(--text-muted);
+  padding: 4px; cursor: pointer; border-radius: var(--r-sm);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.ask-cancel-btn svg { width: 18px; height: 18px; }
+.ask-cancel-btn:active { background: var(--bg-sunken); }
+/* 问题区：标签 chip + 问题文本 */
+.ask-question-block { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.ask-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.ask-tag {
+  font-size: 11px; padding: 2px 8px; border-radius: 999px;
+  background: var(--accent-bg); color: var(--accent); font-weight: 600;
+}
+.ask-tag-muted { background: var(--bg-sunken); color: var(--text-muted); }
+.ask-text { font-size: 16px; font-weight: 500; line-height: 1.45; color: var(--text); }
+/* 选项列表：大号可点区（触控友好） */
+.dialog-options {
+  display: flex; flex-direction: column; gap: 8px;
+  margin-bottom: 16px; max-height: 46vh; overflow-y: auto;
+}
+.dialog-option {
+  display: flex; align-items: flex-start; gap: 10px; text-align: left;
+  padding: 11px 12px; border-radius: var(--r-md); cursor: pointer;
+  border: 1px solid var(--border-strong); background: var(--bg-elev);
+  transition: border-color .12s, background .12s;
+}
+.dialog-option.selected {
+  border-color: var(--accent); background: var(--accent-bg);
+}
+.dialog-option:active { transform: scale(.99); }
+.dialog-option-mark {
+  flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%;
+  border: 1.5px solid var(--border-strong);
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--accent); margin-top: 1px;
+}
+.dialog-option.selected .dialog-option-mark { border-color: var(--accent); }
+.dialog-option-mark svg { width: 12px; height: 12px; }
+.dialog-option-body { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.dialog-option-label { font-size: 14px; color: var(--text); font-weight: 500; }
+.dialog-option-desc { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
+/* Other 自定义输入框 */
+.ask-other-input {
+  width: 100%; padding: 10px 12px; font-size: 14px;
+  border: 1px solid var(--border-strong); border-radius: var(--r-md);
+  background: var(--bg-elev); color: var(--text);
+}
+.ask-other-input:focus { outline: none; border-color: var(--accent); }
+/* 向导导航：上一步/下一步/提交 */
+.ask-nav { justify-content: flex-end; }
+
+/* ===== PlanSheet 计划批准 ===== */
+/* 计划文本：行内 markdown + pre-wrap 保留换行，max-height 滚动 */
+.dialog-plan {
+  font-size: 14px; line-height: 1.5; color: var(--text);
+  white-space: pre-wrap; word-break: break-word;
+  background: var(--bg-sunken); border-radius: var(--r-sm);
+  padding: 10px 12px; margin-bottom: 16px;
+  max-height: 40vh; overflow-y: auto;
+}
+.dialog-plan code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  background: var(--bg-elev); padding: 1px 4px; border-radius: 4px; font-size: 12px;
+}
+.dialog-modes-label {
+  font-size: 12px; color: var(--text-muted); margin-bottom: 8px; font-weight: 600;
+}
+/* 权限模式二选一 */
+.dialog-modes {
+  display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;
+}
+.dialog-mode {
+  display: flex; align-items: center; gap: 10px; text-align: left;
+  padding: 11px 12px; border-radius: var(--r-md); cursor: pointer;
+  border: 1px solid var(--border-strong); background: var(--bg-elev);
+  transition: border-color .12s, background .12s;
+}
+.dialog-mode.selected { border-color: var(--accent); background: var(--accent-bg); }
+.dialog-mode:active { transform: scale(.99); }
+.dialog-mode-icon { font-size: 16px; flex-shrink: 0; }
+.dialog-mode-body { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.dialog-mode-label { font-size: 14px; color: var(--text); font-weight: 600; }
+.dialog-mode-desc { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
+
 @keyframes overlay-in { from { opacity: 0 } to { opacity: 1 } }
 @keyframes sheet-in { from { transform: translateY(100%) } to { transform: translateY(0) } }
 
