@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain, dialog, Menu } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, dialog, Menu, Notification } from 'electron'
 import { join } from 'path'
 import { WebSocket } from 'ws'
 import QRCode from 'qrcode'
@@ -953,6 +953,13 @@ function createWindow() {
 
   // 更新状态转发到当前窗口（窗口重建时在 did-finish-load 重绑）
   updateManager.setEmit((s) => win.webContents.send('update:state', s))
+  // 更新检查完成时弹出桌面通知（无论用户在哪个页面都能看到结果）
+  updateManager.setNotify((title, body) => {
+    const n = new Notification({ title, body })
+    n.show()
+    // 同时发 claude:notification 让渲染端也能处理（如 toast/通知面板）
+    try { win.webContents.send('claude:notification', { localSessionId: '', text: `[${title}] ${body}`, priority: 'medium' }) } catch {}
+  })
 
   // IPC handler 在 app ready 时只注册一次（见 registerIpcHandlers），
   // 不随 createWindow 重复注册，避免窗口重建时报 'second handler' 错误。

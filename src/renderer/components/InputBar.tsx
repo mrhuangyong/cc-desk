@@ -400,10 +400,8 @@ export function InputBar() {
     display: 'inline-flex', alignItems: 'center', gap: 4,
   }
 
-  // 流式时过滤掉 compact（压缩进行中会破坏流）；其他命令照常
-  const slashItems = isStreaming
-    ? allSlashItems.filter(i => !(i.kind === 'builtin' && i.builtinAction?.type === 'compact'))
-    : allSlashItems
+  // 原过滤 /compact 的流式条件已随命令移除而清理
+  const slashItems = allSlashItems
 
   return (
     <div style={{

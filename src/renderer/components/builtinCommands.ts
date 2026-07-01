@@ -28,9 +28,6 @@ export function runBuiltin(item: SlashMenuItem, ctx: BuiltinCtx): void {
       window.api?.claude?.stop(ctx.sessionId)
       ctx.dispatch({ type: 'CLEAR_SESSION_MESSAGES', sessionId: ctx.sessionId })
       return
-    case 'compact':
-      window.api?.cc?.builtin?.compact(ctx.sessionId)
-      return
     case 'show-cost':
       // text 空 → reducer 聚合会话 costUSD；非空直接显示（这里统一传空让 reducer 算）
       ctx.dispatch({ type: 'SHOW_COST', sessionId: ctx.sessionId, text: '' })

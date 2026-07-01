@@ -34,7 +34,6 @@ export const BUILTIN_COMMANDS: ClaudeBuiltinCommand[] = [
   { kind: 'builtin', id: 'builtin:permissions', name: '/permissions', desc: '权限模式', builtinAction: { type: 'open-permission-menu' } },
   // 会话操作
   { kind: 'builtin', id: 'builtin:clear', name: '/clear', desc: '清空当前会话', builtinAction: { type: 'clear-session' } },
-  { kind: 'builtin', id: 'builtin:compact', name: '/compact', desc: '压缩上下文（流式中禁用）', builtinAction: { type: 'compact' } },
   { kind: 'builtin', id: 'builtin:cost', name: '/cost', desc: '本会话费用统计', builtinAction: { type: 'show-cost' } },
   // 主进程 IPC
   { kind: 'builtin', id: 'builtin:init', name: '/init', desc: '生成 CLAUDE.md', builtinAction: { type: 'init-project' } },

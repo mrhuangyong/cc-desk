@@ -47,9 +47,11 @@ function parseMacYml(yml: string): MacMeta | null {
 
 export class UpdateManager {
   private status: UpdateStatus = { state: 'idle' }
+  private checking = false  // 防止并发调用 checkNow
   private timer: NodeJS.Timeout | null = null
   private startupTimer: NodeJS.Timeout | null = null
   private emit: (s: UpdateStatus) => void = () => {}
+  private notify: (title: string, body: string) => void = () => {}
   private readonly repo: string
 
   constructor(opts: { repo: string }) {
@@ -63,6 +65,10 @@ export class UpdateManager {
 
   setEmit(fn: (s: UpdateStatus) => void) {
     this.emit = fn
+  }
+
+  setNotify(fn: (title: string, body: string) => void) {
+    this.notify = fn
   }
 
   sendCurrentState() {
@@ -96,35 +102,50 @@ export class UpdateManager {
   }
 
   async checkNow(): Promise<void> {
-    // win/linux 的 electron-updater 仅在打包后可用，dev 模式直接返回；
-    // mac 走 fetch latest-mac.yml 比对版本，dev 下也能跑（方便测试）。
-    if (SUPPORTS_AUTO && !app.isPackaged) {
-      this.setStatus({ state: 'idle' })
-      return
-    }
-    this.setStatus({ state: 'checking' })
-    if (SUPPORTS_AUTO) {
-      try {
-        await autoUpdater.checkForUpdates()
-      } catch (e: any) {
-        this.setStatus({ state: 'error', message: String(e?.message ?? e) })
-      }
-      return
-    }
-    // mac: fetch latest-mac.yml 比对版本
+    // 防止并发检查（电子更新器 / fetch 未完成时再次点击产生重复请求）
+    if (this.checking) return
+    this.checking = true
     try {
-      const meta = await this.fetchMacMeta()
-      if (!meta) {
-        this.setStatus({ state: 'error', message: '无法解析 latest-mac.yml' })
+      // win/linux 的 electron-updater 仅在打包后可用，dev 模式直接返回；
+      // mac 走 fetch latest-mac.yml 比对版本，dev 下也能跑（方便测试）。
+      if (SUPPORTS_AUTO && !app.isPackaged) {
+        this.setStatus({ state: 'idle' })
         return
       }
-      if (semverGt(meta.version, app.getVersion())) {
-        this.setStatus({ state: 'available', version: meta.version })
-      } else {
-        this.setStatus({ state: 'up-to-date' })
+      this.setStatus({ state: 'checking' })
+      if (SUPPORTS_AUTO) {
+        try {
+          await autoUpdater.checkForUpdates()
+        } catch (e: any) {
+          const msg = String(e?.message ?? e)
+          this.setStatus({ state: 'error', message: msg })
+          this.notify('检查更新失败', msg)
+        }
+        return
       }
-    } catch (e: any) {
-      this.setStatus({ state: 'error', message: String(e?.message ?? e) })
+      // mac: fetch latest-mac.yml 比对版本
+      try {
+        const meta = await this.fetchMacMeta()
+        if (!meta) {
+          const msg = '无法解析 latest-mac.yml'
+          this.setStatus({ state: 'error', message: msg })
+          this.notify('检查更新失败', msg)
+          return
+        }
+        if (semverGt(meta.version, app.getVersion())) {
+          this.setStatus({ state: 'available', version: meta.version })
+          this.notify('发现新版本', `v${meta.version} 可用`)
+        } else {
+          this.setStatus({ state: 'up-to-date' })
+          this.notify('检查更新', '当前已是最新版本')
+        }
+      } catch (e: any) {
+        const msg = String(e?.message ?? e)
+        this.setStatus({ state: 'error', message: msg })
+        this.notify('检查更新失败', msg)
+      }
+    } finally {
+      this.checking = false
     }
   }
 
