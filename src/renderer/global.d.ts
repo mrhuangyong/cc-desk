@@ -39,6 +39,7 @@ interface ClaudeAPI {
   pendingDialogs(): Promise<Array<{ reqId: string; localSessionId?: string; dialogKind: string; payload: any; toolUseId?: string }>>
   setPermissionMode(opts: { localSessionId: string; permission: string }): Promise<void>
   contextUsage(localSessionId: string): Promise<any>
+  compactContext(localSessionId: string): Promise<void>
   onContextUsage(cb: (data: any) => void): (() => void) | undefined
   // /goal: set/clear 同步主进程 goalStore;evaluated/achieved 下行通知。
   setGoal(lsid: string, condition: string): Promise<void>

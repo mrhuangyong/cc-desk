@@ -697,6 +697,8 @@ function registerIpcHandlers(): void {
   ipcMain.handle('claude:set-goal', (_e, lsid: string, condition: string) => claude.setGoal(lsid, condition))
   ipcMain.handle('claude:clear-goal', (_e, lsid: string) => claude.clearGoal(lsid))
   ipcMain.handle('cc:builtin:compact', (_e, localSessionId: string) => claude.compactSession(localSessionId, getActiveWin()!.webContents))
+  // 触发真实 CLI /compact（区别于 cc:builtin:compact 的手写 UI 摘要）：供上下文面板按钮调用
+  ipcMain.handle('claude:compact-context', (_e, localSessionId: string) => claude.compactContext(localSessionId, getActiveWin()!.webContents))
   ipcMain.handle('cc:builtin:init', (_e, opts: { cwd: string }) => claude.initProject(opts.cwd, getActiveWin()!.webContents))
   ipcMain.handle('cc:builtin:export', (_e, localSessionId: string) => claude.exportSession(localSessionId, getActiveWin()!.webContents))
   ipcMain.handle('cc:builtin:add-dir', (_e, opts: { localSessionId: string; dir: string }) => claude.addDir(opts.localSessionId, opts.dir, getActiveWin()!.webContents))
