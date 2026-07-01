@@ -29,7 +29,7 @@ function initialState(): AppState {
     },
     claudeSessionMap: {},
     pendingDialog: null,
-    dirtyTabIds: {}, lastFileOpenedSeq: 0, queueBySession: {}, tasksBySession: {}, backendTasksBySession: {}, panelFold: { root: false }, panelPosition: { x: 0, y: 0 }, subagentOutputBySession: {}, planBySession: {}, abortedBySession: {}, pendingRemoteMessages: {}, contextUsageBySession: {}, goalBySession: {}, goalCardOpen: null,
+    dirtyTabIds: {}, lastFileOpenedSeq: 0, queueBySession: {}, tasksBySession: {}, backendTasksBySession: {}, panelFold: { root: false }, panelPosition: { x: 0, y: 0 }, subagentOutputBySession: {}, planBySession: {}, abortedBySession: {}, completedBySession: {}, pendingRemoteMessages: {}, contextUsageBySession: {}, goalBySession: {}, goalCardOpen: null,
     editingMessageId: null, editingQueueId: null,
     updateStatus: { state: 'idle' },
     reviewByProject: {},
@@ -950,5 +950,66 @@ describe('reviewByProject 分片', () => {
     const ids = next.tasksBySession.s1.map(t => t.id)
     // 保留 running/pending，清除 completed/failed/killed
     expect(ids).toEqual(['t2', 't4'])
+  })
+
+  // === 会话状态图标：completedBySession 生命周期 ===
+
+  it('STREAM_END 标记非活跃会话为已完成（completedBySession）', () => {
+    // s2 是非活跃会话（activeSessionId='s1'），先 START 再 END
+    let s = initialState()
+    s = reducer(s, { type: 'STREAM_START', sessionId: 's2' })
+    s = reducer(s, { type: 'STREAM_END', sessionId: 's2' })
+    expect(s.completedBySession['s2']).toBe(true)
+    expect(s.completedBySession['s1']).toBeUndefined()
+  })
+
+  it('STREAM_END 不标记活跃会话为已完成', () => {
+    // s1 是活跃会话，完成后不应标记（用户已在查看）
+    let s = initialState()
+    s = reducer(s, { type: 'STREAM_START', sessionId: 's1' })
+    s = reducer(s, { type: 'STREAM_END', sessionId: 's1' })
+    expect(s.completedBySession['s1']).toBeUndefined()
+  })
+
+  it('SELECT_SESSION 清除该会话的完成标记', () => {
+    let s = initialState()
+    s = reducer(s, { type: 'STREAM_START', sessionId: 's2' })
+    s = reducer(s, { type: 'STREAM_END', sessionId: 's2' })
+    expect(s.completedBySession['s2']).toBe(true)
+    // 用户切到 s2 → 清除标记
+    s = reducer(s, { type: 'SELECT_SESSION', sessionId: 's2' })
+    expect(s.completedBySession['s2']).toBeUndefined()
+  })
+
+  it('STREAM_START 清除上一轮的完成标记', () => {
+    let s = initialState()
+    s = reducer(s, { type: 'STREAM_START', sessionId: 's2' })
+    s = reducer(s, { type: 'STREAM_END', sessionId: 's2' })
+    expect(s.completedBySession['s2']).toBe(true)
+    // 新一轮开始 → 清除标记
+    s = reducer(s, { type: 'STREAM_START', sessionId: 's2' })
+    expect(s.completedBySession['s2']).toBeUndefined()
+  })
+
+  it('STREAM_ABORTED 清除完成标记（中止不是成功）', () => {
+    let s = initialState()
+    s = reducer(s, { type: 'STREAM_START', sessionId: 's2' })
+    s = reducer(s, { type: 'STREAM_END', sessionId: 's2' })
+    expect(s.completedBySession['s2']).toBe(true)
+    // 再来一轮：START → ABORTED
+    s = reducer(s, { type: 'STREAM_START', sessionId: 's2' })
+    s = reducer(s, { type: 'STREAM_ABORTED', sessionId: 's2' })
+    expect(s.completedBySession['s2']).toBeUndefined()
+  })
+
+  it('STREAM_END 在 pendingDialog 等待时不标记完成（对话未真正结束）', () => {
+    let s = initialState()
+    s = reducer(s, { type: 'STREAM_START', sessionId: 's2' })
+    // 模拟权限请求阻塞
+    s = reducer(s, { type: 'SHOW_DIALOG', reqId: 'r1', sessionId: 's2', dialogKind: 'permission_request', payload: {} })
+    s = reducer(s, { type: 'STREAM_END', sessionId: 's2' })
+    // dialogPending → streaming 保留，不标记完成
+    expect(s.completedBySession['s2']).toBeUndefined()
+    expect(s.streamingBySession['s2']).toBeDefined()
   })
 })

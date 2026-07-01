@@ -1,9 +1,31 @@
 import { useState } from 'react'
-import { Folder, FolderOpen, MessageCircle, FolderTree, ChevronDown, ChevronRight, Plus } from 'lucide-react'
+import { Folder, FolderOpen, MessageCircle, FolderTree, ChevronDown, ChevronRight, Plus, Loader2, AlertCircle, CircleCheck } from 'lucide-react'
 import { useStore } from '../state/store'
+import { useI18n } from '../i18n/useI18n'
 import { DeleteConfirmIcon } from './DeleteConfirmIcon'
 import { formatSessionTime } from '../utils/formatSessionTime'
 import { Tooltip } from './Tooltip'
+
+// 会话状态类型：仅在非活跃会话上显示
+// - loading: 正在执行任务（streaming 中）
+// - warning: 需要用户操作（权限/计划批准/AskUserQuestion 等阻塞式 dialog）
+// - success: 任务执行完成（用户不在该会话期间完成）
+// - idle: 无状态图标
+type SessionStatus = 'loading' | 'warning' | 'success' | 'idle'
+
+function getSessionStatus(
+  sessionId: string,
+  isActive: boolean,
+  state: ReturnType<typeof useStore>['state'],
+): SessionStatus {
+  // 状态图标仅在非活跃会话上显示
+  if (isActive) return 'idle'
+  // 优先级: warning > loading > success
+  if (state.pendingDialog?.sessionId === sessionId) return 'warning'
+  if (state.streamingBySession[sessionId]) return 'loading'
+  if (state.completedBySession[sessionId]) return 'success'
+  return 'idle'
+}
 
 interface Props {
   onOpenFiles: (projectId: string) => void
@@ -16,6 +38,7 @@ const MAX_VISIBLE_SESSIONS = 5
 
 export function ProjectTree({ onOpenFiles, expandedProjects, onToggleExpand, treeFilter }: Props) {
   const { state, dispatch } = useStore()
+  const { t } = useI18n()
   const [hoveredProject, setHoveredProject] = useState<string | null>(null)
   const [hoveredSession, setHoveredSession] = useState<string | null>(null)
   const [expandedSessionCounts, setExpandedSessionCounts] = useState<Set<string>>(new Set())
@@ -107,7 +130,27 @@ export function ProjectTree({ onOpenFiles, expandedProjects, onToggleExpand, tre
                 }}
               >
                 <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' }}>
-                  <MessageCircle size={13} style={{ flexShrink: 0 }} />
+                  {(() => {
+                    const status = getSessionStatus(session.id, active, state)
+                    if (status === 'loading') {
+                      return <Loader2 size={13} className="cc-spin" style={{ flexShrink: 0, color: 'var(--accent)' }} />
+                    }
+                    if (status === 'warning') {
+                      return (
+                        <Tooltip label={t('left.statusWaiting')}>
+                          <AlertCircle size={13} style={{ flexShrink: 0, color: '#ff9500' }} />
+                        </Tooltip>
+                      )
+                    }
+                    if (status === 'success') {
+                      return (
+                        <Tooltip label={t('left.statusDone')}>
+                          <CircleCheck size={13} style={{ flexShrink: 0, color: '#34c759' }} />
+                        </Tooltip>
+                      )
+                    }
+                    return <MessageCircle size={13} style={{ flexShrink: 0 }} />
+                  })()}
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.title}</span>
                 </span>
                 <span style={{ position: 'relative', minWidth: 40, display: 'inline-flex', justifyContent: 'flex-end', flexShrink: 0 }}>

@@ -593,6 +593,12 @@ export class ClaudeService {
           const trigger = meta.trigger === 'manual' ? '手动' : '自动'
           const tokenPart = (pre != null || post != null) ? `：${pre ?? '?'} → ${post ?? '?'} tokens` : ''
           webContents.send('claude:notice', { ...mkNotice('compact', `已${trigger}压缩上下文${tokenPart}`, 'info'), localSessionId: lsid })
+          // 压缩完成后主动推一次 context-usage，让输入框占比环立即反映压缩后的真实 token。
+          // 否则环要等下一轮对话结束（for-await 退出前那次推送）才刷新，用户会以为「压缩没生效」。
+          try {
+            const usage = await this.manager?.getContextUsage(lsid)
+            if (usage) webContents.send('claude:context-usage', { localSessionId: lsid, usage })
+          } catch { /* 压缩后查询用量失败不阻塞 */ }
         } else if (subtype === 'status' && sys.status === 'compacting') {
           // 压缩进行中：SDK 正在摘要历史。用户此前反馈不知道何时压缩，故改为可见提示。
           webContents.send('claude:notice', { ...mkNotice('compact', '正在压缩上下文…', 'info'), localSessionId: lsid })
@@ -1198,6 +1204,28 @@ export class ClaudeService {
       }
       this.manager.updateCallbacks(lsid, onEvent, onError)
     }
+  }
+
+  /**
+   * 触发 SDK/CLI 真实上下文压缩：通过 pushMessage("/compact") 让 CLI 子进程本地执行
+   * /compact local 命令（compactConversation 真实摘要并替换内部历史，真降 token）。
+   *
+   * 区别于下方手写 compactSession（UI 层整理、不降 SDK token）——本方法走 CLI 原生压缩，
+   * 压缩完成后占比环会真实下降。压缩进度/结果由 forwardEvent 的 compact_boundary/
+   * compacting 分支发 notice 反馈（compact_boundary 后会主动推一次 context-usage 刷新环）。
+   *
+   * 注意：与现有 /compact slash 命令（走 compactSession）并存——后者保留作 UI 整理入口，
+   * 本方法供上下文面板按钮调用，触发真实降 token。
+   */
+  async compactContext(localSessionId: string, webContents: WebContents): Promise<void> {
+    if (!this.manager) return
+    // 流式中压缩会破坏进行中的流（compact 会重置 CLI 内部消息历史），
+    // 与 InputBar 流式过滤 /compact 命令的约束一致。渲染端按钮已禁用，此处兜底再判。
+    if (this.manager.isIterating(localSessionId)) {
+      webContents.send('claude:notice', { ...mkNotice('compact', '流式对话进行中，无法压缩', 'warn'), localSessionId })
+      return
+    }
+    this.manager.pushMessage(localSessionId, '/compact')
   }
 
   /**

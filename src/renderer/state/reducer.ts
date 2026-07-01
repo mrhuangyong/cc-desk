@@ -60,6 +60,10 @@ export interface AppState {
   // 用户主动中止的 session 标志:interrupt 可能不立即生效,SDK 续推的 delta 会被忽略,
   // 直到用户发新消息(STREAM_START)清除。避免停止后 streaming 被重建(停止按钮闪烁)。
   abortedBySession: Record<string, boolean>
+  // 会话状态图标:记录在用户不在该会话时完成任务的会话。
+  // STREAM_END 时若该会话非活跃会话则置 true;SELECT_SESSION 切到该会话时清除。
+  // 用于左侧栏显示「任务完成」成功图标。STREAM_START / STREAM_ABORTED 时清除。
+  completedBySession: Record<string, boolean>
   // 远程(手机)user 消息暂存:手机发消息时若目标 session 尚未进 state(新建会话 HYDRATE 竞态),
   // updateSession 找不到会静默丢失。这里按 sessionId 暂存,HYDRATE 把 session 加入后回放。
   pendingRemoteMessages: Record<string, string[]>
@@ -369,7 +373,9 @@ export function reducer(state: AppState, action: Action): AppState {
       const activeTabIdBySession = state.activeTabIdBySession[target] === undefined
         ? { ...state.activeTabIdBySession, [target]: null }
         : state.activeTabIdBySession
-      return { ...state, activeSessionId: target, activeTabIdBySession }
+      // 用户切到该会话:清除其完成标记(状态图标消失,用户已看到结果)
+      const { [target]: _cc, ...restCompleted } = state.completedBySession
+      return { ...state, activeSessionId: target, activeTabIdBySession, completedBySession: restCompleted }
     }
     case 'ADD_MESSAGE': {
       // 把消息追加到指定会话（不可变）。会话不存在则原样返回（updateSession 内部短路）。
@@ -542,6 +548,8 @@ export function reducer(state: AppState, action: Action): AppState {
       })).projects
       // 清除中止标志:用户发新消息表示开始新一轮,不再忽略 delta
       const { [action.sessionId]: _ab, ...restAb } = state.abortedBySession
+      // 新一轮开始:清除上一轮的完成标记(状态图标从成功切回 loading)
+      const { [action.sessionId]: _cb, ...restCompleted } = state.completedBySession
       return {
         ...state,
         projects,
@@ -550,6 +558,7 @@ export function reducer(state: AppState, action: Action): AppState {
           [action.sessionId]: { blocks: [], notices: [], draftMessageId: draftId },
         },
         abortedBySession: restAb,
+        completedBySession: restCompleted,
       }
     }
     case 'STREAM_DELTA': {
@@ -709,7 +718,12 @@ export function reducer(state: AppState, action: Action): AppState {
       }
       const { [action.sessionId]: _, ...rest } = state.streamingBySession
       const { [action.sessionId]: _a2, ...restA2 } = state.abortedBySession
-      return { ...state, projects, streamingBySession: rest, abortedBySession: restA2 }
+      // 任务完成:若该会话非当前活跃会话,标记为已完成(左侧栏显示成功图标)。
+      // 用户切到该会话时(SELECT_SESSION)清除标记。
+      const completedBySession = action.sessionId !== state.activeSessionId
+        ? { ...state.completedBySession, [action.sessionId]: true }
+        : state.completedBySession
+      return { ...state, projects, streamingBySession: rest, abortedBySession: restA2, completedBySession }
     }
     case 'STREAM_ABORTED': {
       // draft message 已含已输出内容,保留在 messages 里(刷新后可见)。
@@ -727,10 +741,11 @@ export function reducer(state: AppState, action: Action): AppState {
           return { ...s, messages: msgs }
         }).projects
       }
-      const { [action.sessionId]: _, ...rest } = state.streamingBySession
+      const { [action.sessionId]: _a2, ...restStream } = state.streamingBySession
+      const { [action.sessionId]: _c2, ...restCompleted2 } = state.completedBySession
       // 标记该 session 已中止:interrupt 不立即生效时,SDK 续推的 delta 会被忽略,
       // 直到用户发新消息(STREAM_START 清除)。避免停止后 streaming 被重建。
-      return { ...state, projects, streamingBySession: rest, abortedBySession: { ...state.abortedBySession, [action.sessionId]: true } }
+      return { ...state, projects, streamingBySession: restStream, abortedBySession: { ...state.abortedBySession, [action.sessionId]: true }, completedBySession: restCompleted2 }
     }
     case 'RESTORE_STREAMING': {
       // 刷新后:把已恢复的 draft message 重建为 streaming 状态。

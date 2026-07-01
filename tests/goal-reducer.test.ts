@@ -11,7 +11,7 @@ function initialState(): AppState {
     currentView: 'workspace', activeSettingsSection: 'general', streamingBySession: {},
     settings: { apiKey: '', model: 'model-sonnet', cwd: '', providers: [], models: [], modelRoleMap: {}, theme: 'codex-light', lang: 'zh-CN', zoom: 'normal', chatWidth: 'wide', proxy: '', inheritTerminal: true, terminalFont: 'x', taskNotify: true, notifySound: true, notifyOnComplete: true, notifyOnError: true, notifyOnConfirm: true, notifyOnPermission: true, queueMode: 'queue', showThinking: true, showTodo: true, showBackendTask: true, rememberPanelPosition: true, autoArchive: true, archiveDays: '7', devTools: false, codePreview: { lightTheme: '', darkTheme: '', showLineNumbers: true, wordWrap: false, fontSize: 12 }, skills: [], mcpServers: [], plugins: [], commands: [], hooks: [] },
     claudeSessionMap: {}, pendingDialog: null, dirtyTabIds: {}, lastFileOpenedSeq: 0,
-    queueBySession: {}, tasksBySession: {}, backendTasksBySession: {}, panelFold: { root: false }, panelPosition: { x: 0, y: 0 }, subagentOutputBySession: {}, planBySession: {}, abortedBySession: {}, pendingRemoteMessages: {}, contextUsageBySession: {}, goalBySession: {}, goalCardOpen: null,
+    queueBySession: {}, tasksBySession: {}, backendTasksBySession: {}, panelFold: { root: false }, panelPosition: { x: 0, y: 0 }, subagentOutputBySession: {}, planBySession: {}, abortedBySession: {}, completedBySession: {}, pendingRemoteMessages: {}, contextUsageBySession: {}, goalBySession: {}, goalCardOpen: null,
     editingMessageId: null, editingQueueId: null, updateStatus: { state: 'idle' }, reviewByProject: {},
   }
 }

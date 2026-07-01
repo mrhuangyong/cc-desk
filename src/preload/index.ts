@@ -59,8 +59,13 @@ contextBridge.exposeInMainWorld('api', {
     // /goal 远程设/清：手机端发 /goal set/clear 时，主进程推 claude:goal-set-by-remote
     // 让桌面渲染端同步 SET_GOAL/CLEAR_GOAL（condition=null 表示清除）。
     onGoalSetByRemote: (cb: (data: any) => void) => { ipcRenderer.on('claude:goal-set-by-remote', (_, data) => cb(data)) },
+    // 仅清理 claude:* 命名空间（ChatArea 自身注册的订阅）。
+    // 注意：不得包含 update:state / cc-desk:model:changed —— 它们属于别的命名空间、
+    // 由 App.tsx / 设置页全局订阅。曾误列在此导致「检查更新」首次后失效：
+    // ChatArea 卸载（如切到设置页）时 cleanup 调本函数，把 App.tsx 的 update:state
+    // 监听器一并清掉，之后主进程推送的状态渲染端再也收不到，按钮表现为点了没反应。
     removeAllListeners: () => {
-      ['claude:system', 'claude:delta', 'claude:blocks', 'claude:notice', 'claude:task', 'claude:result', 'claude:error', 'claude:aborted', 'claude:dialog-request', 'claude:dialog-resolved', 'claude:remote-user-message', 'claude:user-message', 'claude:context-usage', 'claude:backend-task', 'claude:builtin-result', 'claude:subagent-output', 'claude:notification', 'claude:goal-evaluated', 'claude:goal-achieved', 'claude:goal-set-by-remote', 'cc-desk:model:changed', 'update:state']
+      ['claude:system', 'claude:delta', 'claude:blocks', 'claude:notice', 'claude:task', 'claude:result', 'claude:error', 'claude:aborted', 'claude:dialog-request', 'claude:dialog-resolved', 'claude:remote-user-message', 'claude:user-message', 'claude:context-usage', 'claude:backend-task', 'claude:builtin-result', 'claude:subagent-output', 'claude:notification', 'claude:goal-evaluated', 'claude:goal-achieved', 'claude:goal-set-by-remote']
         .forEach(ch => ipcRenderer.removeAllListeners(ch))
     },
   },

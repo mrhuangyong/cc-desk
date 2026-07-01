@@ -27,7 +27,7 @@ function initialState(): AppState {
     },
     claudeSessionMap: {},
     pendingDialog: null,
-    dirtyTabIds: {}, lastFileOpenedSeq: 0, queueBySession: {}, tasksBySession: {}, backendTasksBySession: {}, panelFold: { root: false }, panelPosition: { x: 0, y: 0 }, subagentOutputBySession: {}, planBySession: {}, abortedBySession: {}, pendingRemoteMessages: {}, contextUsageBySession: {}, goalBySession: {}, goalCardOpen: null,
+    dirtyTabIds: {}, lastFileOpenedSeq: 0, queueBySession: {}, tasksBySession: {}, backendTasksBySession: {}, panelFold: { root: false }, panelPosition: { x: 0, y: 0 }, subagentOutputBySession: {}, planBySession: {}, abortedBySession: {}, completedBySession: {}, pendingRemoteMessages: {}, contextUsageBySession: {}, goalBySession: {}, goalCardOpen: null,
     editingMessageId: null, editingQueueId: null,
     updateStatus: { state: 'idle' },
     reviewByProject: {},
