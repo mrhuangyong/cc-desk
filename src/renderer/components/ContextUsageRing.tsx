@@ -14,6 +14,10 @@ interface Props {
   usage: ContextUsageInfo | null
   // 模型 contextLength（已解析为数字，token 数）；usage.maxTokens 缺失时兜底。
   maxContextFallback?: number
+  // 压缩按钮：点击触发 CLI 真实 /compact（真降 token）。流式中/空会话时由父组件置 disabled。
+  onCompact: () => void
+  compactDisabled: boolean
+  compactLabel: string
 }
 
 // 按占比选色：<60% 绿、60-85% 黄、>85% 红。
@@ -46,7 +50,7 @@ function fmtTokensCN(n: number): string {
   return fmtTokens(n)
 }
 
-export function ContextUsageRing({ usage, maxContextFallback }: Props) {
+export function ContextUsageRing({ usage, maxContextFallback, onCompact, compactDisabled, compactLabel }: Props) {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const triggerRef = useRef<HTMLSpanElement>(null)
@@ -111,6 +115,9 @@ export function ContextUsageRing({ usage, maxContextFallback }: Props) {
           title={t('contextUsage.title')}
           unknownLabel={t('contextUsage.unknown')}
           capacityLabel={t('contextUsage.capacity')}
+          onCompact={onCompact}
+          compactDisabled={compactDisabled}
+          compactLabel={compactLabel}
         />
       )}
     </>
@@ -131,9 +138,12 @@ interface PanelProps {
   title: string
   unknownLabel: string
   capacityLabel: string
+  onCompact: () => void
+  compactDisabled: boolean
+  compactLabel: string
 }
 
-function ContextUsagePanel({ anchor, hasData, total, max, pct, color, categories, onClose, title, unknownLabel, capacityLabel }: PanelProps) {
+function ContextUsagePanel({ anchor, hasData, total, max, pct, color, categories, onClose, title, unknownLabel, capacityLabel, onCompact, compactDisabled, compactLabel }: PanelProps) {
   const panelRef = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
 
@@ -209,6 +219,23 @@ function ContextUsagePanel({ anchor, hasData, total, max, pct, color, categories
             ))}
           </div>
         )}
+        {/* 压缩按钮：触发 CLI 真实 /compact（真降 token），压缩后占比环立即下降。
+            流式中/空会话禁用（压缩会重置进行中的流；空会话无内容可压）。 */}
+        <div style={{ marginTop: cats.length ? 12 : 10, display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            onClick={() => { onCompact(); onClose() }}
+            disabled={compactDisabled}
+            style={{
+              padding: '5px 12px', borderRadius: 7, fontSize: 12,
+              cursor: compactDisabled ? 'not-allowed' : 'pointer',
+              border: '1px solid var(--border)', background: 'transparent',
+              color: compactDisabled ? 'var(--text-faint)' : 'var(--text)',
+              opacity: compactDisabled ? 0.6 : 1,
+            }}
+          >
+            {compactLabel}
+          </button>
+        </div>
       </div>
     </>,
     document.body,

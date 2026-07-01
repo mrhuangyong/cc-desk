@@ -662,6 +662,9 @@ export function InputBar() {
           <ContextUsageRing
             usage={state.contextUsageBySession?.[state.activeSessionId] ?? null}
             maxContextFallback={parseContextLength(activeModel?.contextLength)}
+            onCompact={() => window.api?.claude?.compactContext(state.activeSessionId)}
+            compactDisabled={isStreaming || isEmptySession}
+            compactLabel={t('contextUsage.compact')}
           />
           {/* 模型按钮 */}
           <div style={{ position: 'relative' }}>
