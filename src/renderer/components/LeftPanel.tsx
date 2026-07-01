@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import type { CSSProperties } from 'react'
-import { Plus, Search, Zap, ChevronsUpDown, ArrowUpDown, FolderPlus, Settings } from 'lucide-react'
+import { Plus, Search, Zap, ChevronsUpDown, ChevronsDownUp, ArrowUpDown, FolderPlus, Settings, Check } from 'lucide-react'
 import { ProjectTree } from './ProjectTree'
 import { FileTree } from './FileTree'
 import { Tooltip } from './Tooltip'
@@ -25,6 +25,12 @@ export function LeftPanel({ collapsed, onOpenSearch }: Props) {
   )
   // 记录用户已明确折叠过的项目 id，区分「从没见过的新项目」与「被主动折叠的旧项目」
   const [collapsedByUser, setCollapsedByUser] = useState<Set<string>>(() => new Set())
+
+  // 排序/筛选
+  type SortMode = 'recent' | 'created' | 'title'
+  const [sortMode, setSortMode] = useState<SortMode>('recent')
+  const [showArchived, setShowArchived] = useState(false)
+  const [sortMenuOpen, setSortMenuOpen] = useState(false)
 
   // 项目数据异步 HYDRATE 进来后，把新到达的项目默认展开；
   // collapsedByUser 里的项目保持折叠，不被反复 HYDRATE 覆盖。
@@ -86,6 +92,9 @@ export function LeftPanel({ collapsed, onOpenSearch }: Props) {
       setCollapsedByUser(new Set())
     }
   }
+
+  // 全部展开时图标切换为「折叠」态，tooltip 也跟着变
+  const allExpanded = state.projects.length > 0 && state.projects.every(p => expandedProjects.has(p.id))
 
   const handleNewSession = () => {
     if (currentProjectId) dispatch({ type: 'ADD_SESSION', projectId: currentProjectId })
@@ -169,8 +178,62 @@ export function LeftPanel({ collapsed, onOpenSearch }: Props) {
           }}>
             <span style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginRight: 'auto' }}>工作区</span>
             <Tooltip label={t('left.addProject')}><button onMouseEnter={() => setHovered('addProject')} onMouseLeave={() => setHovered(null)} onClick={handleAddProject} aria-label={t('left.addProject')} style={toolBtn('addProject')}><FolderPlus size={13} /></button></Tooltip>
-            <Tooltip label="展开/折叠"><button onMouseEnter={() => setHovered('toggleAll')} onMouseLeave={() => setHovered(null)} onClick={toggleAll} aria-label="展开/折叠" style={toolBtn('toggleAll')}><ChevronsUpDown size={13} /></button></Tooltip>
-            <Tooltip label="排序/筛选"><button onMouseEnter={() => setHovered('sort')} onMouseLeave={() => setHovered(null)} aria-label="排序/筛选" style={toolBtn('sort')}><ArrowUpDown size={13} /></button></Tooltip>
+            <Tooltip label={allExpanded ? t('left.collapseAll') : t('left.expandAll')}><button onMouseEnter={() => setHovered('toggleAll')} onMouseLeave={() => setHovered(null)} onClick={toggleAll} aria-label={allExpanded ? t('left.collapseAll') : t('left.expandAll')} style={toolBtn('toggleAll')}>{allExpanded ? <ChevronsDownUp size={13} /> : <ChevronsUpDown size={13} />}</button></Tooltip>
+            <div style={{ position: 'relative' }}>
+              <button onMouseEnter={() => setHovered('sort')} onMouseLeave={() => setHovered(null)} onClick={() => setSortMenuOpen(o => !o)} aria-label={t('left.sortFilter')} style={{ ...toolBtn('sort'), color: sortMenuOpen || sortMode !== 'recent' || showArchived ? 'var(--text)' : undefined, background: sortMenuOpen ? 'var(--bg-hover)' : undefined }}><ArrowUpDown size={13} /></button>
+              {sortMenuOpen && (
+                <>
+                  <div onClick={() => setSortMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 90 }} />
+                  <div style={{
+                    position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 100,
+                    background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+                    borderRadius: 8, boxShadow: 'var(--shadow-float)', padding: 4, minWidth: 170,
+                  }}>
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, padding: '4px 8px' }}>{t('left.sortBy')}</div>
+                    {([
+                      { key: 'recent', label: t('left.sortRecent') },
+                      { key: 'created', label: t('left.sortCreated') },
+                      { key: 'title', label: t('left.sortTitle') },
+                    ] as { key: SortMode; label: string }[]).map(opt => (
+                      <button key={opt.key} onClick={() => { setSortMode(opt.key); setSortMenuOpen(false) }}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                          padding: '6px 8px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                          background: sortMode === opt.key ? 'var(--bg-hover)' : 'transparent',
+                          color: 'var(--text)', fontSize: 12, textAlign: 'left', transition: 'background .1s',
+                        }}
+                        onMouseEnter={(e) => { if (sortMode !== opt.key) e.currentTarget.style.background = 'var(--bg-hover)' }}
+                        onMouseLeave={(e) => { if (sortMode !== opt.key) e.currentTarget.style.background = 'transparent' }}
+                      >
+                        <span style={{ flex: 1 }}>{opt.label}</span>
+                        {sortMode === opt.key && <Check size={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />}
+                      </button>
+                    ))}
+                    <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
+                    <button onClick={() => setShowArchived(v => !v)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                        padding: '6px 8px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                        background: 'transparent', color: 'var(--text)', fontSize: 12, textAlign: 'left', transition: 'background .1s',
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)' }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+                    >
+                      <span style={{ flex: 1 }}>{t('left.showArchived')}</span>
+                      <span style={{
+                        width: 28, height: 16, borderRadius: 8, flexShrink: 0, position: 'relative', transition: 'background .15s',
+                        background: showArchived ? 'var(--accent)' : 'var(--border)',
+                      }}>
+                        <span style={{
+                          position: 'absolute', top: 2, left: showArchived ? 14 : 2, width: 12, height: 12,
+                          borderRadius: '50%', background: '#fff', transition: 'left .15s',
+                        }} />
+                      </span>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
 
           {/* 项目会话树 / 文件树 */}
@@ -182,6 +245,8 @@ export function LeftPanel({ collapsed, onOpenSearch }: Props) {
               expandedProjects={expandedProjects}
               onToggleExpand={toggleExpand}
               treeFilter=""
+              sortMode={sortMode}
+              showArchived={showArchived}
             />
           )}
 

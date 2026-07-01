@@ -4,14 +4,32 @@ import { LeftPanel } from './components/LeftPanel'
 import { ChatArea } from './components/ChatArea'
 import { RightPanel } from './components/RightPanel'
 import { SettingsPage } from './components/settings/SettingsPage'
-import { useStore } from './state/store'
+import { useStore, useSelector } from './state/store'
 import { SearchDialog } from './components/SearchDialog'
-import { resolveTerminalCwd } from './utils/terminal'
 
 export function App() {
-  const { state, dispatch } = useStore()
-  const activeProject = state.projects.find(p => p.sessions.some(s => s.id === state.activeSessionId))
-  const projectName = activeProject?.name ?? 'cc-desk'
+  const { dispatch } = useStore()
+  // 分片订阅：仅订阅 App 渲染实际需要的字段，避免流式 delta 每帧重建 projects
+  // 导致 App 全量重渲染（连带 LeftPanel/RightPanel 无谓重渲染）。
+  const currentView = useSelector((s) => s.currentView)
+  const activeSessionId = useSelector((s) => s.activeSessionId)
+  const theme = useSelector((s) => s.theme)
+  const lastFileOpenedSeq = useSelector((s) => s.lastFileOpenedSeq)
+  const zoom = useSelector((s) => s.settings.zoom)
+  const chatWidth = useSelector((s) => s.settings.chatWidth)
+  const projectName = useSelector((s) => {
+    const proj = s.projects.find(p => p.sessions.some(sess => sess.id === s.activeSessionId))
+    return proj?.name ?? 'cc-desk'
+  })
+  // projects 用于防抖保存 effect；用 ref 桥接，不在渲染路径订阅（避免每帧重渲染）
+  const projectsRef = useRef<import('./types').Project[] | null>(null)
+  const tabsBySession = useSelector((s) => s.tabsBySession)
+  const activeTabIdBySession = useSelector((s) => s.activeTabIdBySession)
+  const claudeSessionMap = useSelector((s) => s.claudeSessionMap)
+  const goalBySession = useSelector((s) => s.goalBySession)
+  const settingsCwd = useSelector((s) => s.settings.cwd)
+  // 更新 ref（不入渲染依赖）
+  useSelector((s) => { projectsRef.current = s.projects; return s.projects.length })
 
   const [leftCollapsed, setLeftCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(true)  // 右栏默认隐藏
@@ -21,23 +39,23 @@ export function App() {
   // 它只在 OPEN_FILE_TAB（文件树点击）时递增，切 tab/关 tab 不动它，
   // 故不会因无关 tab 变化误触发展开。
   useEffect(() => {
-    if (state.lastFileOpenedSeq > 0) setRightCollapsed(false)
-  }, [state.lastFileOpenedSeq])
+    if (lastFileOpenedSeq > 0) setRightCollapsed(false)
+  }, [lastFileOpenedSeq])
 
   // 界面主题：始终（含设置页）把 state.theme 落到 document，并持久化。
   // 之前仅 ThemeSwitcher 内驱动，而设置页不渲染 TitleBar/ThemeSwitcher，
   // 导致在设置页改主题无效果。这里在 App 层兜底。
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', state.theme)
-    localStorage.setItem('cc-desk-theme', state.theme)
-  }, [state.theme])
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('cc-desk-theme', theme)
+  }, [theme])
 
   // 应用级快捷键：Cmd+,（macOS）/ Ctrl+, 切换设置/工作区
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === ',') {
         e.preventDefault()
-        if (state.currentView === 'settings') {
+        if (currentView === 'settings') {
           dispatch({ type: 'SET_VIEW', view: 'workspace' })
         } else {
           dispatch({ type: 'SET_SETTINGS_SECTION', section: 'general' })
@@ -46,7 +64,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [state.currentView, dispatch])
+  }, [currentView, dispatch])
 
   // 应用级快捷键：Cmd+B（macOS）/ Ctrl+B 切换右栏，Cmd+E / Ctrl+E 切换左栏。
   // setState 的 setter 引用稳定，无需进依赖数组。
@@ -77,13 +95,17 @@ export function App() {
         setSearchOpen(o => !o)
       } else if (k === 'j') {
         e.preventDefault()
-        const cwd = resolveTerminalCwd(state)
+        // 从 ref 读最新 projects/settings.cwd，不触发重渲染
+        const project = projectsRef.current?.find((p) =>
+          p.sessions.some((sess) => sess.id === activeSessionId)
+        )
+        const cwd = project?.path || settingsCwd || undefined
         dispatch({ type: 'OPEN_TAB', tabType: 'terminal', ...(cwd ? { cwd } : {}) })
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [state, dispatch])
+  }, [activeSessionId, settingsCwd, dispatch])
 
   // 应用级快捷键：Cmd+N（macOS）/ Ctrl+N 新建会话。
   // projectId 取当前激活会话所属项目，无激活则回退第一个项目。
@@ -91,31 +113,31 @@ export function App() {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return
       if (e.key.toLowerCase() !== 'n') return
-      const active = state.projects.find(p => p.sessions.some(s => s.id === state.activeSessionId))
-      const pid = (active ?? state.projects[0])?.id
+      const active = projectsRef.current?.find(p => p.sessions.some(s => s.id === activeSessionId))
+      const pid = (active ?? projectsRef.current?.[0])?.id
       if (!pid) return
       e.preventDefault()
       dispatch({ type: 'ADD_SESSION', projectId: pid })
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [state.projects, state.activeSessionId, dispatch])
+  }, [activeSessionId, dispatch])
 
   // 设置页（currentView === 'settings'）下不渲染搜索弹窗，避免无承载视图
   useEffect(() => {
-    if (state.currentView === 'settings') setSearchOpen(false)
-  }, [state.currentView])
+    if (currentView === 'settings') setSearchOpen(false)
+  }, [currentView])
 
   // 界面缩放：zoom 只作用于内容区（TitleBar 之外），避免缩放自定义 titleBar
   // 导致其按钮与 macOS 原生红绿灯（不受 CSS zoom 影响）错位。
   const zoomFactor = (() => {
-    const z = state.settings.zoom
+    const z = zoom
     return z === 'small' ? 0.85 : z === 'large' ? 1.2 : 1
   })()
 
   // 对话宽度：按 chatWidth 档位动态写入 CSS 变量，覆盖 index.css 的 :root 默认值
   const chatWidthPx = (() => {
-    const w = state.settings.chatWidth
+    const w = chatWidth
     return w === 'compact' ? 760 : w === 'standard' ? 880 : w === 'xwide' ? 1080 : 960
   })()
   useEffect(() => {
@@ -216,14 +238,14 @@ export function App() {
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = window.setTimeout(() => {
       window.api?.projects.save({
-        projects: state.projects,
-        activeSessionId: state.activeSessionId,
-        tabsBySession: state.tabsBySession,
-        activeTabIdBySession: state.activeTabIdBySession,
-        claudeSessionMap: state.claudeSessionMap,
+        projects: projectsRef.current ?? [],
+        activeSessionId,
+        tabsBySession,
+        activeTabIdBySession,
+        claudeSessionMap,
         // /goal: 只持久化 active 的 goal 条件(achieved/cleared 不还原,官方)
         goalBySession: Object.fromEntries(
-          Object.entries(state.goalBySession)
+          Object.entries(goalBySession)
             .filter(([, g]) => g.status === 'active')
             .map(([k, g]) => [k, { condition: g.condition }])
         ),
@@ -233,12 +255,12 @@ export function App() {
       if (saveTimer.current) clearTimeout(saveTimer.current)
     }
   }, [
-    state.projects,
-    state.activeSessionId,
-    state.tabsBySession,
-    state.activeTabIdBySession,
-    state.claudeSessionMap,
-    state.goalBySession,
+    projectsRef,
+    activeSessionId,
+    tabsBySession,
+    activeTabIdBySession,
+    claudeSessionMap,
+    goalBySession,
   ])
 
   // 自动归档：监听主进程定时信号，清理陈旧空会话
@@ -331,7 +353,7 @@ export function App() {
     return () => { unsubscribe?.() }
   }, [dispatch])
 
-  if (state.currentView === 'settings') {
+  if (currentView === 'settings') {
     return <SettingsPage />
   }
 

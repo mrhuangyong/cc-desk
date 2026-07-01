@@ -16,6 +16,8 @@ const defaultProps = {
   expandedProjects: new Set(seedProjects.map((p) => p.id)),
   onToggleExpand: () => {},
   treeFilter: '',
+  sortMode: 'recent' as const,
+  showArchived: false,
 }
 
 describe('ProjectTree', () => {
@@ -115,5 +117,34 @@ describe('ProjectTree', () => {
   it('会话行渲染时间标签元素', () => {
     const { container } = renderWithProvider(<ProjectTree {...defaultProps} />)
     expect(container.querySelector('[data-testid="session-time"]')).not.toBeNull()
+  })
+
+  it('sortMode=title 按标题字母序排列', () => {
+    const props = { ...defaultProps, sortMode: 'title' as const }
+    const { container } = renderWithProvider(<ProjectTree {...props} />)
+    const sessionTexts = ['重构登录流程', '修样式 bug', '优化首屏', '接入埋点', '国际化', '单元测试补全', 'CI 配置']
+    const titleSpans = () => Array.from(container.querySelectorAll('span')).filter(span => {
+      if (span.querySelector('span')) return false
+      const txt = (span.textContent ?? '').trim()
+      return sessionTexts.includes(txt)
+    })
+    const visible = titleSpans().map(span => (span.textContent ?? '').trim())
+    // title 模式下按 localeCompare 排序，首 5 条应为字母序前 5
+    const sorted = [...sessionTexts].sort((a, b) => a.localeCompare(b)).slice(0, 5)
+    expect(visible).toEqual(sorted)
+  })
+
+  it('sortMode=created 按创建顺序（id 升序）排列', () => {
+    const props = { ...defaultProps, sortMode: 'created' as const }
+    const { container } = renderWithProvider(<ProjectTree {...props} />)
+    const sessionTexts = ['重构登录流程', '修样式 bug', '优化首屏', '接入埋点', '国际化', '单元测试补全', 'CI 配置']
+    const titleSpans = () => Array.from(container.querySelectorAll('span')).filter(span => {
+      if (span.querySelector('span')) return false
+      const txt = (span.textContent ?? '').trim()
+      return sessionTexts.includes(txt)
+    })
+    const visible = titleSpans().map(span => (span.textContent ?? '').trim())
+    // created 模式按 id 升序：s1(重构登录流程) > s2(修样式 bug) > s4(优化首屏) > s5(接入埋点) > s6(国际化)
+    expect(visible).toEqual(['重构登录流程', '修样式 bug', '优化首屏', '接入埋点', '国际化'])
   })
 })

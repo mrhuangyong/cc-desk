@@ -302,6 +302,7 @@ button {
    overflow-x:hidden 兜底;配合 minWidth:0(flex 收缩链)彻底防水平溢出。 */
 .chat-scroll {
   overflow-x: hidden !important;
+  scrollbar-gutter: stable;
 }
 .chat-scroll :where(.msg-row) {
   min-width: 0;

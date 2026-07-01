@@ -32,11 +32,13 @@ interface Props {
   expandedProjects: Set<string>
   onToggleExpand: (projectId: string) => void
   treeFilter: string
+  sortMode: 'recent' | 'created' | 'title'
+  showArchived: boolean
 }
 
 const MAX_VISIBLE_SESSIONS = 5
 
-export function ProjectTree({ onOpenFiles, expandedProjects, onToggleExpand, treeFilter }: Props) {
+export function ProjectTree({ onOpenFiles, expandedProjects, onToggleExpand, treeFilter, sortMode, showArchived }: Props) {
   const { state, dispatch } = useStore()
   const { t } = useI18n()
   const [hoveredProject, setHoveredProject] = useState<string | null>(null)
@@ -59,13 +61,24 @@ export function ProjectTree({ onOpenFiles, expandedProjects, onToggleExpand, tre
     <div style={{ flex: 1, overflowY: 'auto' }}>
       {state.projects.map(project => {
         const filtered = q
-          ? project.sessions.filter(s => !s.archived && s.title.toLowerCase().includes(q))
-          : project.sessions.filter(s => !s.archived)
+          ? project.sessions.filter(s => (showArchived || !s.archived) && s.title.toLowerCase().includes(q))
+          : project.sessions.filter(s => showArchived || !s.archived)
         if (q && filtered.length === 0) return null
 
-        // 排序键：用户最后一次发送消息的时间（离散事件，不随流式 tick 抖动）。
-        // 旧会话/seed 无 lastUserSentAt 时回退 updatedAt。同值按 id（创建顺序）稳定排列，防 sort 抖。
+        // 排序键随 sortMode 切换：
+        // - recent: 按最后活动时间倒序（lastUserSentAt ?? updatedAt）
+        // - created: 按创建顺序（id 升序）
+        // - title: 按标题字母序
+        // 同值回退 id 稳定排列，防 sort 抖。
         const sorted = [...filtered].sort((a, b) => {
+          if (sortMode === 'title') {
+            const cmp = (a.title || '').localeCompare(b.title || '')
+            return cmp !== 0 ? cmp : (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+          }
+          if (sortMode === 'created') {
+            return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+          }
+          // recent (default)
           const ta = b.lastUserSentAt ?? b.updatedAt ?? 0
           const tb = a.lastUserSentAt ?? a.updatedAt ?? 0
           if (ta !== tb) return ta - tb
@@ -112,6 +125,7 @@ export function ProjectTree({ onOpenFiles, expandedProjects, onToggleExpand, tre
             {expanded && visible.map(session => {
               const active = activeSessionId === session.id
               const hovered = hoveredSession === session.id
+              const isArchived = !!session.archived
               return (
               <div
                 key={session.id}
@@ -129,7 +143,7 @@ export function ProjectTree({ onOpenFiles, expandedProjects, onToggleExpand, tre
                   cursor: 'pointer'
                 }}
               >
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden', opacity: isArchived ? 0.5 : 1 }}>
                   {(() => {
                     const status = getSessionStatus(session.id, active, state)
                     if (status === 'loading') {

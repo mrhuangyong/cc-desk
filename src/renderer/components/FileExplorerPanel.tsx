@@ -48,7 +48,7 @@ function Node({ node, depth, currentFilePath, onOpenFile }: {
         >
           {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
           <Folder size={14} />
-          <span style={{ fontSize: 13 }}>{node.name}</span>
+          <span style={{ fontSize: 13, whiteSpace: 'nowrap' }}>{node.name}</span>
           {loading && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>…</span>}
         </div>
         {open && children && children.length > 0 && (
@@ -78,7 +78,7 @@ function Node({ node, depth, currentFilePath, onOpenFile }: {
     >
       <span style={{ width: 13 }} />
       <FileIcon size={14} />
-      <span style={{ fontSize: 13, color: isBinary ? 'var(--text-faint)' : 'var(--text)' }}>{node.name}</span>
+      <span style={{ fontSize: 13, whiteSpace: 'nowrap', color: isBinary ? 'var(--text-faint)' : 'var(--text)' }}>{node.name}</span>
     </div>
   )
 }
@@ -113,7 +113,7 @@ export function FileExplorerPanel({ cwd, currentFilePath, onOpenFile }: Props) {
   }
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', minHeight: 0, padding: '4px 0' }}>
+    <div style={{ flex: 1, overflowX: 'auto', overflowY: 'auto', minHeight: 0, padding: '4px 0' }}>
       {tree.map(n => (
         <Node key={n.path} node={n} depth={0} currentFilePath={currentFilePath} onOpenFile={onOpenFile} />
       ))}

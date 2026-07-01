@@ -179,12 +179,14 @@ export function ChatArea() {
     setShowScrollBtn(false)
   }
 
-  // 流式内容/消息变化时，若用户在底部则跟随滚动。
-  // Virtuoso 的 followOutput 已自动处理流式吸底，这里作为草稿长度突增的兜底。
+  // 新消息追加（messages.length 变化）时，若用户在底部则贴底。
+  // 流式过程中草稿 message 内容逐帧增长由 Virtuoso followOutput 自动跟随，
+  // 不需要手动 scrollToBottom——那样每帧 60fps 触发会与 Virtuoso 自身的 smooth follow 冲突，
+  // 导致对话内容视觉跳动。这里仅在长度变化（新 message 加入）时做一次 snap。
   useEffect(() => {
     if (isAtBottomRef.current) scrollToBottom('auto')
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [streaming, session?.messages.length])
+  }, [session?.messages.length])
 
   // 切换会话：立即贴底（重置 isAtBottom）
   useEffect(() => {
