@@ -1207,15 +1207,12 @@ export class ClaudeService {
   }
 
   /**
-   * 触发 SDK/CLI 真实上下文压缩：通过 pushMessage("/compact") 让 CLI 子进程本地执行
-   * /compact local 命令（compactConversation 真实摘要并替换内部历史，真降 token）。
+   * 上下文压缩：通过 pushMessage("/compact") 让 CLI 子进程本地执行 /compact 命令，
+   * 本应触发真实 token 压缩。但当前 CLI 版本的压缩子进程存在 maxTurns=1 限制导致失败，
+   * 故实际走 compactSession（手写 UI 压缩）作为替代。
    *
-   * 区别于下方手写 compactSession（UI 层整理、不降 SDK token）——本方法走 CLI 原生压缩，
-   * 压缩完成后占比环会真实下降。压缩进度/结果由 forwardEvent 的 compact_boundary/
-   * compacting 分支发 notice 反馈（compact_boundary 后会主动推一次 context-usage 刷新环）。
-   *
-   * 注意：与现有 /compact slash 命令（走 compactSession）并存——后者保留作 UI 整理入口，
-   * 本方法供上下文面板按钮调用，触发真实降 token。
+   * 待 SDK/CLI 修复 turn 限制后（tracking），可改回 pure pushMessage 路径实现真降 token。
+   * 当前 IPC handler (claude:compact-context) 直接调 compactSession。
    */
   async compactContext(localSessionId: string, webContents: WebContents): Promise<void> {
     if (!this.manager) return
@@ -1241,11 +1238,17 @@ export class ClaudeService {
     const snap = getProjectsSnapshot()
     const session = findSession(snap.projects, localSessionId)
     if (!session) return
-    if (session.messages.length <= 6) {
+    if (session.messages.length === 0) {
+      webContents.send('claude:notice', { ...mkNotice('info', '暂无消息可压缩', 'info'), localSessionId })
+      return
+    }
+    // 保留最近 6 条，前面的消息用摘要替换
+    const keepRecent = 6
+    const toSummarize = session.messages.slice(0, -keepRecent)
+    if (toSummarize.length === 0) {
       webContents.send('claude:notice', { ...mkNotice('info', '消息较少，无需压缩', 'info'), localSessionId })
       return
     }
-    const toSummarize = session.messages.slice(0, -6)
     const transcript = toSummarize.map((m: any) => `${m.role}: ${m.content.map((b: any) => b.text ?? '').join(' ')}`).join('\n')
     try {
       const summary = await this.runSideQuery(`请用 200 字以内总结以下对话历史的关键信息，用于上下文压缩：\n\n${transcript}`)
@@ -1253,7 +1256,12 @@ export class ClaudeService {
         webContents.send('claude:notice', { ...mkNotice('error', '压缩失败：摘要为空', 'error'), localSessionId })
         return
       }
-      webContents.send('claude:builtin-result', { localSessionId, op: 'compact', summary, keepRecent: 6 })
+      webContents.send('claude:builtin-result', { localSessionId, op: 'compact', summary, keepRecent })
+      // 压缩后刷新上下文占比环（即使 SDK context 未变，也让环显示当前真实用量）
+      try {
+        const usage = await this.manager?.getContextUsage(localSessionId)
+        if (usage) webContents.send('claude:context-usage', { localSessionId, usage })
+      } catch { /* 忽略 */ }
     } catch (err) {
       webContents.send('claude:notice', { ...mkNotice('error', `压缩失败：${String(err)}`, 'error'), localSessionId })
     }
