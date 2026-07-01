@@ -42,7 +42,6 @@ const dict: Record<Lang, Record<string, string>> = {
     'contextUsage.unknown': '上下文用量未知',
     'contextUsage.compacting': '正在压缩上下文…',
     'contextUsage.capacity': '上下文容量',
-    'contextUsage.compact': '压缩',
     // 聊天区
     'chat.empty': '开始新的对话',
     'chat.noSession': '无选中会话',
@@ -223,7 +222,6 @@ const dict: Record<Lang, Record<string, string>> = {
     'contextUsage.unknown': 'Context usage unknown',
     'contextUsage.compacting': 'Compacting context…',
     'contextUsage.capacity': 'Context capacity',
-    'contextUsage.compact': 'Compact',
     'chat.empty': 'Start a new conversation',
     'chat.noSession': 'No session selected',
     'chat.taskDone': 'Task complete',

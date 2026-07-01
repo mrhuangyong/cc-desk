@@ -697,10 +697,11 @@ function registerIpcHandlers(): void {
   ipcMain.handle('claude:set-goal', (_e, lsid: string, condition: string) => claude.setGoal(lsid, condition))
   ipcMain.handle('claude:clear-goal', (_e, lsid: string) => claude.clearGoal(lsid))
   ipcMain.handle('cc:builtin:compact', (_e, localSessionId: string) => claude.compactSession(localSessionId, getActiveWin()!.webContents))
-  // 触发真实 CLI /compact（区别于 cc:builtin:compact 的手写 UI 摘要）：供上下文面板按钮调用
-  // 注：pushMessage("/compact") 会让 CLI 内部压缩子进程因 maxTurns=1 失败，
-  // 故实际复用 compactSession（手写 UI 压缩），不再尝试 CLI 原生 /compact。
-  ipcMain.handle('claude:compact-context', (_e, localSessionId: string) => claude.compactSession(localSessionId, getActiveWin()!.webContents))
+  // 触发 CLI 原生 /compact（预留：当前 CLI 内部压缩子进程 maxTurns=1 不足，
+  // pushMessage('/compact') 会失败，待 SDK/CLI 修复后启用。）
+  ipcMain.handle('claude:compact-context', (_e, localSessionId: string) => {
+    console.warn('[claude:compact-context] 当前不可用：CLI 内部压缩子进程 maxTurns=1 限制')
+  })
   ipcMain.handle('cc:builtin:init', (_e, opts: { cwd: string }) => claude.initProject(opts.cwd, getActiveWin()!.webContents))
   ipcMain.handle('cc:builtin:export', (_e, localSessionId: string) => claude.exportSession(localSessionId, getActiveWin()!.webContents))
   ipcMain.handle('cc:builtin:add-dir', (_e, opts: { localSessionId: string; dir: string }) => claude.addDir(opts.localSessionId, opts.dir, getActiveWin()!.webContents))
