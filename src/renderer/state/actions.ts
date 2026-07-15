@@ -6,6 +6,8 @@ export type Action =
   | { type: 'DELETE_SESSION'; projectId: string; sessionId: string }
   | { type: 'ADD_SESSION'; projectId: string }
   | { type: 'SELECT_SESSION'; sessionId: string }
+  // 设置项目「打开应用」的默认项（项目级持久化，随 projects.json 落盘）
+  | { type: 'SET_PROJECT_DEFAULT_OPEN_APP'; projectId: string; appId: string }
   | { type: 'ADD_MESSAGE'; sessionId: string; message: Message }
   | { type: 'OPEN_FILE_TAB'; filePath: string; fileName: string }
   | { type: 'OPEN_TAB'; tabType: TabType; cwd?: string; url?: string }

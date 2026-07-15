@@ -377,6 +377,12 @@ export function reducer(state: AppState, action: Action): AppState {
       const { [target]: _cc, ...restCompleted } = state.completedBySession
       return { ...state, activeSessionId: target, activeTabIdBySession, completedBySession: restCompleted }
     }
+    case 'SET_PROJECT_DEFAULT_OPEN_APP': {
+      const projects = state.projects.map(p =>
+        p.id === action.projectId ? { ...p, defaultOpenAppId: action.appId } : p
+      )
+      return { ...state, projects }
+    }
     case 'ADD_MESSAGE': {
       // 把消息追加到指定会话（不可变）。会话不存在则原样返回（updateSession 内部短路）。
       return updateSession(state, action.sessionId, s => ({

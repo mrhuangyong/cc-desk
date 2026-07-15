@@ -4,6 +4,7 @@ import { SettingsLayout } from './SettingsLayout'
 import { SettingsCard } from './SettingsCard'
 import { SettingsRow } from './SettingsRow'
 import { Toggle } from './Toggle'
+import { OpenAppsSettings } from './OpenAppsSettings'
 import { useI18n } from '../../i18n/useI18n'
 
 // 分段按钮（缩放：缩小/正常/偏大）
@@ -110,6 +111,13 @@ export function GeneralSettings() {
           <input value={s.terminalFont} onChange={e => persist({ terminalFont: e.target.value })} style={inputStyle} />
         </SettingsRow>
       </SettingsCard>
+
+      {/* 打开应用 */}
+      <div>
+        <div style={{ color: 'var(--text)', fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{t('openApps.title')}</div>
+        <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 8, lineHeight: 1.5 }}>{t('openApps.desc')}</div>
+        <OpenAppsSettings />
+      </div>
 
       {/* HTTP 代理（读写 ~/.cc-desk/claude/settings.json 的 env.HTTPS_PROXY/HTTP_PROXY） */}
       <SettingsCard>

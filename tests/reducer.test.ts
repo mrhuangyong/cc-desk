@@ -43,6 +43,15 @@ describe('reducer', () => {
     expect(next.updateStatus).toEqual({ state: 'ready', version: '1.2.0' })
   })
 
+  it('SET_PROJECT_DEFAULT_OPEN_APP 设置项目默认打开应用（项目级持久化）', () => {
+    const state = initialState()
+    const next = reducer(state, { type: 'SET_PROJECT_DEFAULT_OPEN_APP', projectId: 'p1', appId: 'folder' })
+    const p1 = next.projects.find(p => p.id === 'p1')!
+    expect(p1.defaultOpenAppId).toBe('folder')
+    // 不影响其它项目
+    expect(next.projects.find(p => p.id === 'p2')!.defaultOpenAppId).toBeUndefined()
+  })
+
   it('REMOTE_USER_MESSAGE 把手机发的 user 文本加入指定会话（修复桌面看不到）', () => {
     const state = initialState()
     const next = reducer(state, { type: 'REMOTE_USER_MESSAGE', sessionId: 's1', text: '从手机发的问题' })

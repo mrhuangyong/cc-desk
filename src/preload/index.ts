@@ -178,6 +178,8 @@ contextBridge.exposeInMainWorld('api', {
   },
   dialog: {
     openDirectory: () => ipcRenderer.invoke('dialog:open-directory'),
+    // 选择应用文件（mac 选 .app / 普通可执行文件），用于「打开应用」新增项
+    openAppFile: () => ipcRenderer.invoke('dialog:open-app-file'),
   },
   onArchiveTick: (cb: (data: { beforeTs: number }) => void) => {
     const channel = 'archive:tick'
@@ -229,6 +231,9 @@ contextBridge.exposeInMainWorld('api', {
     get: () => ipcRenderer.invoke('app:version'),
   },
   setDevTools: (enabled: boolean) => ipcRenderer.invoke('app:set-devtools', enabled),
+  app: {
+    openInEditor: (command: string, dirPath: string) => ipcRenderer.invoke('app:open-in-editor', command, dirPath),
+  },
   remote: {
     getConfig: () => ipcRenderer.invoke('remote:get-config'),
     saveConfig: (patch: any) => ipcRenderer.invoke('remote:save-config', patch),

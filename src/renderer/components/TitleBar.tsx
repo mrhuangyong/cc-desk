@@ -1,6 +1,7 @@
 import { useEffect, type CSSProperties } from 'react'
 import { Settings, Plus, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Download } from 'lucide-react'
 import { ThemeSwitcher } from './ThemeSwitcher'
+import { OpenInEditorButton } from './OpenInEditorButton'
 import { Tooltip } from './Tooltip'
 import { useStore } from '../state/store'
 import { useI18n } from '../i18n/useI18n'
@@ -185,6 +186,7 @@ export function TitleBar({ projectName, leftCollapsed, rightCollapsed, onToggleL
 
       {/* 右侧工具组 */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 2, ...noDrag }}>
+        <OpenInEditorButton />
         <ThemeSwitcher />
         <GhostButton title={rightCollapsed ? '展开右栏' : '收起右栏'} onClick={onToggleRight} ariaLabel={rightCollapsed ? '展开右栏' : '收起右栏'}>
           {rightCollapsed ? <PanelRightOpen size={15} /> : <PanelRightClose size={15} />}

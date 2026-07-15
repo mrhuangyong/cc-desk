@@ -3,8 +3,8 @@ import type { ReactNode } from 'react'
 // 卡片内的一行设置项：左侧标题+描述，右侧控件。
 // 用 borderBottom 分隔；最后一行由父组件传 noBorder 去掉分割线。
 interface Props {
-  title: string
-  desc?: string
+  title: ReactNode
+  desc?: ReactNode
   children: ReactNode  // 右侧控件
   noBorder?: boolean
 }

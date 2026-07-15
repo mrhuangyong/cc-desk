@@ -130,6 +130,8 @@ interface SessionAPI {
 
 interface DialogAPI {
   openDirectory(): Promise<string | null>
+  /** 选择应用文件（mac .app / 可执行文件），返回路径或 null */
+  openAppFile(): Promise<string | null>
 }
 
 interface MiscAPI {
@@ -249,6 +251,9 @@ declare global {
       }
       setDevTools: (enabled: boolean) => Promise<void>
       remote: RemoteAPI
+      app: {
+        openInEditor: (command: string, dirPath: string) => Promise<{ ok: boolean; error?: string }>
+      }
     }
   }
 }

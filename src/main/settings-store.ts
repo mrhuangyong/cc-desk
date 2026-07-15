@@ -71,6 +71,14 @@ export interface CodePreviewSettings {
   fontSize: number
 }
 
+// 「打开应用」配置项（与渲染端 types.ts 的 OpenApp 镜像；主进程独立声明避免循环依赖）
+export interface OpenAppEntry {
+  id: string          // 内置 'vscode'|'folder'；自定义用随机 id
+  name: string        // 显示名
+  command: string     // shell 命令；内置 folder 用哨兵 '$OPEN_FOLDER'（主进程按平台解析）
+  builtin?: boolean   // 内置标记
+}
+
 export interface AppSettings {
   // 顶层默认 API Key：作为「无供应商 Key」时的回退（GeneralSettings 仍可填）
   apiKey: string
@@ -105,6 +113,9 @@ export interface AppSettings {
   autoArchive: boolean
   archiveDays: string
   devTools: boolean
+
+  // 「打开应用」可配置列表（设置→常规；默认内置 vscode + 文件夹打开）
+  openApps: OpenAppEntry[]
 
   // ===== 各设置子页 =====
   codePreview: CodePreviewSettings
@@ -172,6 +183,25 @@ const defaultHooks: SettingsEntry[] = [
   { id: 'h2', name: 'PostToolUse', desc: '工具调用后钩子', enabled: false },
 ]
 
+// 「打开应用」默认内置项：vscode / trae / zed / terminal / finder（文件夹打开）。
+// 命令哨兵（$OPEN_*）由主进程 openInEditor 按平台解析，保证同一份设置跨平台可用。
+const defaultOpenApps: OpenAppEntry[] = [
+  { id: 'vscode', name: 'Visual Studio Code', command: 'code .', builtin: true },
+  { id: 'trae', name: 'Trae', command: 'trae .', builtin: true },
+  { id: 'zed', name: 'Zed', command: 'zed .', builtin: true },
+  { id: 'terminal', name: '终端', command: '$OPEN_TERMINAL', builtin: true },
+  { id: 'folder', name: 'Finder', command: '$OPEN_FOLDER', builtin: true },
+]
+
+// 合并持久化数据与内置默认：内置项（builtin）按 id 补齐（新增内置项时自动迁移），
+// 用户自定义项（非 builtin）原样保留在列表末尾。无数据返回完整默认列表。
+function mergeOpenApps(raw: OpenAppEntry[] | undefined): OpenAppEntry[] {
+  if (!raw || raw.length === 0) return defaultOpenApps
+  const presentIds = new Set(raw.map(a => a.id))
+  const missingBuiltins = defaultOpenApps.filter(a => !presentIds.has(a.id))
+  return [...raw, ...missingBuiltins]
+}
+
 const defaults: AppSettings = {
   apiKey: '',
   model: 'model-sonnet',
@@ -205,6 +235,8 @@ const defaults: AppSettings = {
   autoArchive: true,
   archiveDays: '7',
   devTools: false,
+
+  openApps: defaultOpenApps,
 
   codePreview: {
     lightTheme: 'GitHub Light',
@@ -244,6 +276,9 @@ function withDefaults(raw: Partial<AppSettings>): AppSettings {
   merged.plugins = raw.plugins ?? defaultPlugins
   merged.commands = raw.commands ?? defaultCommands
   merged.hooks = raw.hooks ?? defaultHooks
+  // 「打开应用」：保留用户自定义项，同时确保所有内置项存在（新增内置项时自动补齐迁移）。
+  // 无任何数据时取完整默认列表。
+  merged.openApps = mergeOpenApps(raw.openApps)
   merged.modelRoleMap = raw.modelRoleMap ?? defaults.modelRoleMap
   merged.codePreview = { ...defaults.codePreview, ...(raw.codePreview ?? {}) }
   // 标量类：undefined 时回落默认（用 ?? 兜底，保留 false/0/'' 等合法值）

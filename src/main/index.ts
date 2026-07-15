@@ -1,5 +1,6 @@
 import { app, BrowserWindow, shell, ipcMain, dialog, Menu, Notification } from 'electron'
 import { join } from 'path'
+import { spawn } from 'child_process'
 import { WebSocket } from 'ws'
 import QRCode from 'qrcode'
 import { ClaudeService } from './claude-service'
@@ -665,6 +666,46 @@ function getActiveWin(): Electron.BrowserWindow | null {
   return wins.length > 0 ? wins[wins.length - 1] : null
 }
 
+// 把内置应用的命令哨兵按当前平台解析为真实 shell 命令。
+// - $OPEN_FOLDER：在系统文件管理器中打开目录
+// - $OPEN_TERMINAL：打开系统终端并 cd 到目录
+function resolveOpenCommand(command: string): string {
+  if (command === '$OPEN_FOLDER') {
+    if (process.platform === 'win32') return 'explorer .'
+    if (process.platform === 'darwin') return 'open .'
+    return 'xdg-open .' // linux / 其它
+  }
+  if (command === '$OPEN_TERMINAL') {
+    if (process.platform === 'win32') return 'start cmd /k cd /d .'
+    if (process.platform === 'darwin') return 'open -a Terminal .'
+    return 'x-terminal-emulator' // linux / 其它
+  }
+  return command
+}
+
+// 在外部应用中打开指定目录：command 由渲染端传入（settings.openApps 里的 command），
+// 哨兵（如 $OPEN_FOLDER）先按平台解析。命令假定已可执行（shell:true + fix-env 注入 PATH）。
+async function openInEditor(command: string, dirPath: string): Promise<{ ok: boolean; error?: string }> {
+  const resolved = resolveOpenCommand(command)
+  try {
+    const proc = spawn(resolved, {
+      cwd: dirPath,
+      detached: true,
+      stdio: 'ignore',
+      shell: true,
+    })
+    proc.on('error', (err) => {
+      console.error(`[open-in-editor] spawn error: ${resolved}`, err)
+    })
+    proc.unref()
+    return { ok: true }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error(`[open-in-editor] failed: ${resolved}`, err)
+    return { ok: false, error: msg }
+  }
+}
+
 // IPC handler 全局注册一次（不随窗口重建重复注册）
 function registerIpcHandlers(): void {
 
@@ -795,6 +836,20 @@ function registerIpcHandlers(): void {
     return result.filePaths[0]
   })
 
+  // 选择应用文件：mac 默认 /Applications 并优先 .app；其它平台选任意可执行文件。
+  // 渲染端据此推导「打开应用」的 name + command（mac: open -a "<name>" .）。
+  ipcMain.handle('dialog:open-app-file', async () => {
+    const isMac = process.platform === 'darwin'
+    const result = await dialog.showOpenDialog(getActiveWin()!, {
+      title: '选择应用',
+      defaultPath: isMac ? '/Applications' : undefined,
+      properties: ['openFile'],
+      ...(isMac ? { filters: [{ name: '应用程序', extensions: ['app'] }] } : {}),
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return result.filePaths[0]
+  })
+
   // Terminal (pty)
   ipcMain.handle('pty:create', (_e, opts) => {
     return ptyManager.create(opts.tabId, opts.cols, opts.rows, opts.cwd)
@@ -853,6 +908,9 @@ function registerIpcHandlers(): void {
     chrome: process.versions.chrome,
     node: process.versions.node,
   }))
+
+  // 在外部编辑器打开当前项目目录
+  ipcMain.handle('app:open-in-editor', (_e, command: string, dirPath: string) => openInEditor(command, dirPath))
 
   // 开发者工具：开关 DevTools（受常规设置 devTools 控制）。同时重建菜单更新可见性。
   ipcMain.handle('app:set-devtools', (_e, enabled: boolean) => {

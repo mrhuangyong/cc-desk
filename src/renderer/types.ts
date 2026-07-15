@@ -132,7 +132,21 @@ export interface Project {
   id: string
   name: string
   path?: string
+  // 「打开应用」的默认项（项目级持久化，随 projects.json 落盘）。
+  // 引用某个 OpenApp.id；首次为空 → 取 openApps 列表第一项。
+  defaultOpenAppId?: string
   sessions: Session[]
+}
+
+// 内置集成的打开应用标识（仅用于图标查找）
+export type EditorId = 'vscode' | 'trae' | 'zed' | 'folder'
+
+// 「打开应用」配置项（设置→常规可增删，随 settings.json 持久化）
+export interface OpenApp {
+  id: string          // 内置 'vscode'|'folder'；自定义用随机 id
+  name: string        // 显示名
+  command: string     // shell 命令；内置 folder 用哨兵 '$OPEN_FOLDER'（主进程按平台解析）
+  builtin?: boolean   // 内置标记：UI 禁止删除
 }
 
 // Tab 类型
@@ -247,6 +261,10 @@ export interface AppSettings {
   autoArchive: boolean
   archiveDays: string
   devTools: boolean
+
+  // 「打开应用」可配置列表（设置→常规；默认内置 vscode + 文件夹打开）。
+  // 可选：主进程 withDefaults 总会填充，渲染端旧 mock 数据缺省时回退到默认列表。
+  openApps?: OpenApp[]
 
   // ===== 各设置子页 =====
   codePreview: CodePreviewSettings
