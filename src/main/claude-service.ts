@@ -95,6 +95,12 @@ export class ClaudeService {
   private goalStore = new Map<string, { condition: string; status: 'active' | 'achieved' }>()
   // goal 评估轮数(Stop hook 每评估一次 +1,IPC 下发用于状态展示)
   private goalTurns = new Map<string, number>()
+  // 每个 session 最近一次 send 使用的权限标签（中文，如「完全访问」「计划模式」）。
+  // 用于检测权限变化：send() 时若与上次不同，强制重建 query——
+  // 因为「完全访问」会往 CLI 子进程注入 --allow-dangerously-skip-permissions 进程级标志，
+  // 切回计划/默认时 control request 无法收紧，只能重建子进程（见 send() 注释）。
+  // default↔plan↔acceptEdits 切换也借此让 canUseTool 闭包重新捕获正确 permission。
+  private sessionPermissions = new Map<string, string>()
 
   setManager(m: SessionQueryManager): void { this.manager = m }
   setRegistry(r: BackendTaskRegistry): void { this.registry = r }
@@ -423,9 +429,6 @@ export class ClaudeService {
 
     // ensureSession 复用已有持久 query（同 localSessionId），否则用 buildQuery 新建。
     // prompt 作为新的 user turn 通过 pushMessage 注入 controller.iterable。
-    // 记录会话是否已存在：复用时 buildQuery 不再执行，permissionMode 只在 buildQuery 里
-    // 声明，故必须在复用路径里用 setPermissionMode control request 实时切换，否则下拉框
-    // 改权限会被忽略（首个权限被首条消息锁死）。新建会话由 buildQuery 内 permissionMode 直接生效。
     //
     // 【竞态防护】用户点击「停止并立即发送」时，interrupt() 发送 control request 后
     // 200ms 即调用 send()。此时旧循环可能仍在跑（isIterating=true），若复用旧 session
@@ -437,7 +440,25 @@ export class ClaudeService {
       console.log(`[diag][send] isIterating=true → closeSession then rebuild`)
       await this.manager.closeSession(lsid)
     }
+    // 【权限变化重建】permissionMode 与 allowDangerouslySkipPermissions 都是 query 创建时的
+    // 启动参数（前者→--permission-mode，后者→--allow-dangerously-skip-permissions 进程级标志），
+    // 复用持久 query 时二者都定死、control request 改不动。尤其「完全访问」会把 CLI 子进程
+    // 全局置为 skip-permissions，切回计划/默认时 setPermissionMode 控制请求无法收紧（skip 进程
+    // 里 plan/default/acceptEdits 的权限检查被短路），表现为「切了计划模式仍直接写文件」。
+    // 同时 canUseTool 闭包也捕获了旧 permission（首条消息时定死），不重建就不会更新。
+    // 故：权限标签与上次不同时，先 closeSession 销毁旧子进程，再 ensureSession 重建——
+    // buildQuery 用新 permissionMode + 跟随权限的 skip 标志重新创建，resume 续接历史。
+    // （resume 只读 jsonl 历史消息，不携带权限模式，故新进程权限由新 --permission-mode 决定。）
     const sessionExisted = this.manager.sessions.has(lsid)
+    const prevPermission = this.sessionPermissions.get(lsid)
+    const permissionChanged = sessionExisted && permission && prevPermission !== undefined && prevPermission !== permission
+    if (permissionChanged) {
+      console.log(`[diag][send] permission changed: "${prevPermission}" → "${permission}" → closeSession then rebuild`)
+      await this.manager.closeSession(lsid)
+    }
+    // 记录本次权限（无论是否重建），作为下次比对的基准。
+    if (permission) this.sessionPermissions.set(lsid, permission)
+    const sessionExistedAfterRebuild = this.manager.sessions.has(lsid)
     this.manager.ensureSession({
       localSessionId: lsid,
       resumeId: sessionId,
@@ -460,9 +481,14 @@ export class ClaudeService {
           cwd: cwd || settings.cwd || process.cwd(),
           resume: sessionId,
           permissionMode: getPermissionMode(permission),   // 中文标签 → SDK permissionMode（未知回退 'default'）
-          // 允许运行时动态切到 bypassPermissions（「完全访问」/ 计划批准选完全访问时）。
-          // SDK 要求 query 创建时显式声明此项，否则 setPermissionMode('bypassPermissions') 会被拒绝。
-          allowDangerouslySkipPermissions: true,
+          // 仅在真正进入「完全访问」时才给 CLI 子进程注入 --allow-dangerously-skip-permissions。
+          // 此标志是进程级一次性的：一旦子进程以此标志启动，权限闸门全局短路，此后
+          // setPermissionMode('plan'/'default'/'acceptEdits') 都无法重新收紧（计划模式会失效、
+          // 直接写文件）。故非完全访问模式绝不开启它——配合 send() 的权限变化重建，
+          // 切回计划/默认时重建出的新子进程不带 skip 标志，CLI 的权限检查/plan 拦截恢复正常。
+          // 注意：这会让「批准计划」走完全访问的路径（PlanCard 选完全访问时下次 send 触发重建）
+          // 也仍能正常进入 bypass——因为那次 send 的 permission 就是「完全访问」。
+          allowDangerouslySkipPermissions: getPermissionMode(permission) === 'bypassPermissions',
           effort: thinking ?? 'medium',                    // SDK EffortLevel，控制思考强度
           thinking: { type: 'adaptive' },                  // 配合 effort 自适应思考
           additionalDirectories: extraDirs?.length ? extraDirs : undefined,
@@ -553,13 +579,16 @@ export class ClaudeService {
       }
     })
 
-    // 复用会话时，buildQuery 不会重跑，permissionMode 也不会更新。
-    // 用 control request 把本次权限实时推给已存在的 query，使下拉框切换即时生效。
-    if (sessionExisted && permission) {
+    // 复用会话且权限未变化时，buildQuery 不会重跑，permissionMode 仍是旧值。
+    // 虽然权限没变，但保留一次 setPermissionMode 无副作用（SDK 幂等），
+    // 且覆盖「会话因非权限原因（窗口刷新等）被复用、但 SDK 侧权限状态不确定」的兜底。
+    // 权限变化时上面已 closeSession 重建，buildQuery 用新 permissionMode，无需 control request
+    // （且重建后 sessions 已无此 lsid，setPermissionMode 会 no-op）。
+    if (sessionExistedAfterRebuild && !permissionChanged && permission) {
       await this.setPermissionMode(lsid, permission)
     }
 
-    console.log(`[diag][send] calling pushMessage: lsid=${lsid} sessionExisted=${sessionExisted} wasIterating=${!!wasIterating} sessions.has=${this.manager.sessions.has(lsid)}`)
+    console.log(`[diag][send] calling pushMessage: lsid=${lsid} sessionExisted=${sessionExistedAfterRebuild} wasIterating=${!!wasIterating} permissionChanged=${!!permissionChanged} sessions.has=${this.manager.sessions.has(lsid)}`)
     this.manager.pushMessage(lsid, prompt, images)
     console.log(`[diag][send] pushMessage done`)
   }

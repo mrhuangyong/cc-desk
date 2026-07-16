@@ -1,18 +1,25 @@
-// 守护测试：会话复用时，send() 传入的新权限标签必须实时生效。
+// 守护测试：会话权限变化时，必须重建 query（而非依赖 setPermissionMode control request）。
 //
-// 根因：ClaudeService.send() 把 permissionMode 只写在 buildQuery 内部，
-// 而 SessionQueryManager.ensureSession 对已存在会话直接复用、不再调 buildQuery。
-// 结果：首个会话的权限被首次 send 锁死，之后切换下拉框（计划模式 / 完全访问 等）
-// 传入的 permission 参数被完全忽略，SDK query 始终停在最初的模式。
-// 「批准计划」路径之所以正常，是因为 handleExitPlanMode 显式调了 setPermissionMode。
+// 根因演进（本测试守护新设计）：
+// 旧设计认为「复用 query + setPermissionMode 控制请求」能让权限切换实时生效。但诊断发现：
+// 「完全访问」会往 CLI 子进程注入 --allow-dangerously-skip-permissions 进程级一次性标志，
+// 切回计划/默认时 control request 无法收紧（skip 进程里权限检查被全局短路），表现为
+// 「切了计划模式仍直接写文件」。且 canUseTool 闭包捕获首条消息的 permission，复用 query 时
+// 闭包永不更新。
+// 新设计：send() 检测权限标签变化 → closeSession 销毁旧子进程 → ensureSession 重建，
+// buildQuery 用新 permissionMode + 跟随权限的 allowDangerouslySkipPermissions 重新创建，
+// resume 续接历史。control request 仅在「复用且权限未变」的兜底场景调用。
 //
-// 本测试在主进程层断言：同一会话第二次 send 换权限时，必须调用 query.setPermissionMode
-// 把新模式推给 SDK（控制请求，实时生效）。
+// 本测试在主进程层断言：
+// 1. 权限变化时重新构造 query（新进程 permissionMode = 新值），且不调 setPermissionMode。
+// 2. allowDangerouslySkipPermissions 跟随权限：完全访问=true，计划模式=false。
+// 3. 权限未变复用时，才调 setPermissionMode 兜底。
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-// 记录构造时的初始 permissionMode，并暴露 setPermissionMode 供实时切换。
-let constructedMode: string | null = null
+// 记录每次构造时的 permissionMode / allowDangerouslySkipPermissions，并暴露 setPermissionMode。
+let constructed: Array<{ mode: string | null; skip: boolean }> = []
 let setModeCalls: string[] = []
+let queryConstructCount = 0
 function makeFakeQuery() {
   const asyncIter = { next: async () => ({ value: undefined, done: true }) }
   return {
@@ -23,10 +30,14 @@ function makeFakeQuery() {
   }
 }
 
-// query 工厂：从 options.permissionMode 捕获构造时的模式，返回 fake query。
+// query 工厂：每次构造捕获 permissionMode + allowDangerouslySkipPermissions。
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: (opts: any) => {
-    constructedMode = opts?.options?.permissionMode ?? null
+    queryConstructCount++
+    constructed.push({
+      mode: opts?.options?.permissionMode ?? null,
+      skip: opts?.options?.allowDangerouslySkipPermissions ?? false,
+    })
     return makeFakeQuery()
   },
 }))
@@ -51,39 +62,58 @@ vi.mock('../src/main/claude-config', () => ({
   getGeneralConfig: async () => ({}),
 }))
 
-describe('ClaudeService.send 权限模式在会话复用时实时生效', () => {
-  beforeEach(() => { vi.resetModules(); constructedMode = null; setModeCalls = [] })
+describe('ClaudeService.send 权限变化重建 query', () => {
+  beforeEach(() => { vi.resetModules(); constructed = []; setModeCalls = []; queryConstructCount = 0 })
   afterEach(() => { vi.restoreAllMocks() })
 
   function mkWc() {
-    const wc: any = { send: () => {} }
-    return wc
+    return { send: () => {} } as any
   }
 
-  it('第二次 send 换成「计划模式」时，构造模式是 default，但必须调 setPermissionMode("plan")', async () => {
+  it('权限变化（变更前确认 → 计划模式）时重建 query：新进程 permissionMode=plan 且不调 setPermissionMode', async () => {
     const { ClaudeService } = await import('../src/main/claude-service')
     const { SessionQueryManager } = await import('../src/main/session-query-manager')
     const svc = new ClaudeService()
     svc.setManager(new SessionQueryManager())
-    // 首次发送：默认权限「变更前确认」→ default，创建会话
+    // 首次：默认权限「变更前确认」→ default，创建会话（第 1 次构造）
     await svc.send({ prompt: 'hi', localSessionId: 's1', permission: '变更前确认', webContents: mkWc() })
-    expect(constructedMode).toBe('default')
+    expect(queryConstructCount).toBe(1)
+    expect(constructed[0].mode).toBe('default')
     expect(setModeCalls).toEqual([])
 
-    // 第二次发送：切换为「计划模式」，复用同一会话
+    // 第二次：切换为「计划模式」→ 必须重建（第 2 次构造），permissionMode=plan
     await svc.send({ prompt: '帮我规划', localSessionId: 's1', permission: '计划模式', webContents: mkWc() })
-    // 复用时不该重建 query，所以构造模式不变；但必须通过 setPermissionMode 实时切到 plan
-    expect(setModeCalls).toContain('plan')
+    expect(queryConstructCount).toBe(2)
+    expect(constructed[1].mode).toBe('plan')
+    // 重建路径下不应再调 setPermissionMode（buildQuery 已直接用新 permissionMode）
+    expect(setModeCalls).toEqual([])
   })
 
-  it('首次 send（新建会话）不冗余调 setPermissionMode，permissionMode 由 buildQuery 设', async () => {
+  it('allowDangerouslySkipPermissions 跟随权限：完全访问=true，计划模式=false', async () => {
     const { ClaudeService } = await import('../src/main/claude-service')
     const { SessionQueryManager } = await import('../src/main/session-query-manager')
     const svc = new ClaudeService()
     svc.setManager(new SessionQueryManager())
-    await svc.send({ prompt: 'hi', localSessionId: 's2', permission: '计划模式', webContents: mkWc() })
-    // 新建会话：模式由 buildQuery 直接写入，不该再额外发 control request
-    expect(constructedMode).toBe('plan')
-    expect(setModeCalls).toEqual([])
+    // 完全访问 → skip=true
+    await svc.send({ prompt: 'hi', localSessionId: 's2', permission: '完全访问', webContents: mkWc() })
+    expect(constructed[0].skip).toBe(true)
+    // 切到计划模式重建 → skip=false（进程级标志必须摘掉，否则 plan 拦截被短路）
+    await svc.send({ prompt: '规划', localSessionId: 's2', permission: '计划模式', webContents: mkWc() })
+    expect(constructed[1].skip).toBe(false)
+    expect(constructed[1].mode).toBe('plan')
+  })
+
+  it('权限未变复用时，才调 setPermissionMode 兜底（不重建）', async () => {
+    const { ClaudeService } = await import('../src/main/claude-service')
+    const { SessionQueryManager } = await import('../src/main/session-query-manager')
+    const svc = new ClaudeService()
+    svc.setManager(new SessionQueryManager())
+    await svc.send({ prompt: 'hi', localSessionId: 's3', permission: '变更前确认', webContents: mkWc() })
+    expect(queryConstructCount).toBe(1)
+    // 再次同权限发送 → 复用，不重建
+    await svc.send({ prompt: 'again', localSessionId: 's3', permission: '变更前确认', webContents: mkWc() })
+    expect(queryConstructCount).toBe(1)
+    // 复用且权限未变 → 调 setPermissionMode 兜底（幂等）
+    expect(setModeCalls).toEqual(['default'])
   })
 })
