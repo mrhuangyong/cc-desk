@@ -7,8 +7,10 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "CommonJS",
-    "moduleResolution": "Node",
-    "ignoreDeprecations": "6.0",
+    // "bundler" 取代已移除的 "Node"(=node10)：TS 5.5+ 删除了 node10 解析。
+    // bundler 与 module:CommonJS 兼容，支持省略相对路径导入的扩展名（relay 现有风格），
+    // 且输出 CommonJS（node dist/relay/main.js 直接运行）。
+    "moduleResolution": "bundler",
     "outDir": "dist",
     "rootDir": ".",
     "strict": true,

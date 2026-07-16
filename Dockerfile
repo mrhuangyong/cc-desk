@@ -15,7 +15,9 @@ FROM node:20-alpine AS builder
 WORKDIR /build
 
 # 装构建工具：typescript 编译中继/web；@types/node+@types/ws 给 tsc 类型检查用（不进运行时）
-RUN npm install -g typescript vite && \
+# ★ 锁版本：不锁则每次构建拉最新 TS，曾因 TS 5.5+ 移除 moduleResolution=node10 导致 CI 漂移失败。
+#   typescript 锁到与本地一致的 6.x；vite 锁到 5.x（web 项目用 vite@^5）。
+RUN npm install -g typescript@~6.0 vite@~5 && \
     npm init -y >/dev/null && npm install --no-audit --no-fund --save-dev @types/node@22 @types/ws@8
 
 # 拷源码（.dockerignore 已排除 node_modules/out/dist/docs/tests 等）
