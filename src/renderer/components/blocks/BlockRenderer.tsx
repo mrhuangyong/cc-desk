@@ -5,6 +5,7 @@ import { ToolUseCard } from './ToolUseCard'
 import { ToolGroup } from './ToolGroup'
 import { ImageBlock } from './ImageBlock'
 import { MetaToolCard } from './MetaToolCard'
+import { SubagentInlineCard } from './SubagentInlineCard'
 
 // 元工具（任务/计划管理类）：用语义化卡片渲染，而非普通 ToolUseCard。
 // TaskCreate/TaskUpdate/TaskList 让对话流完整记录模型的任务规划；
@@ -25,8 +26,14 @@ export function BlockRenderer({ block, subagentOutputByToolUseId, hiddenToolUseI
     // thinking 块受「显示思考过程」设置控制：关闭时不渲染
     case 'thinking': return showThinking ? <ThinkingBlock text={block.text} /> : null
     case 'tool_use':
-      // subagent 入口的 Task 卡片不在主流显示(重心移至悬浮面板)
+      // 运行中的 subagent（仍在悬浮面板显示实时进度）不在主流渲染卡片。
+      // 已完成的 subagent 解除隐藏，渲染为内嵌卡片（含创建指令+过程+结果）。
       if (hiddenToolUseIds?.has(block.id)) return null
+      // Task 工具（subagent）：渲染为 SubagentInlineCard，组合三要素（创建参数 + 过程 + 结果）。
+      // 过程来自 subagentOutputByToolUseId[block.id]，创建参数/结果在 block 自身。
+      if (block.name === 'Task') {
+        return <SubagentInlineCard block={block} output={subagentOutputByToolUseId?.[block.id]} showThinking={showThinking} />
+      }
       if (META_TOOL_NAMES.has(block.name)) return <MetaToolCard block={block} />
       return <ToolUseCard block={block} />
     case 'tool_result': return null
@@ -47,12 +54,23 @@ export function renderBlocks(blocks: ContentBlock[], compact?: boolean, subagent
   while (i < blocks.length) {
     const b = blocks[i]
     if (b.type === 'tool_use') {
-      // 收集连续的 tool_use（跳过中间夹带的 tool_result，它不渲染）
+      // Task（subagent）作为分组边界：单独渲染为 SubagentInlineCard，不与普通工具聚成 ToolGroup。
+      // 防止「Task + Bash」相邻时被聚成一个折叠组、把 subagent 卡埋进去。
+      if (b.name === 'Task') {
+        if (!hiddenToolUseIds?.has(b.id)) {
+          out.push(<SubagentInlineCard key={`s${key++}`} block={b} output={subagentOutputByToolUseId?.[b.id]} showThinking={showThinking} />)
+        }
+        i++
+        continue
+      }
+      // 收集连续的普通 tool_use（跳过中间夹带的 tool_result，它不渲染；Task 已作边界单独处理）
       const group: ToolBlock[] = []
       let j = i
       while (j < blocks.length) {
         const cur = blocks[j]
         if (cur.type !== 'tool_use' && cur.type !== 'tool_result') break
+        // Task 不进普通分组（分组边界）
+        if (cur.type === 'tool_use' && cur.name === 'Task') break
         if (cur.type === 'tool_use') group.push(cur)
         j++
       }

@@ -112,8 +112,8 @@ interface PtyAPI {
   input(opts: { tabId: string; data: string }): Promise<void>
   resize(opts: { tabId: string; cols: number; rows: number }): Promise<void>
   kill(tabId: string): Promise<void>
-  onOutput(cb: (data: { tabId: string; data: string }) => void): void
-  onExit(cb: (data: { tabId: string; code: number }) => void): void
+  onOutput(cb: (data: { tabId: string; data: string }) => void): () => void
+  onExit(cb: (data: { tabId: string; code: number }) => void): () => void
 }
 
 interface BackendTaskAPI {

@@ -8,7 +8,11 @@ import { Tooltip } from './Tooltip'
 // 多选（multiSelect）累加为数组，不再覆盖。
 export function AnswerPanel() {
   const { state, dispatch } = useStore()
-  const dialog = state.pendingDialog!
+  const dialog = state.pendingDialog
+  // null 守卫：pendingDialog 可能在竞态下瞬时为 null（如并发 DIALOG_RESOLVED 清除）。
+  // 非空断言会在该帧抛 TypeError，无 ErrorBoundary 时导致整棵对话区子树卸载（弹窗消失）。
+  // 返回 null 而非抛错，保留外层条件渲染的控制权。
+  if (!dialog) return null
   const questions: any[] = dialog.payload?.questions ?? []
   const total = questions.length
   // 当前问题索引；answers: questionIndex → 单选 {index,label} | 多选 Array<{index,label}> | {other,text}

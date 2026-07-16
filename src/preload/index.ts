@@ -194,10 +194,15 @@ contextBridge.exposeInMainWorld('api', {
     resize: (opts: any) => ipcRenderer.invoke('pty:resize', opts),
     kill: (tabId: string) => ipcRenderer.invoke('pty:kill', tabId),
     onOutput: (cb: (data: any) => void) => {
-      ipcRenderer.on('pty:output', (_, data) => cb(data))
+      const handler = (_: unknown, data: any) => cb(data)
+      ipcRenderer.on('pty:output', handler)
+      // 返回 unsubscribe，供 TerminalTab cleanup 调用，避免组件卸载后监听器累加泄漏
+      return () => ipcRenderer.removeListener('pty:output', handler)
     },
     onExit: (cb: (data: any) => void) => {
-      ipcRenderer.on('pty:exit', (_, data) => cb(data))
+      const handler = (_: unknown, data: any) => cb(data)
+      ipcRenderer.on('pty:exit', handler)
+      return () => ipcRenderer.removeListener('pty:exit', handler)
     }
   },
   session: {

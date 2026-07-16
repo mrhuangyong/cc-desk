@@ -6,7 +6,9 @@ import { useStore } from '../state/store'
 // 复用 AskUserQuestion 的 dialog 通道：批准发 {behavior:'completed'}，拒绝发 {behavior:'cancelled'}。
 export function PermissionPanel() {
   const { state, dispatch } = useStore()
-  const dialog = state.pendingDialog!
+  const dialog = state.pendingDialog
+  // null 守卫：同 AnswerPanel，防止竞态下 pendingDialog 瞬时为 null 时抛错卸载子树。
+  if (!dialog) return null
   const p = dialog.payload ?? {}
   const displayName: string = p.displayName ?? p.toolName ?? '工具'
   const decisionReason: string | undefined = p.decisionReason

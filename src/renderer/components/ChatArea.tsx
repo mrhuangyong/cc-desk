@@ -14,6 +14,7 @@ import { InputBar } from './InputBar'
 import { InputDock } from './InputDock'
 import { AnswerPanel } from './AnswerPanel'
 import { PermissionPanel } from './PermissionPanel'
+import { DialogErrorBoundary } from './DialogErrorBoundary'
 import { serializeForPrompt } from '../editor/serialize'
 import { Notices } from './Notices'
 import { Tooltip } from './Tooltip'
@@ -124,8 +125,11 @@ export function ChatArea() {
     () => subagentOutputBySession?.[sid] ?? {},
     [subagentOutputBySession, sid]
   )
+  // 仅「运行中」的 subagent 在对话流隐藏（实时进度走悬浮面板）。
+  // 已完成（completed/failed/stopped）的 subagent 解除隐藏，在对话流渲染为内嵌卡片
+  // （含创建指令+过程+结果）。用户从面板「清除已结束」不再导致对话流冒出孤儿卡片。
   const subagentToolUseIds = useMemo(
-    () => new Set((backendTasksBySession?.[sid] ?? []).filter(t => t.kind === 'subagent' && t.toolUseId).map(t => t.toolUseId!)),
+    () => new Set((backendTasksBySession?.[sid] ?? []).filter(t => t.kind === 'subagent' && t.toolUseId && t.status === 'running').map(t => t.toolUseId!)),
     [backendTasksBySession, sid]
   )
 
@@ -488,14 +492,17 @@ export function ChatArea() {
           放在 Virtuoso 之外（非虚拟化项），避免被回收。 */}
       {pendingDialog && pendingDialog.sessionId === activeSessionId && (
         <div style={{ width: '100%', maxWidth: 'var(--chat-max-width)', margin: '0 auto', padding: '0 28px' }}>
-          {pendingDialog.dialogKind === 'permission_request' ? <PermissionPanel />
-            : pendingDialog.dialogKind === 'plan_proposed'
-              ? <PlanCard
-                  sessionId={activeSessionId}
-                  pendingPlan={{ reqId: pendingDialog.reqId, plan: pendingDialog.payload?.plan ?? '', allowedPrompts: pendingDialog.payload?.allowedPrompts }}
-                  dispatch={dispatch}
-                />
-              : <AnswerPanel />}
+          {/* ErrorBoundary：防 dialog 面板渲染期异常导致整棵对话区卸载（弹窗凭空消失 BUG） */}
+          <DialogErrorBoundary>
+            {pendingDialog.dialogKind === 'permission_request' ? <PermissionPanel />
+              : pendingDialog.dialogKind === 'plan_proposed'
+                ? <PlanCard
+                    sessionId={activeSessionId}
+                    pendingPlan={{ reqId: pendingDialog.reqId, plan: pendingDialog.payload?.plan ?? '', allowedPrompts: pendingDialog.payload?.allowedPrompts }}
+                    dispatch={dispatch}
+                  />
+                : <AnswerPanel />}
+          </DialogErrorBoundary>
         </div>
       )}
       <div style={{ padding: '0 28px 20px', width: '100%', maxWidth: 'var(--chat-max-width)', margin: '0 auto', position: 'relative' }}>

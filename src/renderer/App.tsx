@@ -353,28 +353,34 @@ export function App() {
     return () => { unsubscribe?.() }
   }, [dispatch])
 
-  if (currentView === 'settings') {
-    return <SettingsPage />
-  }
-
+  // 视图保活：切到设置页时不 unmount workspace（否则右栏 TerminalTab 的 cleanup 会
+  // pty.kill 杀掉终端进程，切回后只剩空壳）。workspace 用 display:none 隐藏而非卸载，
+  // 与 TabBar 对 tab 的保活范式一致；TerminalTab 的 ResizeObserver 会处理恢复后的 refit。
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <TitleBar
-        projectName={projectName}
-        leftCollapsed={leftCollapsed}
-        rightCollapsed={rightCollapsed}
-        onToggleLeft={() => setLeftCollapsed(c => !c)}
-        onToggleRight={() => setRightCollapsed(c => !c)}
-      />
-      <div style={{ flex: 1, display: 'flex', minHeight: 0, zoom: zoomFactor }}>
-        <LeftPanel
-          collapsed={leftCollapsed}
-          onOpenSearch={() => setSearchOpen(true)}
+    <>
+      <div style={{
+        display: currentView === 'workspace' ? 'flex' : 'none',
+        flexDirection: 'column',
+        height: '100%',
+      }}>
+        <TitleBar
+          projectName={projectName}
+          leftCollapsed={leftCollapsed}
+          rightCollapsed={rightCollapsed}
+          onToggleLeft={() => setLeftCollapsed(c => !c)}
+          onToggleRight={() => setRightCollapsed(c => !c)}
         />
-        <ChatArea />
-        <RightPanel collapsed={rightCollapsed} />
+        <div style={{ flex: 1, display: 'flex', minHeight: 0, zoom: zoomFactor }}>
+          <LeftPanel
+            collapsed={leftCollapsed}
+            onOpenSearch={() => setSearchOpen(true)}
+          />
+          <ChatArea />
+          <RightPanel collapsed={rightCollapsed} />
+        </div>
+        {searchOpen && <SearchDialog onClose={() => setSearchOpen(false)} />}
       </div>
-      {searchOpen && <SearchDialog onClose={() => setSearchOpen(false)} />}
-    </div>
+      {currentView === 'settings' && <SettingsPage />}
+    </>
   )
 }

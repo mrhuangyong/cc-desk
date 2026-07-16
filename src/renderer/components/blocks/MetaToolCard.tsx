@@ -134,7 +134,7 @@ export function MetaToolCard({ block }: Props) {
             <div>
               <div style={{ color: 'var(--text-faint)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>结果</div>
               <div style={{
-                whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                wordBreak: 'break-word',
                 color: block.result.isError ? 'var(--danger)' : 'var(--text)', lineHeight: 1.5,
               }}>
                 <MarkdownRenderer text={block.result.content} />

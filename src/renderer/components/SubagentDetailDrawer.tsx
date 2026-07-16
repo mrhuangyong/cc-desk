@@ -23,6 +23,25 @@ export function SubagentDetailDrawer({ task, outputByToolUseId, onClose }: Props
   if (!task) return null
   const blocks = (task.toolUseId && outputByToolUseId[task.toolUseId]) || []
 
+  // 最终结果：从主流 messages 找该 Task tool_use 的 result（走 STREAM_TOOL_RESULT 回填，持久化）。
+  // 抽屉原本只有「过程」（subagentOutputByToolUseId），缺最终结果；这里补齐三要素。
+  const state = useStore().state
+  let finalResult: { content: string; isError: boolean } | undefined
+  if (task.toolUseId && task.localSessionId) {
+    const session = state.projects
+      ?.flatMap((p: any) => p.sessions ?? [])
+      ?.find((s: any) => s.id === task.localSessionId)
+    const msgs = session?.messages ?? []
+    outer: for (const m of msgs) {
+      for (const c of (m.content ?? [])) {
+        if (c?.type === 'tool_use' && c.id === task.toolUseId) {
+          if (c.result) finalResult = { content: c.result.content ?? '', isError: !!c.result.isError }
+          break outer
+        }
+      }
+    }
+  }
+
   return (
     <Drawer trigger={task} onClose={onClose} width="min(680px, 90vw)">
       {(handleClose) => (
@@ -87,15 +106,48 @@ export function SubagentDetailDrawer({ task, outputByToolUseId, onClose }: Props
               </div>
             </div>
           )}
-          {/* 对话输出区:可滚动 */}
+          {/* 对话输出区:可滚动（过程 + 最终结果） */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
-            {blocks.length === 0 ? (
+            {blocks.length === 0 && !finalResult ? (
               <div style={{ color: 'var(--text-faint)', fontSize: 12, padding: '24px 0', textAlign: 'center' }}>
                 暂无输出(子代理刚启动或尚未产生消息)
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {renderBlocks(blocks, undefined, undefined, undefined, showThinking)}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {blocks.length > 0 && (
+                  <div>
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      fontSize: 11, color: 'var(--text-muted)', marginBottom: 6,
+                      textTransform: 'uppercase', letterSpacing: 0.3,
+                    }}>
+                      <Wrench size={11} />
+                      <span>执行过程</span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {renderBlocks(blocks, undefined, undefined, undefined, showThinking)}
+                    </div>
+                  </div>
+                )}
+                {finalResult && (
+                  <div>
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      fontSize: 11, color: 'var(--text-muted)', marginBottom: 6,
+                      textTransform: 'uppercase', letterSpacing: 0.3,
+                    }}>
+                      <Terminal size={11} />
+                      <span>最终结果</span>
+                    </div>
+                    <div style={{
+                      wordBreak: 'break-word',
+                      color: finalResult.isError ? 'var(--danger)' : 'var(--text)',
+                      lineHeight: 1.5,
+                    }}>
+                      <MarkdownRenderer text={finalResult.content} />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

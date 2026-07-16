@@ -127,6 +127,9 @@ export class ClaudeService {
   /** 渲染端回答后经 claude:dialog-response IPC 调用，结算挂起的 dialog。 */
   resolveDialog(reqId: string, result: any): void {
     const fn = this.dialogResolvers.get(reqId)
+    // 诊断日志（AskUserQuestion 误取消 BUG）：记录每次 dialog 结算的行为 + 调用栈，
+    // 用于判定是否「非用户点击触发的 cancelled」（如远程端回答/abort/catch 兜底）。
+    console.warn('[dialog] resolved', { reqId, behavior: result?.behavior, source: new Error().stack })
     if (fn) {
       this.dialogResolvers.delete(reqId)
       this.pendingDialogInfos.delete(reqId)
@@ -222,6 +225,9 @@ export class ClaudeService {
           signal.addEventListener(
             'abort',
             () => {
+              // 诊断日志（AskUserQuestion 误取消 BUG）：signal abort 走 cancelled，
+              // 记录确认是否 TaskUpdate 期间 SDK query signal 被触发。
+              console.warn('[dialog] aborted by signal', { reqId, lsid: localSessionId })
               if (this.dialogResolvers.has(reqId)) {
                 this.dialogResolvers.delete(reqId)
                 this.pendingDialogInfos.delete(reqId)
@@ -285,7 +291,10 @@ export class ClaudeService {
       let result: any
       try {
         result = await this.askUserViaPanel(webContents, 'ask_user_question', input, opts.toolUseID, undefined, localSessionId)
-      } catch {
+      } catch (err) {
+        // 诊断日志（AskUserQuestion 误取消 BUG）：askUserViaPanel 抛错兜底 cancelled，
+        // 记录 err 判定是否 SDK reject 了阻塞中的 canUseTool（如 interrupt 后）。
+        console.warn('[dialog] AskUserQuestion askUserViaPanel threw', { lsid: localSessionId, err })
         result = { behavior: 'cancelled' }
       }
       // 格式化真实答案为文本，作为 deny 的 message（= tool_result）返给模型

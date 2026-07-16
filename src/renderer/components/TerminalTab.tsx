@@ -1,9 +1,36 @@
 import { useEffect, useRef } from 'react'
 import { Terminal } from '@xterm/xterm'
+import type { ITheme } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { useStore } from '../state/store'
 import { URL_RE, cleanUrl } from '../utils/url'
+
+// 终端配色表：跟随应用主题。codex-dark 用深色（与历史配色一致），其余浅色主题用浅色。
+// 范式对齐 Monaco 的 monacoThemeFor（src/renderer/editor/monacoEnv.ts）。
+function terminalThemeFor(themeId: string): ITheme {
+  if (themeId === 'codex-dark') {
+    return {
+      background: '#1e1e1e', foreground: '#d4d4d4', cursor: '#d4d4d4',
+      cursorAccent: '#1e1e1e', selectionBackground: '#264f78',
+      black: '#000000', red: '#cd3131', green: '#0dbc79', yellow: '#e5e510',
+      blue: '#2472c8', magenta: '#bc3fbc', cyan: '#11a8cd', white: '#e5e5e5',
+      brightBlack: '#666666', brightRed: '#f14c4c', brightGreen: '#23d18b',
+      brightYellow: '#f5f543', brightBlue: '#3b8eea', brightMagenta: '#d670d6',
+      brightCyan: '#29b8db', brightWhite: '#ffffff',
+    }
+  }
+  // 浅色（codex-light / codex-warm / codex-cool / codex-paper 共用）
+  return {
+    background: '#ffffff', foreground: '#1e1e1e', cursor: '#1e1e1e',
+    cursorAccent: '#ffffff', selectionBackground: '#add6ff',
+    black: '#000000', red: '#cd3131', green: '#0dbc79', yellow: '#b58900',
+    blue: '#2472c8', magenta: '#bc3fbc', cyan: '#11a8cd', white: '#555555',
+    brightBlack: '#666666', brightRed: '#f14c4c', brightGreen: '#23d18b',
+    brightYellow: '#e5e510', brightBlue: '#3b8eea', brightMagenta: '#d670d6',
+    brightCyan: '#29b8db', brightWhite: '#1e1e1e',
+  }
+}
 
 interface Props {
   tabId: string
@@ -25,12 +52,7 @@ export function TerminalTab({ tabId, cwd }: Props) {
     const term = new Terminal({
       fontSize: 13,
       fontFamily: terminalFont,
-      theme: {
-        background: '#1e1e1e',
-        foreground: '#d4d4d4',
-        cursor: '#d4d4d4',
-        selectionBackground: '#264f78'
-      },
+      theme: terminalThemeFor(state.theme),
       cursorBlink: true
     })
     const fit = new FitAddon()
@@ -79,7 +101,7 @@ export function TerminalTab({ tabId, cwd }: Props) {
     const onOutput = ({ tabId: id, data }: { tabId: string; data: string }) => {
       if (id === tabId) term.write(data)
     }
-    window.api?.pty.onOutput(onOutput)
+    const offOutput = window.api?.pty.onOutput(onOutput)
 
     // Terminal input → pty
     const disposables = [
@@ -103,16 +125,25 @@ export function TerminalTab({ tabId, cwd }: Props) {
     const onExit = ({ tabId: id }: { tabId: string; code: number }) => {
       if (id === tabId) term.write('\r\n\x1b[90m[Process exited]\x1b[0m')
     }
-    window.api?.pty.onExit(onExit)
+    const offExit = window.api?.pty.onExit(onExit)
 
     return () => {
       resizeObserver.disconnect()
       linkProvider.dispose()
       disposables.forEach((d) => d.dispose())
+      offOutput?.()
+      offExit?.()
       term.dispose()
       window.api?.pty.kill(tabId)
     }
   }, [tabId, cwd, terminalFont, dispatch])
+
+  // 主题变化时运行时更新 xterm 配色：xterm 支持运行时改 options.theme，自动重绘，
+  // 无需重建实例、不丢历史。独立于挂载 effect（有 createdRef 单次保护），互不干扰。
+  // 首次挂载期间若 termRef 尚未赋值，用 ?. 跳过——初始 theme 已在挂载 effect 内设置。
+  useEffect(() => {
+    if (termRef.current) termRef.current.options.theme = terminalThemeFor(state.theme)
+  }, [state.theme])
 
   return <div ref={containerRef} style={{ width: '100%', height: '100%', padding: 4 }} />
 }
