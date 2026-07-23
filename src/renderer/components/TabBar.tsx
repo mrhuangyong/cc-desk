@@ -41,7 +41,44 @@ export function TabBar() {
   // 实例、TerminalTab 的 xterm+pty 因此在切 tab 时全部保留状态。
   const renderAllTabs = () => {
     if (tabs.length === 0) {
-      return <div style={{ display: 'grid', placeItems: 'center', flex: 1, color: 'var(--text-muted)' }}>暂无打开的面板</div>
+      return (
+        <div style={{
+          display: 'grid', flex: 1, justifyContent: 'center',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 150px))',
+          gap: 8, padding: 10, alignContent: 'center',
+        }}>
+          {ADD_OPTIONS.map(o => {
+            const Icon = o.icon
+            return (
+              <button
+                key={o.type}
+                onClick={() => addTab(o.type)}
+                style={{
+                  position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  padding: '24px 16px', cursor: 'pointer',
+                  background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+                  color: 'var(--text)', fontSize: 12, fontWeight: 500, borderRadius: 'var(--radius)',
+                  transition: 'border-color .15s, background .15s, transform .1s',
+                  overflow: 'hidden',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--bg-hover)'; const bar = e.currentTarget.querySelector<HTMLElement>('[data-accent-bar]'); if (bar) bar.style.transform = 'scaleX(1)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--bg-elevated)'; const bar = e.currentTarget.querySelector<HTMLElement>('[data-accent-bar]'); if (bar) bar.style.transform = 'scaleX(0)' }}
+              >
+                <span
+                  data-accent-bar
+                  style={{
+                    position: 'absolute', top: 0, left: 0, right: 0, height: 2,
+                    background: 'var(--accent)', transform: 'scaleX(0)', transformOrigin: 'left',
+                    transition: 'transform .15s ease',
+                  }}
+                />
+                <Icon size={20} />
+                {o.label}
+              </button>
+            )
+          })}
+        </div>
+      )
     }
     return tabs.map(t => {
       const isActive = t.id === activeTabId
